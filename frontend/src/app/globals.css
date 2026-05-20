@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ── Issue 7: Global placeholder color fix ── */
+::placeholder {
+  color: #9CA3AF !important;
+  opacity: 1 !important;
+}
+:-ms-input-placeholder {
+  color: #9CA3AF !important;
+}
+::-ms-input-placeholder {
+  color: #9CA3AF !important;
+}
+
+/* ── Issue 8: Global button smoothness ── */
+button, a {
+  transition: all 0.15s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Issue 8: Page fade-in on load ── */
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: pageFadeIn 0.2s ease forwards;
+}

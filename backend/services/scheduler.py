@@ -1,0 +1,174 @@
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy.orm import Session
+from datetime import datetime, date
+import logging
+
+from database import SessionLocal
+from models.models import Brand, SmartQuestion, ContentGuidance, User
+from services import gemini
+from services import scraper
+from config import DAILY_QUESTIONS_HOUR, WEEKLY_GUIDANCE_DAY
+
+logger = logging.getLogger(__name__)
+
+scheduler = AsyncIOScheduler()
+
+
+# ═══════════════════════════════════════════════════════════
+# JOB 1: Daily Smart Questions (runs every day at 6 AM)
+# ═══════════════════════════════════════════════════════════
+async def generate_daily_questions():
+    """Generate 3 smart questions for each active user."""
+    logger.info("⏰ Running daily questions job...")
+    db = SessionLocal()
+    try:
+        brands = db.query(Brand).filter(
+            Brand.scan_status == "completed",
+            Brand.onboarding_complete == True
+        ).all()
+
+        for brand in brands:
+            try:
+                # Build brand profile dict
+                brand_profile = {
+                    "business_name": brand.business_name,
+                    "business_type": brand.business_type,
+                    "industry": brand.industry,
+                    "target_audience": brand.target_audience,
+                    "products_services": brand.products_services or [],
+                    "detected_products": brand.detected_products or [],
+                    "detected_services": brand.detected_services or [],
+                    "brand_keywords": brand.brand_keywords or [],
+                    "brand_tone": brand.brand_tone,
+                    "content_themes": brand.content_themes or [],
+                }
+
+                # Get previous answers for context
+                from models.models import UserAnswer
+                prev_answers = db.query(UserAnswer).filter(
+                    UserAnswer.user_id == brand.user_id
+                ).order_by(UserAnswer.created_at.desc()).limit(10).all()
+
+                prev_answers_data = []
+                for ans in prev_answers:
+                    q = db.query(SmartQuestion).filter(SmartQuestion.id == ans.question_id).first()
+                    if q:
+                        prev_answers_data.append({
+                            "question": q.question_text,
+                            "answer": ans.answer_text
+                        })
+
+                # Generate questions via Gemini
+                questions = gemini.generate_smart_questions(brand_profile, prev_answers_data)
+
+                # Save to DB
+                today = date.today()
+                for q_data in questions:
+                    question = SmartQuestion(
+                        user_id=brand.user_id,
+                        brand_id=brand.id,
+                        question_text=q_data.get("question_text", ""),
+                        question_context=q_data.get("question_context", ""),
+                        question_type=q_data.get("question_type", "general"),
+                        options=q_data.get("options"),
+                        date_for=today,
+                    )
+                    db.add(question)
+
+                db.commit()
+                logger.info(f"✅ Generated questions for brand: {brand.business_name}")
+
+            except Exception as e:
+                logger.error(f"❌ Error generating questions for brand {brand.id}: {str(e)}")
+                db.rollback()
+
+    except Exception as e:
+        logger.error(f"❌ Daily questions job failed: {str(e)}")
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════════════════════
+# JOB 2: Weekly Guidance (runs every Monday at 7 AM)
+# ═══════════════════════════════════════════════════════════
+async def generate_weekly_guidance():
+    """Generate weekly content guidance for each active user."""
+    logger.info("⏰ Running weekly guidance job...")
+    db = SessionLocal()
+    try:
+        brands = db.query(Brand).filter(
+            Brand.scan_status == "completed"
+        ).all()
+
+        for brand in brands:
+            try:
+                brand_profile = {
+                    "business_name": brand.business_name,
+                    "industry": brand.industry,
+                    "target_audience": brand.target_audience,
+                    "brand_tone": brand.brand_tone,
+                }
+
+                # Generate all 3 types
+                for gtype in ["weekly_tip", "posting_schedule", "content_mix"]:
+                    try:
+                        guidance_data = gemini.generate_guidance(brand_profile, gtype)
+                        guidance = ContentGuidance(
+                            user_id=brand.user_id,
+                            brand_id=brand.id,
+                            guidance_type=gtype,
+                            title=guidance_data.get("title", "Weekly Tip"),
+                            content=guidance_data.get("content", ""),
+                            metadata_json=guidance_data.get("metadata_json"),
+                            week_of=date.today(),
+                        )
+                        db.add(guidance)
+                    except Exception as e:
+                        logger.error(f"Error generating {gtype} for {brand.id}: {str(e)}")
+
+                db.commit()
+                logger.info(f"✅ Generated guidance for brand: {brand.business_name}")
+
+            except Exception as e:
+                logger.error(f"❌ Error generating guidance for brand {brand.id}: {str(e)}")
+                db.rollback()
+
+    except Exception as e:
+        logger.error(f"❌ Weekly guidance job failed: {str(e)}")
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════════════════════
+# SCHEDULER SETUP
+# ═══════════════════════════════════════════════════════════
+def start_scheduler():
+    """Initialize and start the background scheduler."""
+    # Daily questions at configured hour
+    scheduler.add_job(
+        generate_daily_questions,
+        CronTrigger(hour=DAILY_QUESTIONS_HOUR, minute=0),
+        id="daily_questions",
+        replace_existing=True,
+        name="Generate Daily Smart Questions"
+    )
+
+    # Weekly guidance on Monday at 7 AM
+    scheduler.add_job(
+        generate_weekly_guidance,
+        CronTrigger(day_of_week=WEEKLY_GUIDANCE_DAY, hour=7, minute=0),
+        id="weekly_guidance",
+        replace_existing=True,
+        name="Generate Weekly Content Guidance"
+    )
+
+    scheduler.start()
+    logger.info("🚀 Background scheduler started")
+
+
+def stop_scheduler():
+    """Gracefully stop the scheduler."""
+    if scheduler.running:
+        scheduler.shutdown()
+        logger.info("🛑 Background scheduler stopped")

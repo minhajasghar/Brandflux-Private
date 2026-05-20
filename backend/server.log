@@ -1,0 +1,224 @@
+INFO:     Will watch for changes in these directories: ['c:\\dev2\\brandai\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [1364] using WatchFiles
+c:\dev2\brandai\backend\services\gemini_service.py:1: FutureWarning: 
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving 
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  import google.generativeai as genai
+2026-05-20 13:14:39,176 - services.gemini_service - INFO - Available Gemini models: ['models/gemini-2.5-flash', 'models/gemini-2.5-pro', 'models/gemini-2.0-flash', 'models/gemini-2.0-flash-001', 'models/gemini-2.0-flash-lite-001', 'models/gemini-2.0-flash-lite', 'models/gemini-2.5-flash-preview-tts', 'models/gemini-2.5-pro-preview-tts', 'models/gemma-4-26b-a4b-it', 'models/gemma-4-31b-it', 'models/gemini-flash-latest', 'models/gemini-flash-lite-latest', 'models/gemini-pro-latest', 'models/gemini-2.5-flash-lite', 'models/gemini-2.5-flash-image', 'models/gemini-3-pro-preview', 'models/gemini-3-flash-preview', 'models/gemini-3.1-pro-preview', 'models/gemini-3.1-pro-preview-customtools', 'models/gemini-3.1-flash-lite-preview', 'models/gemini-3.1-flash-lite', 'models/gemini-3-pro-image-preview', 'models/nano-banana-pro-preview', 'models/gemini-3.1-flash-image-preview', 'models/gemini-3.5-flash', 'models/lyria-3-clip-preview', 'models/lyria-3-pro-preview', 'models/gemini-3.1-flash-tts-preview', 'models/gemini-robotics-er-1.5-preview', 'models/gemini-robotics-er-1.6-preview', 'models/gemini-2.5-computer-use-preview-10-2025', 'models/antigravity-preview-05-2026', 'models/deep-research-max-preview-04-2026', 'models/deep-research-preview-04-2026', 'models/deep-research-pro-preview-12-2025']
+2026-05-20 13:14:39,179 - services.gemini_service - INFO - Selected Gemini model: models/gemini-2.5-flash
+INFO:     Started server process [9464]
+INFO:     Waiting for application startup.
+2026-05-20 13:14:39,729 - main - INFO - \U0001f680 Starting Brandflux API...
+2026-05-20 13:14:39,824 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-20 13:14:39,826 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-20 13:14:39,832 - apscheduler.scheduler - INFO - Added job "Generate Daily Smart Questions" to job store "default"
+2026-05-20 13:14:39,838 - apscheduler.scheduler - INFO - Added job "Generate Weekly Content Guidance" to job store "default"
+2026-05-20 13:14:39,839 - apscheduler.scheduler - INFO - Scheduler started
+2026-05-20 13:14:39,840 - services.scheduler - INFO - \U0001f680 Background scheduler started
+INFO:     Application startup complete.
+INFO:     127.0.0.1:49445 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "OPTIONS /brand/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "OPTIONS /sessions/today HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "OPTIONS /brand/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "OPTIONS /content/posts?limit=5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "OPTIONS /brand/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "OPTIONS /content/posts?limit=5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "GET /brand/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "GET /sessions/today HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59351 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63993 - "GET /sessions/today HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51078 - "GET /brand/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62845 - "GET /brand/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64589 - "GET /content/posts?limit=5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59351 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64589 - "GET /content/posts?limit=5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62845 - "GET /brand/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62845 - "OPTIONS /sessions/streak HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64589 - "OPTIONS /sessions/streak HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62845 - "GET /sessions/streak HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62845 - "GET /sessions/streak HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52235 - "GET /brand/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52235 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52235 - "GET /sessions/today HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57999 - "GET /brand/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57999 - "GET /sessions/today HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57999 - "OPTIONS /sessions/generate-content HTTP/1.1" 200 OK
+2026-05-20 13:34:25,039 - services.gemini_service - ERROR - Gemini decide strategy error: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 35.207832476s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 35
+}
+]
+2026-05-20 13:34:38,431 - services.gemini_service - ERROR - Gemini image prompt generation failed: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 21.821537834s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 21
+}
+]
+2026-05-20 13:34:38,945 - services.gemini_service - ERROR - Gemini text overlay extraction failed: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 21.31923219s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 21
+}
+]
+2026-05-20 13:34:39,354 - services.gemini_service - ERROR - Gemini text overlay extraction failed: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 20.919673386s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 20
+}
+]
+2026-05-20 13:34:39,356 - services.gemini_service - ERROR - Gemini text overlay extraction failed: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 20.903130298s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 20
+}
+]
+2026-05-20 13:34:39,361 - services.gemini_service - ERROR - Gemini text overlay extraction failed: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 20.901837548s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 20
+}
+]
+2026-05-20 13:34:46,229 - httpx - INFO - HTTP Request: GET https://image.pollinations.ai/prompt/A%20clean%20aesthetic%20backdrop%20representing%20Shop%20Smart%20%26%20Safe%3A%20Unlocking%20Daraz%20Authenticity%21%20with%20professional%20branding%20visual%20cues%2C%20minimalist%20style.%2C%20digital%20art%2C%20high%20quality%2C%20professional%2C%20no%20text%2C%20no%20watermark?width=1080&height=1080&nologo=true&enhance=true "HTTP/1.1 402 Payment Required"
+2026-05-20 13:34:46,239 - httpx - INFO - HTTP Request: GET https://image.pollinations.ai/prompt/A%20clean%20aesthetic%20backdrop%20representing%20Shop%20Smart%20%26%20Safe%3A%20Unlocking%20Daraz%20Authenticity%21%20with%20professional%20branding%20visual%20cues%2C%20minimalist%20style.%2C%20digital%20art%2C%20high%20quality%2C%20professional%2C%20no%20text%2C%20no%20watermark?width=1200&height=630&nologo=true&enhance=true "HTTP/1.1 402 Payment Required"
+2026-05-20 13:34:46,872 - httpx - INFO - HTTP Request: GET https://image.pollinations.ai/prompt/A%20clean%20aesthetic%20backdrop%20representing%20Shop%20Smart%20%26%20Safe%3A%20Unlocking%20Daraz%20Authenticity%21%20with%20professional%20branding%20visual%20cues%2C%20minimalist%20style.%2C%20digital%20art%2C%20high%20quality%2C%20professional%2C%20no%20text%2C%20no%20watermark?width=1080&height=1920&nologo=true&enhance=true "HTTP/1.1 402 Payment Required"
+2026-05-20 13:34:47,234 - httpx - INFO - HTTP Request: GET https://image.pollinations.ai/prompt/A%20clean%20aesthetic%20backdrop%20representing%20Shop%20Smart%20%26%20Safe%3A%20Unlocking%20Daraz%20Authenticity%21%20with%20professional%20branding%20visual%20cues%2C%20minimalist%20style.%2C%20digital%20art%2C%20high%20quality%2C%20professional%2C%20no%20text%2C%20no%20watermark?width=1200&height=627&nologo=true&enhance=true "HTTP/1.1 200 OK"
+2026-05-20 13:34:50,529 - httpx - INFO - HTTP Request: GET https://lzd-img-global.slatic.net/us/domino/3b870cb043c7f8a9741cbf66329e294e.png "HTTP/1.1 200 OK"
+2026-05-20 13:34:50,603 - httpx - INFO - HTTP Request: GET https://lzd-img-global.slatic.net/us/domino/3b870cb043c7f8a9741cbf66329e294e.png "HTTP/1.1 200 OK"
+2026-05-20 13:34:50,966 - httpx - INFO - HTTP Request: GET https://lzd-img-global.slatic.net/us/domino/3b870cb043c7f8a9741cbf66329e294e.png "HTTP/1.1 200 OK"
+2026-05-20 13:34:51,121 - httpx - INFO - HTTP Request: GET https://lzd-img-global.slatic.net/us/domino/3b870cb043c7f8a9741cbf66329e294e.png "HTTP/1.1 200 OK"
+Error in generate_background: Failed to fetch image from Pollinations: status 402
+Background generation failed for instagram_post: Failed to fetch image from Pollinations: status 402, falling back to solid color.
+Error in generate_background: Failed to fetch image from Pollinations: status 402
+Background generation failed for facebook_post: Failed to fetch image from Pollinations: status 402, falling back to solid color.
+Error in generate_background: Failed to fetch image from Pollinations: status 402
+Background generation failed for instagram_story: Failed to fetch image from Pollinations: status 402, falling back to solid color.
+INFO:     127.0.0.1:52235 - "POST /sessions/generate-content HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57550 - "GET /static/post_instagram_post_82a1f1a831.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57550 - "GET /static/post_instagram_post_82a1f1a831.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57550 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50132 - "GET /static/post_instagram_story_29d78a2ed5.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50132 - "GET /static/post_facebook_3ba7ac4ff9.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50517 - "GET /static/post_linkedin_c8ed349aa9.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50517 - "GET /static/post_linkedin_c8ed349aa9.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55566 - "GET /static/post_instagram_story_29d78a2ed5.png HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54924 - "GET /static/post_linkedin_c8ed349aa9.png HTTP/1.1" 304 Not Modified
+WARNING:  WatchFiles detected changes in 'services\image_generator.py'. Reloading...
+ INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-05-20 13:39:20,047 - services.scheduler - INFO - \U0001f6d1 Background scheduler stopped
+2026-05-20 13:39:20,051 - main - INFO - \U0001f6d1 Brandflux API stopped
+2026-05-20 13:39:20,159 - apscheduler.scheduler - INFO - Scheduler has been shut down
+INFO:     Application shutdown complete.
+INFO:     Finished server process [9464]

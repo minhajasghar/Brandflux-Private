@@ -1,0 +1,28 @@
+# ─── Core ──────────────────────────────────
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+pydantic
+
+# ─── Database ──────────────────────────────
+sqlalchemy
+
+# ─── Auth ──────────────────────────────────
+passlib[bcrypt]
+python-jose[cryptography]
+
+# ─── Web Scraping ──────────────────────────
+httpx
+beautifulsoup4
+
+# ─── AI ────────────────────────────────────
+google-genai
+
+# ─── Image Processing ─────────────────────
+Pillow
+colorthief
+rembg
+
+# ─── Background Jobs ──────────────────────
+apscheduler

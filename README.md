@@ -1,6 +1,6 @@
-# BrandAI
+# Brandflux
 
-Smart brand content tool for small business owners.
+Smart brand content tool for business owners.
 
 ## Project Structure
 

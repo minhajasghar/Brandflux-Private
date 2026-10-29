@@ -1,0 +1,159 @@
+services:
+  # ─── PostgreSQL Database ─────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: brandflux-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-brandflux}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brandflux_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-brandflux}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brandflux} -d ${POSTGRES_DB:-brandflux}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - brandflux-net
+
+  # ─── Redis Cache & Rate Limiting ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: brandflux-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - brandflux-net
+
+  # ─── FastAPI Backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brandflux-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-brandflux}:${POSTGRES_PASSWORD:-brandflux_secret}@postgres:5432/${POSTGRES_DB:-brandflux}
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_CONTENT_GEN: ${RATE_LIMIT_CONTENT_GEN:-5/minute}
+      RATE_LIMIT_SESSION_GEN: ${RATE_LIMIT_SESSION_GEN:-5/minute}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-brandflux-media}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SECRET_KEY: ${SECRET_KEY:-brandflux-super-secret-key-12345}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_REDIRECT_URI: ${META_REDIRECT_URI:-http://localhost:3000/settings?tab=accounts}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-brandflux-webhook-verify-token}
+      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID:-}
+      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET:-}
+      LINKEDIN_REDIRECT_URI: ${LINKEDIN_REDIRECT_URI:-http://localhost:3000/settings?tab=accounts}
+      USE_SOCIAL_AGGREGATOR: ${USE_SOCIAL_AGGREGATOR:-false}
+      AYRSHARE_API_KEY: ${AYRSHARE_API_KEY:-}
+    volumes:
+      - backend_media:/app/processed_images
+    networks:
+      - brandflux-net
+
+  # ─── Celery Worker (Social Publishing & Retries) ───────────────────────────
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brandflux-celery-worker
+    command: celery -A celery_app worker --loglevel=info
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-brandflux}:${POSTGRES_PASSWORD:-brandflux_secret}@postgres:5432/${POSTGRES_DB:-brandflux}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID:-}
+      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET:-}
+      USE_SOCIAL_AGGREGATOR: ${USE_SOCIAL_AGGREGATOR:-false}
+      AYRSHARE_API_KEY: ${AYRSHARE_API_KEY:-}
+      SECRET_KEY: ${SECRET_KEY:-brandflux-super-secret-key-12345}
+    volumes:
+      - backend_media:/app/processed_images
+    networks:
+      - brandflux-net
+
+  # ─── Celery Beat (Scheduled Task Dispatcher) ───────────────────────────────
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brandflux-celery-beat
+    command: celery -A celery_app beat --loglevel=info
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-brandflux}:${POSTGRES_PASSWORD:-brandflux_secret}@postgres:5432/${POSTGRES_DB:-brandflux}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      SECRET_KEY: ${SECRET_KEY:-brandflux-super-secret-key-12345}
+    networks:
+      - brandflux-net
+
+  # ─── Next.js Frontend ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: brandflux-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    networks:
+      - brandflux-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_media:
+
+networks:
+  brandflux-net:
+    driver: bridge
+

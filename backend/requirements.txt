@@ -7,9 +7,20 @@ pydantic
 
 # ─── Database ──────────────────────────────
 sqlalchemy
+psycopg2-binary
+alembic
+
+# ─── Storage & Cloud ───────────────────────
+boto3
+
+# ─── Rate Limiting & Cache ─────────────────
+slowapi
+redis
+celery[redis]
 
 # ─── Auth ──────────────────────────────────
-passlib[bcrypt]
+passlib
+argon2-cffi
 python-jose[cryptography]
 
 # ─── Web Scraping ──────────────────────────
@@ -18,8 +29,11 @@ beautifulsoup4
 
 # ─── AI ────────────────────────────────────
 google-genai
+google-generativeai
 
-# ─── Image Processing ─────────────────────
+# ─── Image Processing & Rendering ─────────
+playwright
+jinja2
 Pillow
 colorthief
 rembg

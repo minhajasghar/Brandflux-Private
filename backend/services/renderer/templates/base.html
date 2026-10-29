@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title | default("Brandflux Social Post") }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: {{ brand_colors.bg | default("#05060A") }};
+      --surface: {{ brand_colors.surface | default("#0D0F16") }};
+      --surface-card: {{ brand_colors.surface_card | default("#121622") }};
+      --border: {{ brand_colors.border | default("#1C2030") }};
+      --primary: {{ brand_colors.primary | default("#1558C9") }};
+      --primary-light: {{ brand_colors.primary_light | default("#4C8DFF") }};
+      --primary-glow: rgba(21, 88, 201, 0.25);
+      --accent: {{ brand_colors.accent | default("#D4FF24") }};
+      --text: {{ brand_colors.text | default("#F4F5F7") }};
+      --muted: {{ brand_colors.muted | default("#8A90A2") }};
+      --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: {{ width }}px;
+      height: {{ height }}px;
+      overflow: hidden;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      position: relative;
+    }
+
+    /* Ambient Brand Glow & Faint Grid Mask */
+    .ambient-glow {
+      position: absolute;
+      width: 800px;
+      height: 800px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .glow-top-right {
+      top: -300px;
+      right: -250px;
+    }
+    .glow-bottom-left {
+      bottom: -350px;
+      left: -250px;
+    }
+
+    .grid-pattern {
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(to right, rgba(28, 32, 48, 0.3) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(28, 32, 48, 0.3) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.6) 0%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .content-container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: {{ padding | default("64px") }};
+    }
+
+    /* Common Header */
+    .brand-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .brand-identity {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-logo-img {
+      height: 48px;
+      max-width: 160px;
+      object-fit: contain;
+    }
+    .brand-logo-fallback {
+      height: 48px;
+      width: 48px;
+      border-radius: 12px;
+      background: var(--primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 22px;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+    .brand-name {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+    .brand-tagline {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(21, 88, 201, 0.15);
+      border: 1px solid rgba(21, 88, 201, 0.4);
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary-light);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent);
+    }
+
+    /* Common Footer */
+    .brand-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+    .footer-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .footer-cta-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 24px;
+      background: var(--accent);
+      color: #000;
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 800;
+      border-radius: 12px;
+      box-shadow: 0 0 24px rgba(212, 255, 36, 0.25);
+    }
+
+    /* AI-Generated Background Visual Layer */
+    .ai-background-layer {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      z-index: 0;
+      filter: contrast(1.08) brightness(0.85);
+      opacity: {{ background_opacity | default("0.45") }};
+    }
+    .ai-background-vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(5,6,10,0.2) 0%, rgba(5,6,10,0.85) 100%),
+                  linear-gradient(180deg, rgba(5,6,10,0.5) 0%, rgba(5,6,10,0.9) 100%);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    {% block extra_css %}{% endblock %}
+  </style>
+</head>
+<body>
+  {% if background_image_url %}
+  <div class="ai-background-layer" style="background-image: url('{{ background_image_url }}');"></div>
+  <div class="ai-background-vignette"></div>
+  {% endif %}
+
+  <div class="ambient-glow glow-top-right"></div>
+  <div class="ambient-glow glow-bottom-left"></div>
+  <div class="grid-pattern"></div>
+
+  <div class="content-container">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
+

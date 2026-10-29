@@ -50,7 +50,7 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
     background_tasks.add_task(_run_first_scan, brand.id, brand.user_id, req.website_url)
 
     # 5. Generate JWT token (expires in 7 days)
-    token = auth_service.create_token(user.id)
+    token = auth_service.create_token(user.id, token_version=getattr(user, "token_version", 1) or 1)
 
     # 6. Return response
     return AuthResponse(
@@ -58,6 +58,8 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
         user_id=user.id,
         email=user.email,
         full_name=user.full_name,
+        role=getattr(user, "role", "user") or "user",
+        is_suspended=getattr(user, "is_suspended", False) or False,
         onboarding_complete=False
     )
 
@@ -72,7 +74,21 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
             detail="User not found"
         )
 
-    # 2. Verify password hash
+    # 2. Block soft-deleted users
+    if getattr(user, "is_deleted", False):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # 3. Block suspended users at login
+    if getattr(user, "is_suspended", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been suspended by an administrator. Please contact support."
+        )
+
+    # 4. Verify password hash
     if not auth_service.verify_password(req.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -81,15 +97,17 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
 
-    # 3. Generate JWT token
-    token = auth_service.create_token(user.id)
+    # 5. Generate JWT token
+    token = auth_service.create_token(user.id, token_version=getattr(user, "token_version", 1) or 1)
 
-    # 4. Return response
+    # 6. Return response
     return AuthResponse(
         token=token,
         user_id=user.id,
         email=user.email,
         full_name=user.full_name,
+        role=getattr(user, "role", "user") or "user",
+        is_suspended=getattr(user, "is_suspended", False) or False,
         onboarding_complete=brand.onboarding_complete if brand else False
     )
 
@@ -104,6 +122,8 @@ def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)
             "email": user.email,
             "full_name": user.full_name,
             "plan": user.plan,
+            "role": getattr(user, "role", "user") or "user",
+            "is_suspended": getattr(user, "is_suspended", False) or False,
             "created_at": user.created_at
         },
         "brand": brand

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { signup } from '@/lib/api'
 import api from '@/lib/api'
-import { Loader2, User, Mail, Lock, Globe, Briefcase } from 'lucide-react'
+import { Loader2, User, Mail, Lock, Globe, Briefcase, Zap, CheckCircle2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
 const BUSINESS_TYPES = [
@@ -38,7 +38,7 @@ export default function SignupPage() {
     business_type: '',
   })
 
-  // ISSUE 4: Auto-detect business type from URL
+  // Auto-detect business type from URL on blur
   const [detectingBusiness, setDetectingBusiness] = useState(false)
   const [detectedBusinessType, setDetectedBusinessType] = useState<string | null>(null)
 
@@ -51,8 +51,11 @@ export default function SignupPage() {
       const res = await api.post('/brand/scan-website', { website_url: url })
       const type = res.data?.business_type
       if (type) {
-        setFormData(prev => ({ ...prev, business_type: type }))
-        setDetectedBusinessType(type)
+        const matched = BUSINESS_TYPES.find(b => b.toLowerCase() === type.toLowerCase()) ||
+          BUSINESS_TYPES.find(b => b.toLowerCase().includes(type.toLowerCase()) || type.toLowerCase().includes(b.toLowerCase())) ||
+          type
+        setFormData(prev => ({ ...prev, business_type: matched }))
+        setDetectedBusinessType(matched)
       }
     } catch {
       // silently fail — user can still pick manually
@@ -61,7 +64,6 @@ export default function SignupPage() {
     }
   }
 
-  // ISSUE 1: Show success toast then redirect to /login
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -81,39 +83,42 @@ export default function SignupPage() {
         duration: 3000,
         icon: '🎉',
       })
-      // Redirect to /login after 2 seconds
       setTimeout(() => {
         router.push('/login')
-      }, 2000)
+      }, 1500)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Something went wrong. Please try again.')
       setIsLoading(false)
     }
   }
 
-  // ISSUE 2 & 3: Select styling — controlled value with visible placeholder color
   const selectHasValue = !!formData.business_type
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 px-6 lg:px-8">
+    <div className="min-h-screen bg-bg flex flex-col justify-center py-12 px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-10 px-10 shadow-xl rounded-3xl border border-gray-100">
-          <div className="text-center mb-10">
-            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Brandflux</h1>
-            <p className="mt-2 text-sm text-gray-500 font-medium">Start Your Brand Journey</p>
+        <div className="bg-surface py-10 px-8 sm:px-10 shadow-2xl rounded-3xl border border-border">
+          <div className="text-center mb-8">
+            <Link href="/" className="inline-flex items-center gap-2.5 mb-3 group">
+              <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center font-bold text-white shadow-glow group-hover:scale-105 transition-transform">
+                <Zap className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-2xl font-extrabold text-text tracking-tight">Brandflux</span>
+            </Link>
+            <p className="text-sm text-muted font-medium">Start your AI brand journey</p>
           </div>
 
-          <form className="space-y-5" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             {/* Full Name */}
             <div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400 group-focus-within:text-black transition-colors" />
+                  <User className="h-4.5 w-4.5 text-muted group-focus-within:text-accent transition-colors" />
                 </div>
                 <input
                   type="text"
                   required
-                  className="block w-full pl-11 pr-4 py-3.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition-all text-sm text-gray-900 placeholder-[#9CA3AF]"
+                  className="block w-full pl-11 pr-4 py-3.5 border border-border rounded-xl leading-5 bg-surface-secondary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-sm text-text placeholder-muted"
                   placeholder="Full name"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
@@ -125,13 +130,13 @@ export default function SignupPage() {
             <div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-black transition-colors" />
+                  <Mail className="h-4.5 w-4.5 text-muted group-focus-within:text-accent transition-colors" />
                 </div>
                 <input
                   type="email"
                   required
-                  className="block w-full pl-11 pr-4 py-3.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition-all text-sm text-gray-900 placeholder-[#9CA3AF]"
-                  placeholder="Email address"
+                  className="block w-full pl-11 pr-4 py-3.5 border border-border rounded-xl leading-5 bg-surface-secondary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-sm text-text placeholder-muted"
+                  placeholder="Work email address"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
@@ -142,57 +147,57 @@ export default function SignupPage() {
             <div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-black transition-colors" />
+                  <Lock className="h-4.5 w-4.5 text-muted group-focus-within:text-accent transition-colors" />
                 </div>
                 <input
                   type="password"
                   required
-                  className="block w-full pl-11 pr-4 py-3.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition-all text-sm text-gray-900 placeholder-[#9CA3AF]"
-                  placeholder="Password"
+                  className="block w-full pl-11 pr-4 py-3.5 border border-border rounded-xl leading-5 bg-surface-secondary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-sm text-text placeholder-muted"
+                  placeholder="Create a strong password"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
               </div>
             </div>
 
-            {/* Website URL — ISSUE 4: onBlur triggers auto-detect */}
+            {/* Website URL */}
             <div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Globe className="h-5 w-5 text-gray-400 group-focus-within:text-black transition-colors" />
+                  <Globe className="h-4.5 w-4.5 text-muted group-focus-within:text-accent transition-colors" />
                 </div>
                 {detectingBusiness && (
                   <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    <Loader2 className="h-4 w-4 animate-spin text-muted" />
                   </div>
                 )}
                 <input
                   type="url"
                   required
-                  className="block w-full pl-11 pr-10 py-3.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition-all text-sm text-gray-900 placeholder-[#9CA3AF]"
-                  placeholder="https://yourbusiness.com"
+                  className="block w-full pl-11 pr-10 py-3.5 border border-border rounded-xl leading-5 bg-surface-secondary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-sm text-text placeholder-muted"
+                  placeholder="https://yourbrand.com"
                   value={formData.website_url}
                   onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
                   onBlur={handleWebsiteBlur}
                 />
               </div>
-              {detectedBusinessType && (
-                <p className="mt-1.5 text-xs text-green-600 font-semibold flex items-center gap-1">
-                  ✓ Business type detected: {detectedBusinessType}
+              {detectedBusinessType ? (
+                <p className="mt-1.5 text-xs text-success font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span>Detected type: {detectedBusinessType}</span>
                 </p>
-              )}
-              {!detectedBusinessType && (
-                <p className="mt-1.5 text-[11px] text-gray-500 font-medium">
-                  We&apos;ll analyze your website to set up your brand automatically.
+              ) : (
+                <p className="mt-1.5 text-[11px] text-muted">
+                  We&apos;ll analyze your website to configure your brand colors and voice.
                 </p>
               )}
             </div>
 
-            {/* Business Type — ISSUE 2 & 3: Correct color, correct value binding */}
+            {/* Business Type */}
             <div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Briefcase className="h-5 w-5 text-gray-400 group-focus-within:text-black transition-colors" />
+                  <Briefcase className="h-4.5 w-4.5 text-muted group-focus-within:text-accent transition-colors" />
                 </div>
                 <select
                   value={formData.business_type}
@@ -200,23 +205,21 @@ export default function SignupPage() {
                     setFormData({ ...formData, business_type: e.target.value })
                     setDetectedBusinessType(null)
                   }}
-                  style={{
-                    color: selectHasValue ? '#111827' : '#6B7280',
-                  }}
-                  className="block w-full pl-11 pr-4 py-3.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition-all text-sm appearance-none cursor-pointer"
+                  className={`block w-full pl-11 pr-10 py-3.5 border border-border rounded-xl leading-5 bg-surface-secondary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-sm appearance-none cursor-pointer ${
+                    selectHasValue ? 'text-text' : 'text-muted'
+                  }`}
                 >
-                  <option value="" disabled style={{ color: '#6B7280' }}>
+                  <option value="" disabled className="bg-surface text-muted">
                     Select business type
                   </option>
                   {BUSINESS_TYPES.map((bt) => (
-                    <option key={bt} value={bt} style={{ color: '#111827' }}>
+                    <option key={bt} value={bt} className="bg-surface text-text">
                       {bt}
                     </option>
                   ))}
                 </select>
-                {/* Custom dropdown arrow */}
                 <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                  <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
@@ -224,34 +227,32 @@ export default function SignupPage() {
             </div>
 
             {error && (
-              <div className="text-red-500 text-xs font-bold text-center bg-red-50 py-2 rounded-lg">
+              <div className="text-danger text-xs font-semibold text-center bg-danger/10 py-2.5 px-3 rounded-xl border border-danger/20">
                 {error}
               </div>
             )}
 
-            {/* ISSUE 8: Button with transition, active scale, disabled state */}
-            <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center items-center py-4 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-[150ms] ease-in-out active:scale-[0.98]"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  'Create Account'
-                )}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full mt-2 py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold text-sm rounded-xl transition-all shadow-accent-glow active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="animate-spin h-4 w-4" />
+                  <span>Creating your account...</span>
+                </>
+              ) : (
+                'Create Account'
+              )}
+            </button>
           </form>
 
-          <div className="mt-8 text-center">
-            <p className="text-sm text-gray-500 font-medium">
-              Already have an account?{' '}
-              <Link href="/login" className="text-black font-bold hover:underline">
-                Sign in instead
-              </Link>
-            </p>
+          <div className="mt-8 text-center text-xs text-muted">
+            Already have an account?{' '}
+            <Link href="/login" className="text-accent hover:underline font-bold">
+              Sign in instead
+            </Link>
           </div>
         </div>
       </div>

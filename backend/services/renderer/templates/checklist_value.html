@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+  .checklist-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 28px;
+    padding: 20px 0;
+  }
+  .checklist-header {
+    margin-bottom: 8px;
+  }
+  .eyebrow-tag {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--primary-light);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+  .checklist-title {
+    font-family: var(--font-display);
+    font-size: {{ title_size | default("44px") }};
+    font-weight: 800;
+    line-height: 1.18;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+  .checklist-title .accent-word {
+    color: var(--accent);
+  }
+
+  .items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px 24px;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.25);
+  }
+  .check-icon-box {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(21, 88, 201, 0.2);
+    border: 1px solid rgba(21, 88, 201, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary-light);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .check-icon-box svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 3;
+  }
+  .item-content h3 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .item-content p {
+    font-size: 15px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+{% endblock %}
+
+{% block content %}
+  <!-- Header -->
+  <div class="brand-header">
+    <div class="brand-identity">
+      {% if brand_logo %}
+        <img class="brand-logo-img" src="{{ brand_logo }}" alt="Logo">
+      {% else %}
+        <div class="brand-logo-fallback">{{ brand_name[0] | default("B") }}</div>
+      {% endif %}
+      <div>
+        <div class="brand-name">{{ brand_name | default("Brandflux") }}</div>
+        <div class="brand-tagline">{{ brand_tagline | default("Actionable Playbooks") }}</div>
+      </div>
+    </div>
+    <div class="header-badge">
+      <span class="badge-dot"></span>
+      <span>{{ category | default("CHECKLIST") }}</span>
+    </div>
+  </div>
+
+  <!-- Checklist Body -->
+  <div class="checklist-wrapper">
+    <div class="checklist-header">
+      <div class="eyebrow-tag">{{ eyebrow | default("ESSENTIAL PROTOCOL") }}</div>
+      <h1 class="checklist-title">{{ headline | safe }}</h1>
+    </div>
+
+    <div class="items-list">
+      {% for item in items %}
+        <div class="check-item">
+          <div class="check-icon-box">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div class="item-content">
+            <h3>{{ item.title }}</h3>
+            {% if item.description %}
+              <p>{{ item.description }}</p>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="brand-footer">
+    <div class="footer-meta">
+      <span>{{ brand_handle | default("@brandflux.ai") }}</span>
+      <span>·</span>
+      <span>Save this for later</span>
+    </div>
+    {% if cta %}
+      <div class="footer-cta-pill">
+        <span>{{ cta }}</span>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+

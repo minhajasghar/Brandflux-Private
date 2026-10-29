@@ -26,7 +26,7 @@ export default function Skeleton({
 
   return (
     <div
-      className={`animate-pulse bg-white/[0.05] border border-white/5 ${roundedClasses[rounded]} ${className}`}
+      className={`animate-pulse bg-surface-secondary/80 border border-border/60 ${roundedClasses[rounded]} ${className}`}
       style={{ width, height }}
     />
   )

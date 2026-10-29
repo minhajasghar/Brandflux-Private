@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
 from datetime import date
-from typing import List
+from typing import List, Optional
 
 from database import get_db
 from models.models import Brand, ContentIdea, GeneratedPost, SmartQuestion, UserAnswer, User
@@ -10,14 +10,20 @@ from models.schemas import (
     ContentBatchResponse
 )
 from middleware.auth import get_current_user
+from middleware.limiter import limiter
+from config import RATE_LIMIT_CONTENT_GEN
 from services import gemini
+from services.brand_service import resolve_user_brand
 
 router = APIRouter(prefix="/content", tags=["content"])
 
 
 @router.post("/generate", response_model=ContentBatchResponse)
+@limiter.limit(RATE_LIMIT_CONTENT_GEN)
 def generate_content(
+    request: Request,
     req: ContentGenerateRequest,
+    brand_id: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -25,21 +31,27 @@ def generate_content(
     Generate content for multiple platforms.
     Uses brand profile + today's answered questions.
     """
-    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="No brand found")
     if brand.scan_status != "completed":
         raise HTTPException(status_code=400, detail="Brand scan not completed yet")
 
-    # Build brand profile
+    # Build saved brand kit profile
     brand_profile = {
         "business_name": brand.business_name,
-        "industry": brand.industry,
+        "tagline": brand.tagline,
+        "industry": brand.industry or brand.business_type,
         "target_audience": brand.target_audience,
         "brand_tone": brand.brand_tone,
         "brand_voice": brand.brand_voice,
-        "products_services": brand.products_services or [],
+        "brand_personality": brand.brand_personality,
+        "brand_keywords": brand.brand_keywords or [],
         "content_themes": brand.content_themes or [],
+        "products_services": brand.products_services or brand.detected_products or [],
+        "colors": brand.colors or ["#1558C9", "#D4FF24"],
+        "primary_color": brand.primary_color or "#1558C9",
+        "secondary_color": brand.secondary_color or "#D4FF24",
     }
 
     # Get today's answers
@@ -90,6 +102,7 @@ def generate_content(
             post = GeneratedPost(
                 idea_id=idea.id,
                 user_id=user.id,
+                brand_id=brand.id,
                 platform=platform,
                 caption=content.get("caption", ""),
                 hashtags=content.get("hashtags", []),
@@ -106,6 +119,7 @@ def generate_content(
             post = GeneratedPost(
                 idea_id=idea.id,
                 user_id=user.id,
+                brand_id=brand.id,
                 platform=platform,
                 caption=f"Error generating content: {str(e)}",
                 status="failed",
@@ -136,13 +150,17 @@ def generate_content(
 @router.get("/posts", response_model=List[GeneratedPostResponse])
 def list_posts(
     platform: str = None,
+    brand_id: Optional[str] = Query(None),
     limit: int = 20,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List generated posts, optionally filtered by platform."""
+    """List generated posts, optionally filtered by platform and brand."""
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
     query = db.query(GeneratedPost).filter(GeneratedPost.user_id == user.id)
 
+    if brand:
+        query = query.filter(GeneratedPost.brand_id == brand.id)
     if platform:
         query = query.filter(GeneratedPost.platform == platform)
 
@@ -367,13 +385,14 @@ class GenerateImagesRequest(BaseModel):
 @router.post("/generate-images")
 async def generate_images_endpoint(
     req: GenerateImagesRequest,
+    brand_id: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Generate all four branded social media graphics with intelligent Gemini prompt engineering.
     """
-    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="No brand found")
         
@@ -438,77 +457,31 @@ async def generate_images_endpoint(
             elif platform_key == 'facebook':
                 w, h = (1200, 630)
                 
-            bg_bytes = None
-            try:
-                bg_bytes = await generator.generate_background(main_prompt, style=style, width=w, height=h)
-            except Exception as bg_err:
-                print(f"Background generation failed for {platform_key}: {bg_err}, falling back to solid primary color.")
-                colors = brand_profile.get("colors") or []
-                primary_hex = colors[0] if colors else (brand_profile.get("primary_color") or "#0F172A")
-                
-                # Parse solid color
-                hex_str = str(primary_hex).lstrip('#')
-                if len(hex_str) == 3:
-                    hex_str = ''.join([c*2 for c in hex_str])
-                r, g, b = (15, 23, 42)
-                if len(hex_str) == 6:
-                    r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
-                
-                from PIL import Image
-                import io
-                solid_img = Image.new("RGBA", (w, h), (r, g, b, 255))
-                solid_io = io.BytesIO()
-                solid_img.save(solid_io, format='PNG')
-                bg_bytes = solid_io.getvalue()
-                
-            # 4. Composite branded elements
-            final_bytes = generator.create_branded_post(
-                background_bytes=bg_bytes,
+            # 3. Generate background visual via Google's Nano Banana 2.1 (Gemini API)
+            from services.nano_banana_generator import nano_banana_generator
+            aspect_ratio, (w, h) = nano_banana_generator.normalize_aspect_ratio(platform_key)
+            bg_url = await nano_banana_generator.generate_background(
+                brand_profile=brand_profile,
+                daily_context={"topic": req.prompt, "focus": req.post_text},
+                aspect_ratio=aspect_ratio,
+                user_id=user.id,
+                brand_id=brand.id,
+                db=db
+            )
+
+            # 4. Render Playwright HTML template with AI background & HTML text/logo overlay
+            final_bytes = await generator.create_branded_post_async(
                 brand_profile=brand_profile,
                 post_text=combined_overlay_text,
                 platform=platform_key,
-                cta=cta
+                cta=cta,
+                background_image_url=bg_url,
+                aspect_ratio=aspect_ratio
             )
-            
-            # 5. Save to local serving folder
-            import uuid
-            import os
+            # 5. Upload to Cloudflare R2 / S3 CDN
             filename = f"post_{platform_key}_{uuid.uuid4().hex[:10]}.png"
-            tmp_dir = "c:/dev2/brandai/backend/processed_images"
-            os.makedirs(tmp_dir, exist_ok=True)
-            tmp_path = os.path.join(tmp_dir, filename)
-            
-            with open(tmp_path, "wb") as f:
-                f.write(final_bytes)
-                
-            # Check for Supabase credentials
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_KEY")
-            uploaded = False
-            public_url = ""
-            
-            if supabase_url and supabase_key:
-                try:
-                    import httpx
-                    headers = {
-                        "Authorization": f"Bearer {supabase_key}",
-                        "apikey": supabase_key
-                    }
-                    upload_url = f"{supabase_url}/storage/v1/object/posts/{filename}"
-                    async with httpx.AsyncClient() as client:
-                        up_res = await client.post(
-                            upload_url,
-                            headers=headers,
-                            files={"file": (filename, final_bytes, "image/png")}
-                        )
-                        if up_res.status_code == 200:
-                            public_url = f"{supabase_url}/storage/v1/object/public/posts/{filename}"
-                            uploaded = True
-                except Exception as up_err:
-                    print(f"Supabase upload failed: {up_err}, reverting to local server route.")
-                    
-            if not uploaded:
-                public_url = f"http://localhost:8000/static/{filename}"
+            from services.storage import storage_service
+            public_url = storage_service.upload_image(final_bytes, filename)
                 
             results[platform_key] = public_url
             
@@ -520,3 +493,187 @@ async def generate_images_endpoint(
         "success": True,
         "images": results
     }
+
+
+
+# ═══════════════════════════════════════════════════════════
+# PLAYWRIGHT HTML/CSS CAROUSEL & TEMPLATE GENERATION
+# ═══════════════════════════════════════════════════════════
+from models.schemas import (
+    CarouselGenerateRequest,
+    CarouselResponse,
+    TemplateRenderRequest,
+    TemplateRenderResponse
+)
+from services.carousel_generator import carousel_generator
+from services.image_generator import image_generator
+from services.storage import storage_service
+import uuid
+
+
+@router.post("/carousel", response_model=CarouselResponse)
+async def generate_carousel(
+    req: CarouselGenerateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate an ordered 3-7 slide social carousel (Hook, Points, CTA)
+    rendered to high-resolution PNGs via Playwright HTML/CSS templates.
+    """
+    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand profile not found")
+
+    brand_profile = {
+        "business_name": brand.business_name,
+        "tagline": brand.tagline,
+        "industry": brand.industry or brand.business_type,
+        "target_audience": brand.target_audience,
+        "brand_tone": brand.brand_tone,
+        "colors": brand.colors or ["#1558C9", "#D4FF24"],
+        "primary_color": brand.primary_color or "#1558C9",
+        "secondary_color": brand.secondary_color or "#D4FF24",
+        "logo_url": brand.logo_url,
+        "clean_logo_url": brand.clean_logo_url or brand.logo_url,
+        "website_url": brand.website_url,
+        "brand_handle": f"@{brand.business_name.lower().replace(' ', '')}"
+    }
+
+    try:
+        result = await carousel_generator.generate_carousel(
+            topic=req.topic,
+            brand_profile=brand_profile,
+            slide_count=req.slide_count or 5,
+            aspect_ratio=req.aspect_ratio or "1:1",
+            custom_cta=req.custom_cta
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Carousel generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate carousel: {str(e)}")
+
+
+@router.get("/templates")
+def list_available_templates():
+    """
+    List the 6 available HTML/CSS templates with supported aspect ratios and descriptions.
+    """
+    return {
+        "templates": [
+            {
+                "id": "quote",
+                "name": "Minimalist Bold Quote / Statement",
+                "aspect_ratios": ["1:1", "4:5", "9:16"],
+                "best_for": "Author quotes, contrarian viewpoints, mindset shift posts",
+                "supported_keys": ["headline", "subtext", "author_name", "author_title", "cta", "category"]
+            },
+            {
+                "id": "stat",
+                "name": "Stat & Metric Highlight",
+                "aspect_ratios": ["1:1", "4:5"],
+                "best_for": "Case study proof, benchmark reports, numerical gains",
+                "supported_keys": ["stat_value", "headline", "description", "metric_label", "source", "cta", "category"]
+            },
+            {
+                "id": "checklist",
+                "name": "Actionable Checklist & Value Stack",
+                "aspect_ratios": ["4:5", "1:1"],
+                "best_for": "Step-by-step checklists, audit items, actionable advice",
+                "supported_keys": ["eyebrow", "headline", "items", "cta", "category"]
+            },
+            {
+                "id": "before_after",
+                "name": "Comparison Split (Old Way vs New Way)",
+                "aspect_ratios": ["1:1", "4:5"],
+                "best_for": "Positioning teardowns, methodology comparison, problem vs solution",
+                "supported_keys": ["headline", "old_label", "old_points", "new_label", "new_points", "cta"]
+            },
+            {
+                "id": "announcement",
+                "name": "Full-Bleed Announcement Hero / Story",
+                "aspect_ratios": ["9:16", "1:1"],
+                "best_for": "Feature launches, event promos, vertical mobile stories & reels",
+                "supported_keys": ["eyebrow", "headline", "subtext", "feature_title", "feature_desc", "cta"]
+            },
+            {
+                "id": "process",
+                "name": "Framework & 3-Step Process",
+                "aspect_ratios": ["1:1", "4:5"],
+                "best_for": "Thought leadership frameworks, blueprints, roadmap explainers",
+                "supported_keys": ["eyebrow", "headline", "steps", "cta", "category"]
+            }
+        ]
+    }
+
+
+@router.post("/templates/render", response_model=TemplateRenderResponse)
+async def render_template_post(
+    req: TemplateRenderRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Render any of the 6 HTML/CSS templates on-demand to PNG via Playwright.
+    """
+    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand profile not found")
+
+    brand_profile = {
+        "business_name": brand.business_name,
+        "tagline": brand.tagline,
+        "industry": brand.industry or brand.business_type,
+        "brand_tone": brand.brand_tone,
+        "colors": brand.colors or ["#1558C9", "#D4FF24"],
+        "primary_color": brand.primary_color or "#1558C9",
+        "secondary_color": brand.secondary_color or "#D4FF24",
+        "logo_url": brand.logo_url,
+        "clean_logo_url": brand.clean_logo_url or brand.logo_url,
+        "website_url": brand.website_url,
+        "brand_handle": f"@{brand.business_name.lower().replace(' ', '')}"
+    }
+
+    try:
+        from services.image_generator import ASPECT_RATIO_DIMENSIONS
+        aspect = req.aspect_ratio or "1:1"
+        width, height = ASPECT_RATIO_DIMENSIONS.get(aspect, (1080, 1080))
+
+        context = {
+            "brand_name": brand_profile["business_name"],
+            "brand_tagline": brand_profile["tagline"],
+            "brand_handle": brand_profile["brand_handle"],
+            "brand_logo": brand_profile["clean_logo_url"],
+            "website_url": brand_profile["website_url"],
+            "headline": req.headline or f"Mastering {brand_profile['industry']}",
+            "subtext": req.subtext or "",
+            "cta": req.cta or "Learn More",
+            "category": req.category or "STRATEGY",
+            "colors": brand_profile["colors"],
+            "primary_color": brand_profile["primary_color"],
+            "secondary_color": brand_profile["secondary_color"],
+            **(req.extra_data or {})
+        }
+
+        png_bytes = await image_generator.render_template(
+            template_name=req.template_name,
+            context=context,
+            aspect_ratio=aspect,
+            width=width,
+            height=height
+        )
+
+        filename = f"tpl_{req.template_name}_{aspect.replace(':', 'x')}_{uuid.uuid4().hex[:8]}.png"
+        image_url = storage_service.upload_image(png_bytes, filename)
+
+        return {
+            "success": True,
+            "template_name": req.template_name,
+            "aspect_ratio": aspect,
+            "image_url": image_url,
+            "dimensions": {"width": width, "height": height}
+        }
+
+    except Exception as e:
+        logger.error(f"Template rendering failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Template render error: {str(e)}")

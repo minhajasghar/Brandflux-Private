@@ -3,44 +3,74 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-bg: #05060A;
+  --color-surface: #0D0F16;
+  --color-surface-secondary: #131722;
+  --color-surface-hover: #191E2C;
+  --color-border: #1C2030;
+  --color-border-light: #2A3048;
+  --color-primary: #1558C9;
+  --color-primary-light: #4C8DFF;
+  --color-primary-glow: rgba(21, 88, 201, 0.25);
+  --color-primary-hover: #1E6BF3;
+  --primary: #1558C9;
+  --primary-light: #4C8DFF;
+  --primary-glow: rgba(21, 88, 201, 0.25);
+  --color-accent: #D4FF24;
+  --color-accent-hover: #C5F216;
+  --color-text: #F4F5F7;
+  --color-muted: #8A90A2;
+  --color-success: #10B981;
+  --color-success-muted: rgba(16, 185, 129, 0.15);
+  --color-danger: #EF4444;
+  --color-danger-muted: rgba(239, 68, 68, 0.15);
+
+  --background: #05060A;
+  --foreground: #F4F5F7;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  font-family: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #05060A;
+}
+::-webkit-scrollbar-thumb {
+  background: #1C2030;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2A3048;
 }
 
-/* ── Issue 7: Global placeholder color fix ── */
+/* Global input placeholder */
 ::placeholder {
-  color: #9CA3AF !important;
+  color: #8A90A2 !important;
   opacity: 1 !important;
 }
-:-ms-input-placeholder {
-  color: #9CA3AF !important;
-}
-::-ms-input-placeholder {
-  color: #9CA3AF !important;
-}
 
-/* ── Issue 8: Global button smoothness ── */
+/* Global button & link smoothness */
 button, a {
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 button:active:not(:disabled) {
   transform: scale(0.98);
@@ -50,11 +80,75 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* ── Issue 8: Page fade-in on load ── */
+/* Page fade-in */
 @keyframes pageFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .page-enter {
   animation: pageFadeIn 0.2s ease forwards;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ─── FullCalendar Dark Theme Overrides ────────────────────────── */
+.fc {
+  --fc-border-color: #1C2030;
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: #0D0F16;
+  --fc-list-event-hover-bg-color: #191E2C;
+  --fc-today-bg-color: rgba(21, 88, 201, 0.08);
+  font-family: inherit;
+}
+.fc-theme-standard td, .fc-theme-standard th {
+  border-color: #1C2030 !important;
+}
+.fc-col-header-cell {
+  background: #0D0F16 !important;
+  color: #8A90A2 !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  padding: 10px 0 !important;
+}
+.fc-daygrid-day-number {
+  color: #F4F5F7 !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  padding: 6px 8px !important;
+}
+.fc-day-today {
+  background-color: rgba(21, 88, 201, 0.06) !important;
+}
+.fc-day-today .fc-daygrid-day-number {
+  color: #D4FF24 !important;
+  font-weight: 800 !important;
+}
+.fc-daygrid-event {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 2px 4px !important;
+}
+.fc-daygrid-day-frame {
+  min-height: 105px !important;
+}
+.fc-timegrid-slot {
+  border-color: #1C2030 !important;
+  height: 38px !important;
+}
+.fc-timegrid-slot-label-cushion {
+  color: #8A90A2 !important;
+  font-size: 0.7rem !important;
+  font-weight: 600 !important;
+}
+.fc-scrollgrid {
+  border-color: #1C2030 !important;
+  border-radius: 1rem !important;
+  overflow: hidden !important;
 }

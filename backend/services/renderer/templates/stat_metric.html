@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+  .metric-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 28px;
+    padding: 24px 0;
+  }
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    padding: 44px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    position: relative;
+    overflow: hidden;
+  }
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 6px;
+    height: 100%;
+    background: var(--accent);
+  }
+  .metric-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: rgba(212, 255, 36, 0.1);
+    border: 1px solid rgba(212, 255, 36, 0.3);
+    border-radius: 9999px;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .stat-number {
+    font-family: var(--font-display);
+    font-size: {{ stat_size | default("104px") }};
+    font-weight: 900;
+    line-height: 0.95;
+    letter-spacing: -0.05em;
+    background: linear-gradient(135deg, var(--text) 40%, var(--primary-light) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 20px;
+  }
+  .stat-number.accent-glow {
+    background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .stat-headline {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1.25;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+  .stat-description {
+    font-size: 20px;
+    line-height: 1.5;
+    color: var(--muted);
+    font-weight: 500;
+  }
+{% endblock %}
+
+{% block content %}
+  <!-- Header -->
+  <div class="brand-header">
+    <div class="brand-identity">
+      {% if brand_logo %}
+        <img class="brand-logo-img" src="{{ brand_logo }}" alt="Logo">
+      {% else %}
+        <div class="brand-logo-fallback">{{ brand_name[0] | default("B") }}</div>
+      {% endif %}
+      <div>
+        <div class="brand-name">{{ brand_name | default("Brandflux") }}</div>
+        <div class="brand-tagline">{{ brand_tagline | default("Data-Driven Social Strategy") }}</div>
+      </div>
+    </div>
+    <div class="header-badge">
+      <span class="badge-dot"></span>
+      <span>{{ category | default("BENCHMARK") }}</span>
+    </div>
+  </div>
+
+  <!-- Metric Body -->
+  <div class="metric-wrapper">
+    <div class="metric-card">
+      <div class="metric-tag">{{ metric_label | default("KEY STATISTIC") }}</div>
+      <div class="stat-number {{ 'accent-glow' if use_accent else '' }}">{{ stat_value | default("84%") }}</div>
+      <h2 class="stat-headline">{{ headline | default("Higher Engagement Rate When Consistent") }}</h2>
+      <p class="stat-description">{{ description | default("Brands that publish high-fidelity branded carousels at consistent time intervals report dramatic improvements in audience retention and inbound leads.") }}</p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="brand-footer">
+    <div class="footer-meta">
+      <span>{{ brand_handle | default("@brandflux.ai") }}</span>
+      {% if source %}
+        <span>· Source: {{ source }}</span>
+      {% endif %}
+    </div>
+    {% if cta %}
+      <div class="footer-cta-pill">
+        <span>{{ cta }}</span>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+

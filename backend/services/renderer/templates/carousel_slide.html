@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+  /* Carousel Slide Styling */
+  .slide-progress-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .slide-progress-pill .active-num {
+    color: var(--accent);
+  }
+
+  .carousel-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 32px 0;
+  }
+
+  /* 1. Hook Slide */
+  .hook-container {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  .hook-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: rgba(21, 88, 201, 0.15);
+    border: 1px solid rgba(21, 88, 201, 0.4);
+    border-radius: 9999px;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--primary-light);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    width: fit-content;
+  }
+  .hook-title {
+    font-family: var(--font-display);
+    font-size: {{ headline_size | default("56px") }};
+    font-weight: 900;
+    line-height: 1.12;
+    letter-spacing: -0.04em;
+    color: var(--text);
+  }
+  .hook-title .accent-span {
+    color: var(--accent);
+    text-shadow: 0 0 35px rgba(212, 255, 36, 0.35);
+  }
+  .hook-subtext {
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--muted);
+    max-width: 90%;
+  }
+  .swipe-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 12px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: var(--text);
+    font-weight: 700;
+    font-size: 16px;
+    width: fit-content;
+  }
+  .swipe-arrow {
+    color: var(--accent);
+    font-size: 20px;
+  }
+
+  /* 2. Point / Value Slide */
+  .point-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .point-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--primary-light);
+  }
+  .point-title {
+    font-family: var(--font-display);
+    font-size: {{ headline_size | default("48px") }};
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+  .point-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 36px;
+    box-shadow: 0 16px 32px rgba(0,0,0,0.3);
+    margin-top: 8px;
+  }
+  .point-body {
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .point-takeaway {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--primary-light);
+  }
+
+  /* 3. CTA Slide */
+  .cta-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 28px;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  .cta-icon-hero {
+    width: 80px;
+    height: 80px;
+    border-radius: 24px;
+    background: rgba(21, 88, 201, 0.2);
+    border: 1px solid var(--primary);
+    color: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    box-shadow: 0 0 40px var(--primary-glow);
+  }
+  .cta-headline {
+    font-family: var(--font-display);
+    font-size: 48px;
+    font-weight: 900;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+  .cta-headline .accent-span {
+    color: var(--accent);
+  }
+  .cta-summary {
+    font-size: 20px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .cta-action-button {
+    padding: 18px 48px;
+    background: var(--accent);
+    color: #000;
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 900;
+    border-radius: 16px;
+    box-shadow: 0 0 35px rgba(212, 255, 36, 0.35);
+    margin-top: 8px;
+  }
+{% endblock %}
+
+{% block content %}
+  <!-- Header -->
+  <div class="brand-header">
+    <div class="brand-identity">
+      {% if brand_logo %}
+        <img class="brand-logo-img" src="{{ brand_logo }}" alt="Logo">
+      {% else %}
+        <div class="brand-logo-fallback">{{ brand_name[0] | default("B") }}</div>
+      {% endif %}
+      <div>
+        <div class="brand-name">{{ brand_name | default("Brandflux") }}</div>
+        <div class="brand-tagline">{{ brand_handle | default("@brandflux.ai") }}</div>
+      </div>
+    </div>
+    
+    <div class="slide-progress-pill">
+      <span>Slide</span>
+      <span class="active-num">{{ current_slide }}</span>
+      <span>/</span>
+      <span>{{ total_slides }}</span>
+    </div>
+  </div>
+
+  <!-- Carousel Slide Body -->
+  <div class="carousel-body">
+    {% if role == "hook" %}
+      <!-- Hook Slide -->
+      <div class="hook-container">
+        <div class="hook-tag">{{ topic_tag | default("CAROUSEL GUIDE") }}</div>
+        <h1 class="hook-title">{{ headline | safe }}</h1>
+        {% if subtext %}
+          <p class="hook-subtext">{{ subtext }}</p>
+        {% endif %}
+        <div class="swipe-indicator">
+          <span>Swipe to learn</span>
+          <span class="swipe-arrow">→</span>
+        </div>
+      </div>
+
+    {% elif role == "cta" %}
+      <!-- Final CTA Slide -->
+      <div class="cta-container">
+        <div class="cta-icon-hero">⚡</div>
+        <h1 class="cta-headline">{{ headline | safe }}</h1>
+        <p class="cta-summary">{{ subtext | default("Found this valuable? Save this post and share it with someone building their brand.") }}</p>
+        <div class="cta-action-button">{{ cta_text | default("Save for Later") }}</div>
+      </div>
+
+    {% else %}
+      <!-- Standard Point Slide -->
+      <div class="point-container">
+        <div class="point-badge">POINT {{ "%02d" % point_index }}</div>
+        <h2 class="point-title">{{ headline | safe }}</h2>
+        <div class="point-card">
+          <p class="point-body">{{ subtext }}</p>
+          {% if takeaway %}
+            <div class="point-takeaway">
+              <span>💡 Takeaway:</span>
+              <span>{{ takeaway }}</span>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Footer -->
+  <div class="brand-footer">
+    <div class="footer-meta">
+      <span>{{ brand_name }}</span>
+      {% if website_url %}
+        <span>· {{ website_url }}</span>
+      {% endif %}
+    </div>
+    <div class="footer-meta">
+      {% if role == "cta" %}
+        <span style="color: var(--accent); font-weight: 800;">Turn on notifications 🔔</span>
+      {% else %}
+        <span>Swipe next →</span>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
+

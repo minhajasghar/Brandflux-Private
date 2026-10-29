@@ -20,19 +20,23 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 # ─── JWT Token ─────────────────────────────────────────────
-def create_token(user_id: str) -> str:
+def create_token(user_id: str, token_version: int = 1) -> str:
     """Generate JWT token (expires in 7 days)."""
     expire = datetime.utcnow() + timedelta(days=JWT_EXPIRATION_DAYS)
-    payload = {"sub": user_id, "exp": expire}
+    payload = {"sub": user_id, "token_version": token_version, "exp": expire}
     return jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+def decode_token_payload(token: str) -> Optional[dict]:
+    """Decode JWT token and return full payload dict."""
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        return None
 
 def decode_token(token: str) -> Optional[str]:
     """Decode JWT token and return user_id."""
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        return payload.get("sub")
-    except JWTError:
-        return None
+    payload = decode_token_payload(token)
+    return payload.get("sub") if payload else None
 
 def get_current_user_from_db(user_id: str, db: Session) -> Optional[User]:
     """Find user in database by ID."""

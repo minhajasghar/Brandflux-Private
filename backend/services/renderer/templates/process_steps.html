@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+  .process-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 28px;
+    padding: 20px 0;
+  }
+  .process-header {
+    margin-bottom: 4px;
+  }
+  .process-eyebrow {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--primary-light);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .process-title {
+    font-family: var(--font-display);
+    font-size: {{ title_size | default("44px") }};
+    font-weight: 800;
+    line-height: 1.18;
+    color: var(--text);
+  }
+  .process-title .accent-span {
+    color: var(--accent);
+  }
+
+  .steps-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .step-card {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 22px 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .step-number {
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 900;
+    color: var(--primary-light);
+    letter-spacing: -0.04em;
+    min-width: 50px;
+  }
+  .step-divider-line {
+    width: 2px;
+    height: 40px;
+    background: var(--border);
+  }
+  .step-body h3 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .step-body p {
+    font-size: 15px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+{% endblock %}
+
+{% block content %}
+  <!-- Header -->
+  <div class="brand-header">
+    <div class="brand-identity">
+      {% if brand_logo %}
+        <img class="brand-logo-img" src="{{ brand_logo }}" alt="Logo">
+      {% else %}
+        <div class="brand-logo-fallback">{{ brand_name[0] | default("B") }}</div>
+      {% endif %}
+      <div>
+        <div class="brand-name">{{ brand_name | default("Brandflux") }}</div>
+        <div class="brand-tagline">{{ brand_tagline | default("Frameworks & Mental Models") }}</div>
+      </div>
+    </div>
+    <div class="header-badge">
+      <span class="badge-dot"></span>
+      <span>{{ category | default("FRAMEWORK") }}</span>
+    </div>
+  </div>
+
+  <!-- Process Steps Body -->
+  <div class="process-wrapper">
+    <div class="process-header">
+      <div class="process-eyebrow">{{ eyebrow | default("STEP-BY-STEP PLAYBOOK") }}</div>
+      <h1 class="process-title">{{ headline | safe }}</h1>
+    </div>
+
+    <div class="steps-container">
+      {% for step in steps %}
+        <div class="step-card">
+          <div class="step-number">{{ "%02d" % (loop.index) }}</div>
+          <div class="step-divider-line"></div>
+          <div class="step-body">
+            <h3>{{ step.title }}</h3>
+            <p>{{ step.description }}</p>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="brand-footer">
+    <div class="footer-meta">
+      <span>{{ brand_handle | default("@brandflux.ai") }}</span>
+      <span>·</span>
+      <span>Follow for more frameworks</span>
+    </div>
+    {% if cta %}
+      <div class="footer-cta-pill">
+        <span>{{ cta }}</span>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+

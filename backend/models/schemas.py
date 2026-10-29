@@ -20,6 +20,8 @@ class AuthResponse(BaseModel):
     user_id: str
     email: str
     full_name: Optional[str] = None
+    role: Optional[str] = "user"
+    is_suspended: Optional[bool] = False
     onboarding_complete: Optional[bool] = False
 
 # ═══════════════════════════════════════════════════════════
@@ -68,6 +70,88 @@ class BrandSyncResponse(BaseModel):
     message: str
     scan_id: str
     brand_id: str
+
+class BrandKitUpdate(BaseModel):
+    name: Optional[str] = None
+    business_name: Optional[str] = None
+    tagline: Optional[str] = None
+    website_url: Optional[str] = None
+    business_type: Optional[str] = None
+    industry: Optional[str] = None
+    target_audience: Optional[str] = None
+    brand_tone: Optional[str] = None
+    brand_personality: Optional[str] = None
+    brand_voice: Optional[str] = None
+    colors: Optional[List[str]] = None
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    brand_keywords: Optional[List[str]] = None
+    content_themes: Optional[List[str]] = None
+    products_services: Optional[List[str]] = None
+    logo_url: Optional[str] = None
+    clean_logo_url: Optional[str] = None
+    brand_kit: Optional[Dict[str, Any]] = None
+
+class BrandKitResponse(BaseModel):
+    id: str
+    name: Optional[str] = None
+    business_name: Optional[str] = None
+    tagline: Optional[str] = None
+    business_type: Optional[str] = None
+    industry: Optional[str] = None
+    target_audience: Optional[str] = None
+    brand_tone: Optional[str] = None
+    brand_personality: Optional[str] = None
+    brand_voice: Optional[str] = None
+    colors: Optional[List[str]] = []
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    brand_keywords: Optional[List[str]] = []
+    content_themes: Optional[List[str]] = []
+    products_services: Optional[List[str]] = []
+    logo_url: Optional[str] = None
+    clean_logo_url: Optional[str] = None
+    website_url: Optional[str] = None
+    brand_kit: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = False
+    last_scanned_at: Optional[datetime] = None
+    last_synced_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class BrandCreateRequest(BaseModel):
+    name: Optional[str] = None
+    website_url: str
+    brand_kit: Optional[Dict[str, Any]] = None
+
+class BrandSummaryItem(BaseModel):
+    id: str
+    name: Optional[str] = None
+    business_name: Optional[str] = None
+    website_url: Optional[str] = None
+    logo_url: Optional[str] = None
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    colors: Optional[List[str]] = []
+    brand_kit: Optional[Dict[str, Any]] = None
+    is_active: bool = False
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class BrandListResponse(BaseModel):
+    brands: List[BrandSummaryItem]
+    active_brand_id: Optional[str] = None
+    plan: str
+    brand_limit: int
+    total_brands: int
+    can_add_brand: bool
+
+class BrandWebsiteUpdateRequest(BaseModel):
+    website_url: str
+    rescan: Optional[bool] = False
 
 class ScanLogResponse(BaseModel):
     id: str
@@ -176,6 +260,92 @@ class DailySessionResponse(BaseModel):
     answer_3: Optional[str] = None
     session_date: date
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ═══════════════════════════════════════════════════════════
+# CAROUSEL & TEMPLATE SCHEMAS
+# ═══════════════════════════════════════════════════════════
+class CarouselGenerateRequest(BaseModel):
+    topic: str
+    slide_count: Optional[int] = 5
+    aspect_ratio: Optional[str] = "1:1"  # "1:1" or "4:5"
+    custom_cta: Optional[str] = None
+
+class CarouselSlideResponse(BaseModel):
+    slide_number: int
+    role: str
+    headline: str
+    subtext: Optional[str] = None
+    image_url: str
+    filename: Optional[str] = None
+
+class CarouselResponse(BaseModel):
+    success: bool
+    carousel_id: str
+    topic: str
+    slide_count: int
+    aspect_ratio: str
+    dimensions: Dict[str, int]
+    slides: List[CarouselSlideResponse]
+    ordered_image_urls: List[str]
+
+class TemplateRenderRequest(BaseModel):
+    template_name: str  # "quote", "stat", "checklist", "before_after", "announcement", "process"
+    aspect_ratio: Optional[str] = "1:1"  # "1:1", "4:5", "9:16"
+    headline: Optional[str] = None
+    subtext: Optional[str] = None
+    cta: Optional[str] = None
+    category: Optional[str] = None
+    extra_data: Optional[Dict[str, Any]] = None
+
+class TemplateRenderResponse(BaseModel):
+    success: bool
+    template_name: str
+    aspect_ratio: str
+    image_url: str
+    dimensions: Dict[str, int]
+
+
+# ═══════════════════════════════════════════════════════════
+# SCHEDULED POST SCHEMAS
+# ═══════════════════════════════════════════════════════════
+class ScheduledPostCreate(BaseModel):
+    platform: str
+    caption: Optional[str] = None
+    media_url: Optional[str] = None
+    scheduled_at: datetime
+    status: Optional[str] = "Draft"
+
+class ScheduledPostUpdate(BaseModel):
+    platform: Optional[str] = None
+    caption: Optional[str] = None
+    media_url: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    status: Optional[str] = None
+
+class ScheduledPostResponse(BaseModel):
+    id: str
+    brand_id: str
+    platform: str
+    caption: Optional[str] = None
+    media_url: Optional[str] = None
+    scheduled_at: datetime
+    status: str
+    external_post_id: Optional[str] = None
+    error: Optional[str] = None
+    autopilot_run_id: Optional[str] = None
+    critique_score: Optional[float] = None
+    likes: Optional[int] = 0
+    comments: Optional[int] = 0
+    shares: Optional[int] = 0
+    reach: Optional[int] = 0
+    impressions: Optional[int] = 0
+    engagement_rate: Optional[float] = 0.0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

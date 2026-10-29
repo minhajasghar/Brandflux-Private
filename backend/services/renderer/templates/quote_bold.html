@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+  .quote-body-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    padding: 32px 0;
+  }
+  .quote-mark {
+    font-family: var(--font-display);
+    font-size: 110px;
+    line-height: 0.8;
+    color: var(--primary-light);
+    opacity: 0.35;
+    margin-bottom: -16px;
+  }
+  .quote-headline {
+    font-family: var(--font-display);
+    font-size: {{ headline_size | default("52px") }};
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    margin-bottom: 24px;
+  }
+  .quote-headline .highlight {
+    color: var(--primary-light);
+    text-shadow: 0 0 30px var(--primary-glow);
+  }
+  .quote-subtext {
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--muted);
+    max-width: 85%;
+  }
+  .author-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 32px;
+  }
+  .author-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 2px solid var(--primary-light);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--text);
+  }
+  .author-info h4 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .author-info p {
+    font-size: 14px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+{% endblock %}
+
+{% block content %}
+  <!-- Header -->
+  <div class="brand-header">
+    <div class="brand-identity">
+      {% if brand_logo %}
+        <img class="brand-logo-img" src="{{ brand_logo }}" alt="Logo">
+      {% else %}
+        <div class="brand-logo-fallback">{{ brand_name[0] | default("B") }}</div>
+      {% endif %}
+      <div>
+        <div class="brand-name">{{ brand_name | default("Brandflux") }}</div>
+        <div class="brand-tagline">{{ brand_tagline | default("Automate Your Brand Growth") }}</div>
+      </div>
+    </div>
+    <div class="header-badge">
+      <span class="badge-dot"></span>
+      <span>{{ category | default("INSIGHT") }}</span>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="quote-body-wrapper">
+    <div class="quote-mark">“</div>
+    <h1 class="quote-headline">{{ headline | safe }}</h1>
+    {% if subtext %}
+      <p class="quote-subtext">{{ subtext }}</p>
+    {% endif %}
+
+    {% if author_name %}
+      <div class="author-card">
+        <div class="author-avatar">{{ author_name[0] }}</div>
+        <div class="author-info">
+          <h4>{{ author_name }}</h4>
+          <p>{{ author_title | default("Founder & Strategist") }}</p>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Footer -->
+  <div class="brand-footer">
+    <div class="footer-meta">
+      <span>{{ brand_handle | default("@brandflux.ai") }}</span>
+      {% if website_url %}
+        <span>·</span>
+        <span>{{ website_url }}</span>
+      {% endif %}
+    </div>
+    {% if cta %}
+      <div class="footer-cta-pill">
+        <span>{{ cta }}</span>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+

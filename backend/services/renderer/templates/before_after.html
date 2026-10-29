@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+  .comparison-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 24px;
+    padding: 16px 0;
+  }
+  .comparison-header {
+    text-align: center;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  .comparison-title {
+    font-family: var(--font-display);
+    font-size: {{ title_size | default("42px") }};
+    font-weight: 800;
+    line-height: 1.2;
+    color: var(--text);
+  }
+  .comparison-title .accent-text {
+    color: var(--accent);
+  }
+
+  .cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .comparison-card {
+    border-radius: 24px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 400px;
+    position: relative;
+  }
+  .card-old {
+    background: var(--surface);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .card-new {
+    background: var(--surface-card);
+    border: 1px solid var(--primary);
+    box-shadow: 0 0 40px var(--primary-glow);
+  }
+
+  .card-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    width: fit-content;
+    margin-bottom: 20px;
+  }
+  .badge-old {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #F87171;
+  }
+  .badge-new {
+    background: rgba(212, 255, 36, 0.15);
+    border: 1px solid rgba(212, 255, 36, 0.4);
+    color: var(--accent);
+  }
+
+  .card-points {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .card-points li {
+    font-size: 17px;
+    line-height: 1.45;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .card-old li {
+    color: var(--muted);
+  }
+  .card-new li {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .point-icon {
+    font-size: 18px;
+    line-height: 1;
+    margin-top: 2px;
+  }
+{% endblock %}
+
+{% block content %}
+  <!-- Header -->
+  <div class="brand-header">
+    <div class="brand-identity">
+      {% if brand_logo %}
+        <img class="brand-logo-img" src="{{ brand_logo }}" alt="Logo">
+      {% else %}
+        <div class="brand-logo-fallback">{{ brand_name[0] | default("B") }}</div>
+      {% endif %}
+      <div>
+        <div class="brand-name">{{ brand_name | default("Brandflux") }}</div>
+        <div class="brand-tagline">{{ brand_tagline | default("The New Standard in Content") }}</div>
+      </div>
+    </div>
+    <div class="header-badge">
+      <span class="badge-dot"></span>
+      <span>{{ category | default("STRATEGY") }}</span>
+    </div>
+  </div>
+
+  <!-- Comparison Split Body -->
+  <div class="comparison-wrapper">
+    <div class="comparison-header">
+      <h1 class="comparison-title">{{ headline | safe }}</h1>
+    </div>
+
+    <div class="cards-grid">
+      <!-- Old Way -->
+      <div class="comparison-card card-old">
+        <div>
+          <div class="card-badge badge-old">
+            <span>✕</span>
+            <span>{{ old_label | default("The Old Way") }}</span>
+          </div>
+          <ul class="card-points">
+            {% for pt in old_points %}
+              <li>
+                <span class="point-icon">⚠️</span>
+                <span>{{ pt }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <!-- New Way -->
+      <div class="comparison-card card-new">
+        <div>
+          <div class="card-badge badge-new">
+            <span>✓</span>
+            <span>{{ new_label | default("The Brandflux Way") }}</span>
+          </div>
+          <ul class="card-points">
+            {% for pt in new_points %}
+              <li>
+                <span class="point-icon">⚡</span>
+                <span>{{ pt }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="brand-footer">
+    <div class="footer-meta">
+      <span>{{ brand_handle | default("@brandflux.ai") }}</span>
+      <span>·</span>
+      <span>Which approach are you taking?</span>
+    </div>
+    {% if cta %}
+      <div class="footer-cta-pill">
+        <span>{{ cta }}</span>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+

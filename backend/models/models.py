@@ -19,11 +19,20 @@ class User(Base):
     full_name = Column(String(255))
     plan = Column(String(50), default="free")
     posts_used_this_month = Column(Integer, default=0)
+    active_brand_id = Column(String(36), nullable=True)
+    role = Column(String(50), default="user", nullable=False)  # "user" or "admin"
+    is_suspended = Column(Boolean, default=False, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    token_version = Column(Integer, default=1, nullable=False)
+    last_active_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
     # Relationships
     brands = relationship("Brand", back_populates="user", cascade="all, delete-orphan")
     answers = relationship("UserAnswer", back_populates="user", cascade="all, delete-orphan")
+    social_accounts = relationship("SocialAccount", back_populates="user", cascade="all, delete-orphan")
+    usages = relationship("Usage", back_populates="user", cascade="all, delete-orphan")
 
 # ═══════════════════════════════════════════════════════════
 # BRAND — Auto-populated from website scraping + AI analysis
@@ -35,12 +44,15 @@ class Brand(Base):
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     
     # ── Core Info ──────────────────────────────────────────
-    business_name = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=True)  # Brand display name
+    business_name = Column(String(255), nullable=True)
     tagline = Column(String(512))
     business_type = Column(String(255))
     industry = Column(String(255))
     target_audience = Column(Text)
     products_services = Column(JSON)  # ["product1", "product2", ...]
+    brand_kit = Column(JSON, nullable=True)  # Structured Brand Kit JSON
+    is_active = Column(Boolean, default=False)
     
     # ── Brand Identity ─────────────────────────────────────
     brand_tone = Column(String(100))
@@ -81,6 +93,13 @@ class Brand(Base):
     content_ideas = relationship("ContentIdea", back_populates="brand", cascade="all, delete-orphan")
     website_scans = relationship("WebsiteScan", back_populates="brand", cascade="all, delete-orphan")
     daily_sessions = relationship("DailySession", back_populates="brand", cascade="all, delete-orphan")
+    scheduled_posts = relationship("ScheduledPost", back_populates="brand", cascade="all, delete-orphan")
+    generated_posts = relationship("GeneratedPost", back_populates="brand", cascade="all, delete-orphan")
+    social_accounts = relationship("SocialAccount", back_populates="brand", cascade="all, delete-orphan")
+    autopilot_config = relationship("AutopilotConfig", back_populates="brand", uselist=False, cascade="all, delete-orphan")
+    autopilot_logs = relationship("AutopilotLog", back_populates="brand", cascade="all, delete-orphan")
+    post_metrics = relationship("PostMetric", back_populates="brand", cascade="all, delete-orphan")
+    usages = relationship("Usage", back_populates="brand", cascade="all, delete-orphan")
 
 # ═══════════════════════════════════════════════════════════
 # BRAND SCAN LOG — History of every website scan
@@ -172,6 +191,7 @@ class GeneratedPost(Base):
     __tablename__ = "generated_posts"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=True)
     idea_id = Column(String(36), ForeignKey("content_ideas.id", ondelete="CASCADE"))
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     
@@ -199,6 +219,7 @@ class GeneratedPost(Base):
 
     # Relationships
     idea = relationship("ContentIdea", back_populates="generated_posts")
+    brand = relationship("Brand", back_populates="generated_posts")
 
 # ═══════════════════════════════════════════════════════════
 # CONTENT GUIDANCE — Weekly tips & posting strategy
@@ -278,3 +299,197 @@ class SavedTemplate(Base):
     caption = Column(Text, nullable=False)
     hashtags = Column(JSON)
     created_at = Column(DateTime, default=func.now())
+
+# ═══════════════════════════════════════════════════════════
+# SCHEDULED POST — Calendar scheduling & status tracking
+# ═══════════════════════════════════════════════════════════
+class ScheduledPost(Base):
+    __tablename__ = "scheduled_posts"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    
+    platform = Column(String(50), nullable=False)  # instagram_post, instagram_story, linkedin, facebook, twitter
+    caption = Column(Text, nullable=True)
+    media_url = Column(Text, nullable=True)
+    scheduled_at = Column(DateTime, nullable=False)
+    status = Column(String(50), default="Draft")  # Draft, Pending Approval, Scheduled, Publishing, Published, Failed
+    external_post_id = Column(String(255), nullable=True)
+    error = Column(Text, nullable=True)
+    autopilot_run_id = Column(String(36), nullable=True)
+    critique_score = Column(Float, nullable=True)
+    critique_feedback = Column(JSON, nullable=True)
+
+    # ── Performance Metrics ────────────────────────────────
+    likes = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    shares = Column(Integer, default=0)
+    reach = Column(Integer, default=0)
+    impressions = Column(Integer, default=0)
+    engagement_rate = Column(Float, default=0.0)
+    metrics_updated_at = Column(DateTime, nullable=True)
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    brand = relationship("Brand", back_populates="scheduled_posts")
+    metrics = relationship("PostMetric", back_populates="post", cascade="all, delete-orphan")
+
+# ═══════════════════════════════════════════════════════════
+# SOCIAL ACCOUNT — OAuth connections & encrypted credentials
+# ═══════════════════════════════════════════════════════════
+class SocialAccount(Base):
+    __tablename__ = "social_accounts"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    platform = Column(String(50), nullable=False)  # meta, instagram, facebook, linkedin
+    account_id = Column(String(255), nullable=False)  # Page ID, IG ID, or Person URN
+    account_name = Column(String(255), nullable=False)  # @handle or Page Name
+    
+    # Fernet encrypted credentials
+    access_token_encrypted = Column(Text, nullable=False)
+    refresh_token_encrypted = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    
+    is_active = Column(Boolean, default=True)
+    scopes = Column(JSON, nullable=True)
+    metadata_json = Column(JSON, nullable=True)  # profile pic, category, etc.
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    brand = relationship("Brand", back_populates="social_accounts")
+    user = relationship("User", back_populates="social_accounts")
+
+
+# ═══════════════════════════════════════════════════════════
+# AUTOPILOT CONFIG — Per-brand autonomous scheduler & settings
+# ═══════════════════════════════════════════════════════════
+class AutopilotConfig(Base):
+    __tablename__ = "autopilot_configs"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), unique=True, nullable=False)
+    
+    enabled = Column(Boolean, default=True)
+    kill_switch = Column(Boolean, default=False)  # Master emergency stop
+    mode = Column(String(20), default="approval")  # "approval" (creates Pending Approval) or "autopilot" (creates Scheduled)
+    max_posts_per_day = Column(Integer, default=2)
+    
+    banned_topics = Column(JSON, default=list)  # e.g. ["politics", "unverified medical claims", "gambling"]
+    allowed_prices_discounts = Column(JSON, default=list)  # Verified prices/discounts from daily check-ins
+    target_platforms = Column(JSON, default=lambda: ["instagram_post", "linkedin", "facebook"])
+    posting_times = Column(JSON, default=lambda: {"morning": "09:00", "afternoon": "13:30", "evening": "18:00"})
+    notification_email = Column(String(255), nullable=True)
+    
+    last_run_at = Column(DateTime, nullable=True)
+    last_run_id = Column(String(36), nullable=True)
+    last_run_summary = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    brand = relationship("Brand", back_populates="autopilot_config")
+
+
+# ═══════════════════════════════════════════════════════════
+# AUTOPILOT DECISION LOG — Detailed audit trail of every stage
+# ═══════════════════════════════════════════════════════════
+class AutopilotLog(Base):
+    __tablename__ = "autopilot_logs"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    run_id = Column(String(36), nullable=False)
+    
+    stage = Column(String(50), nullable=False)  # METRICS_ANALYSIS, STRATEGY_PLAN, GENERATION, SELF_CRITIQUE, GUARDRAILS, DISPATCH, NOTIFICATION
+    status = Column(String(20), nullable=False)  # INFO, SUCCESS, WARNING, REJECTED, BLOCKED, ERROR
+    decision_summary = Column(Text, nullable=False)
+    details_json = Column(JSON, nullable=True)
+    
+    created_at = Column(DateTime, default=func.now())
+
+    # Relationships
+    brand = relationship("Brand", back_populates="autopilot_logs")
+
+
+# ═══════════════════════════════════════════════════════════
+# POST METRIC — Snapshot of post metrics over time
+# ═══════════════════════════════════════════════════════════
+class PostMetric(Base):
+    __tablename__ = "post_metrics"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    post_id = Column(String(36), ForeignKey("scheduled_posts.id", ondelete="CASCADE"), nullable=False)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    
+    platform = Column(String(50), nullable=False)
+    likes = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    shares = Column(Integer, default=0)
+    reach = Column(Integer, default=0)
+    impressions = Column(Integer, default=0)
+    engagement_rate = Column(Float, default=0.0)
+    
+    recorded_at = Column(DateTime, default=func.now())
+
+    # Relationships
+    post = relationship("ScheduledPost", back_populates="metrics")
+    brand = relationship("Brand", back_populates="post_metrics")
+
+
+# ═══════════════════════════════════════════════════════════
+# USAGE — Per-generation cost, model and token/credit logging
+# ═══════════════════════════════════════════════════════════
+class Usage(Base):
+    __tablename__ = "usage"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="SET NULL"), nullable=True)
+
+    feature = Column(String(100), default="image_generation")
+    model = Column(String(100), default="gemini-nano-banana-2.1")
+    prompt = Column(Text, nullable=True)
+    aspect_ratio = Column(String(20), default="1:1")
+    media_url = Column(Text, nullable=True)
+    cost = Column(Float, default=0.03)  # USD cost estimate (e.g. $0.030 per image)
+    credits_used = Column(Integer, default=1)
+    status = Column(String(50), default="success")  # success, fallback, failed
+    error_message = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="usages")
+    brand = relationship("Brand", back_populates="usages")
+
+
+# ═══════════════════════════════════════════════════════════
+# AUDIT LOG — Tracking admin actions and system events
+# ═══════════════════════════════════════════════════════════
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    admin_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    admin_email = Column(String(255), nullable=False)
+    action = Column(String(100), nullable=False)  # suspend_user, reactivate_user, change_plan, reset_usage, force_logout, soft_delete_user
+    target_type = Column(String(50), default="user")
+    target_id = Column(String(36), nullable=True)
+    target_email = Column(String(255), nullable=True)
+    details = Column(JSON, nullable=True)
+    ip_address = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
+    # Relationships
+    admin = relationship("User", foreign_keys=[admin_id])
+
+
+

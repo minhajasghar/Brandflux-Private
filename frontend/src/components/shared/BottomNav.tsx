@@ -15,7 +15,7 @@ export default function BottomNav() {
   ]
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#0c0c0e]/95 border-t border-white/5 backdrop-blur-lg md:hidden">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface/95 border-t border-border backdrop-blur-lg md:hidden">
       <div className="flex justify-around items-center h-16 px-4">
         {navItems.map((item) => {
           const isActive = pathname === item.path
@@ -29,14 +29,14 @@ export default function BottomNav() {
             >
               <div className={`p-1.5 rounded-xl transition-all ${
                 isActive 
-                  ? 'text-blue-400 bg-blue-500/5' 
-                  : 'text-gray-400 hover:text-gray-200'
+                  ? 'text-accent bg-accent/10' 
+                  : 'text-muted hover:text-text'
               }`}>
-                <Icon className="h-5.5 w-5.5" />
+                <Icon className="h-5 w-5" />
               </div>
               
               {isActive && (
-                <span className="absolute bottom-2 w-1.5 h-1.5 rounded-full bg-blue-400" />
+                <span className="absolute bottom-2 w-1.5 h-1.5 rounded-full bg-accent" />
               )}
             </Link>
           )

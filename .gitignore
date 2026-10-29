@@ -1,9 +1,92 @@
-backend/venv/
-backend/__pycache__/
-__pycache__/
+# ─── Environment & Secrets ──────────────────────────────────
 .env
-*.pyc
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+*.pem
+*.key
 
+# ─── Python & Virtual Environments ─────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+backend/venv/
+backend/.venv/
+env.bak/
+venv.bak/
+
+# ─── Databases & Local Storage ──────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+brandai.db
+backend/brandai.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# ─── Processed & Uploaded Media ────────────────────────────
+backend/processed_images/*
+!backend/processed_images/.gitkeep
+processed_images/
+
+# ─── Node.js & Next.js ─────────────────────────────────────
+node_modules/
 frontend/node_modules/
+.next/
 frontend/.next/
-frontend/.env*
+out/
+frontend/out/
+*.tsbuildinfo
+next-env.d.ts
+.vercel/
+
+# ─── Logs & Diagnostics ────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+backend/server.log
+backend/server_log.txt
+*.out
+
+# ─── OS & IDE ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Testing & Coverage ────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/

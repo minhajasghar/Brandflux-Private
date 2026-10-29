@@ -7,24 +7,36 @@ from config import GEMINI_API_KEY
 logger = logging.getLogger(__name__)
 
 # ─── Configure Gemini (new google-genai SDK) ───────────────
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+def get_client():
+    from config import GEMINI_API_KEY
+    if GEMINI_API_KEY:
+        try:
+            return genai.Client(api_key=GEMINI_API_KEY)
+        except Exception as e:
+            logger.error(f"Failed to create Gemini client: {e}")
+    return None
 
-MODEL_ID = "gemini-2.0-flash"
-
+MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash"]
 
 def _call_gemini(prompt: str) -> str:
     """Call Gemini and return the text response."""
-    if not client:
+    c = get_client()
+    if not c:
         raise RuntimeError("GEMINI_API_KEY not configured. Add it to your .env file.")
-    try:
-        response = client.models.generate_content(
-            model=MODEL_ID,
-            contents=prompt,
-        )
-        return response.text
-    except Exception as e:
-        logger.error(f"Gemini API error: {str(e)}")
-        raise
+    last_err = None
+    for model in MODELS_TO_TRY:
+        try:
+            response = c.models.generate_content(
+                model=model,
+                contents=prompt,
+            )
+            return response.text
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Gemini API error with {model}: {str(e)}, trying fallback...")
+            continue
+    logger.error(f"Gemini API error (all models failed): {str(last_err)}")
+    raise last_err
 
 
 def _parse_json_response(text: str) -> Any:

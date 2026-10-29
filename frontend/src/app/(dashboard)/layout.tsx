@@ -13,11 +13,14 @@ import {
   Zap,
   Menu,
   X,
-  User
+  User,
+  BarChart3,
+  ShieldAlert
 } from 'lucide-react'
 import Cookies from 'js-cookie'
 import { getProfile } from '@/lib/api'
 import BottomNav from '@/components/shared/BottomNav'
+import BrandSwitcher from '@/components/layout/BrandSwitcher'
 
 export default function DashboardLayout({
   children,
@@ -29,18 +32,17 @@ export default function DashboardLayout({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [userEmail, setUserEmail] = useState('')
   const [userPlan, setUserPlan] = useState('FREE')
+  const [userRole, setUserRole] = useState('user')
   
   const isOnboarding = pathname === '/onboarding'
 
   useEffect(() => {
     const verifyAuth = async () => {
-      // 1. Check client-side storage for token
       let token = null
       if (typeof window !== 'undefined') {
         token = localStorage.getItem('brandflux_token') || sessionStorage.getItem('brandflux_token')
       }
 
-      // If no token, clear up storage & redirect to /login
       if (!token) {
         Cookies.remove('brandflux_token')
         Cookies.remove('brandflux_onboarding_complete')
@@ -52,23 +54,20 @@ export default function DashboardLayout({
         return
       }
 
-      // 2. Call GET /auth/me to verify token
       try {
         const profile = await getProfile()
         if (profile && profile.user) {
           setUserEmail(profile.user.email)
           setUserPlan(profile.user.plan ? profile.user.plan.toUpperCase() : 'FREE')
+          setUserRole(profile.user.role || 'user')
 
-          // Verify onboarding complete status
           const onboardingComplete = profile.brand?.onboarding_complete
           const isCurrentlyOnboarding = pathname === '/onboarding'
 
           if (!onboardingComplete && !isCurrentlyOnboarding) {
-            // Force onboarding complete cookie to be false
             document.cookie = 'brandflux_onboarding_complete=false; path=/;'
             router.push('/onboarding')
           } else if (onboardingComplete && isCurrentlyOnboarding) {
-            // Force onboarding complete cookie to be true
             document.cookie = 'brandflux_onboarding_complete=true; path=/; max-age=604800;'
             router.push('/dashboard')
           }
@@ -103,37 +102,40 @@ export default function DashboardLayout({
     { icon: Sparkles, label: 'Create Content', href: '/session', isHighlighted: true },
     { icon: Lightbulb, label: 'My Ideas', href: '/ideas' },
     { icon: Calendar, label: 'Calendar', href: '/calendar' },
+    { icon: BarChart3, label: 'Analytics', href: '/analytics' },
     { icon: Settings, label: 'Settings', href: '/settings' },
+    ...(userRole === 'admin' ? [{ icon: ShieldAlert, label: 'Admin Portal', href: '/admin' }] : []),
   ]
 
   if (isOnboarding) return <>{children}</>
 
   return (
-    <div className="flex min-h-screen bg-[#060608] text-white overflow-x-hidden">
-      {/* ─── SIDEBAR (Desktop: Fixed 64w, Mobile: hidden drawer) ─── */}
-      <aside className={`w-64 border-r border-white/5 flex flex-col fixed inset-y-0 z-50 bg-[#060608] transition-transform duration-300 md:translate-x-0 ${
+    <div className="flex min-h-screen bg-bg text-text overflow-x-hidden">
+      {/* ─── SIDEBAR ─── */}
+      <aside className={`w-64 border-r border-border flex flex-col fixed inset-y-0 z-50 bg-surface transition-transform duration-300 md:translate-x-0 ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         {/* Sidebar Header */}
-        <div className="p-6 flex items-center justify-between border-b border-white/5">
+        <div className="p-6 flex items-center justify-between border-b border-border">
           <Link href="/dashboard" className="flex items-center gap-3 group" onClick={() => setIsMobileMenuOpen(false)}>
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-600 flex items-center justify-center font-bold shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-300">
+            <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center font-bold text-white shadow-glow group-hover:scale-105 transition-transform duration-200">
               <Zap className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-gray-400">
+            <span className="text-xl font-extrabold tracking-tight text-text">
               Brandflux
             </span>
           </Link>
           <button 
             onClick={() => setIsMobileMenuOpen(false)}
-            className="md:hidden p-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition"
+            className="md:hidden p-1.5 rounded-lg bg-surface-secondary border border-border hover:bg-surface-hover transition"
+            aria-label="Close menu"
           >
-            <X className="h-5 w-5 text-gray-400" />
+            <X className="h-5 w-5 text-muted" />
           </button>
         </div>
 
         {/* Navigation Section */}
-        <nav className="flex-1 px-4 space-y-2.5 mt-8 overflow-y-auto">
+        <nav className="flex-1 px-4 space-y-2 mt-6 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = pathname === item.href
             
@@ -143,15 +145,14 @@ export default function DashboardLayout({
                   key={item.href}
                   href={item.href}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 group ${
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
                     isActive 
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-xl shadow-blue-500/25 scale-[1.02]' 
-                      : 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 hover:from-blue-600/20 hover:to-purple-600/20 text-blue-300 border border-blue-500/20 shadow-lg shadow-blue-500/5 hover:scale-[1.02]'
+                      ? 'bg-accent text-black font-extrabold shadow-accent-glow' 
+                      : 'bg-primary/10 hover:bg-primary/20 text-text border border-primary/25 font-bold'
                   }`}
                 >
-                  <item.icon className={`h-5 w-5 animate-pulse text-indigo-300 group-hover:rotate-12 transition-transform`} />
-                  <span className="font-bold tracking-wide">{item.label}</span>
-                  <Sparkles className="h-3 w-3 ml-auto text-yellow-400 fill-yellow-400" />
+                  <item.icon className={`h-4.5 w-4.5 ${isActive ? 'text-black' : 'text-accent'}`} />
+                  <span className="text-sm">{item.label}</span>
                 </Link>
               )
             }
@@ -161,34 +162,32 @@ export default function DashboardLayout({
                 key={item.href}
                 href={item.href}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium ${
                   isActive 
-                    ? 'bg-white/5 text-white border border-white/10 font-bold' 
-                    : 'text-gray-400 hover:text-white hover:bg-white/[0.03]'
+                    ? 'bg-surface-secondary text-text border border-border font-bold' 
+                    : 'text-muted hover:text-text hover:bg-surface-secondary/70'
                 }`}
               >
-                <item.icon className={`h-5 w-5 transition-transform group-hover:scale-110 ${
-                  isActive ? 'text-blue-400' : 'text-gray-400'
-                }`} />
-                <span className="font-medium">{item.label}</span>
+                <item.icon className={`h-4.5 w-4.5 ${isActive ? 'text-accent' : 'text-muted'}`} />
+                <span>{item.label}</span>
               </Link>
             )
           })}
         </nav>
 
         {/* Sidebar Bottom (User details + Logout) */}
-        <div className="p-4 border-t border-white/5 space-y-4">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.02] border border-white/5">
-            <div className="h-8 w-8 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-              <User className="h-4 w-4 text-blue-400" />
+        <div className="p-4 border-t border-border space-y-3">
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-secondary border border-border">
+            <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
+              <User className="h-4 w-4 text-text" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-gray-300 truncate" title={userEmail}>
+              <p className="text-xs font-semibold text-text truncate" title={userEmail}>
                 {userEmail || 'guest@brandflux.ai'}
               </p>
-              <div className="mt-1 flex items-center gap-1">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-blue-400 tracking-wider">
+              <div className="mt-0.5 flex items-center gap-1.5">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" />
+                <span className="text-[10px] font-bold text-muted tracking-wider">
                   {userPlan} PLAN
                 </span>
               </div>
@@ -197,44 +196,48 @@ export default function DashboardLayout({
 
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 px-4 py-3 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-400/5 transition-all duration-200"
+            className="flex w-full items-center gap-3 px-3 py-2 rounded-xl text-muted hover:text-danger hover:bg-danger-muted transition-all duration-200 text-xs font-semibold"
           >
-            <LogOut className="h-5 w-5" />
-            <span className="font-semibold text-sm">Logout</span>
+            <LogOut className="h-4 w-4" />
+            <span>Logout</span>
           </button>
         </div>
       </aside>
 
-      {/* Background Drawer Overlay for Mobile */}
+      {/* Mobile Drawer Overlay */}
       {isMobileMenuOpen && (
         <div 
           onClick={() => setIsMobileMenuOpen(false)}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden"
         />
       )}
 
       {/* ─── MAIN CONTENT ─── */}
       <div className="flex-1 md:ml-64 min-h-screen flex flex-col">
-        {/* Header (Top navigation bar) */}
-        <header className="h-20 border-b border-white/5 flex items-center justify-between px-6 md:px-8 sticky top-0 bg-[#060608]/80 backdrop-blur-md z-30">
+        {/* Sticky Header */}
+        <header className="h-16 border-b border-border flex items-center justify-between px-6 md:px-8 sticky top-0 bg-bg/85 backdrop-blur-md z-30">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="md:hidden p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition"
+              className="md:hidden p-2 rounded-xl bg-surface border border-border hover:bg-surface-secondary transition"
+              aria-label="Open menu"
             >
-              <Menu className="h-5 w-5 text-gray-200" />
+              <Menu className="h-5 w-5 text-text" />
             </button>
             
-            <div className="hidden md:flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-widest bg-white/5 px-4.5 py-2 rounded-full border border-white/5">
-              <Zap className="h-3.5 w-3.5 text-blue-400 fill-blue-400" />
+            {/* Top-Bar Brand Switcher */}
+            <BrandSwitcher />
+
+            <div className="hidden lg:flex items-center gap-2 text-[11px] font-bold text-muted uppercase tracking-wider bg-surface px-3 py-1.5 rounded-full border border-border">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
               Live Brand Sync Active
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-            <div className="px-4 py-1.5 rounded-full bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 border border-blue-500/20 text-xs font-black text-blue-400 flex items-center gap-2 shadow-lg shadow-blue-500/5 select-none">
-              <Sparkles className="h-3 w-3 text-blue-400 animate-spin" />
-              {userPlan} MEMBER
+          <div className="flex items-center gap-3">
+            <div className="px-3 py-1 rounded-full bg-surface-secondary border border-border text-xs font-bold text-text flex items-center gap-2">
+              <span className="text-accent">●</span>
+              <span>{userPlan}</span>
             </div>
           </div>
         </header>

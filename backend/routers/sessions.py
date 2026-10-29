@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from typing import List, Optional
@@ -7,13 +7,21 @@ import io
 import uuid
 import httpx
 import asyncio
+import logging
 
 from database import get_db
 from models.models import Brand, User, DailySession, WebsiteScan, ContentIdea, GeneratedPost
 from models.schemas import DailySessionResponse, SessionGenerationRequest
 from middleware.auth import get_current_user
+from middleware.limiter import limiter
+from config import RATE_LIMIT_SESSION_GEN
 from services.gemini_service import GeminiService
 from services.image_generator import ImageGenerator
+from services.brand_service import resolve_user_brand
+from services.nano_banana_generator import nano_banana_generator
+from services.storage import storage_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 gemini = GeminiService()
@@ -25,9 +33,19 @@ async def generate_image(
     brand_profile: dict,
     caption: str,
     cta: str = "",
-    style: str = "digital art"
+    style: str = "digital art",
+    daily_context: Optional[dict] = None,
+    user_id: Optional[str] = None,
+    brand_id: Optional[str] = None,
+    db: Optional[Session] = None
 ) -> str:
-    """Helper function to generate a single platform image and upload/save it."""
+    """
+    Generate a branded social media graphic using:
+    1. Google's Nano Banana 2.1 via Gemini API (model ID from env IMAGE_MODEL) for AI background visual.
+    2. Playwright HTML/CSS templates for crisp responsive typography, logo, and CTA overlay.
+    3. Graceful fallback to CSS ambient gradient/glow if AI generation fails or key unconfigured.
+    4. Save outputs to Cloudflare R2 and log per-generation cost/usage to database usage table.
+    """
     try:
         # 1. Get overlay text from Gemini
         loop = asyncio.get_running_loop()
@@ -40,111 +58,57 @@ async def generate_image(
         post_text = overlay.get("headline") or "Grow Your Business"
         overlay_cta = overlay.get("cta") or cta or ""
         
-        # 2. Get platform dimensions
-        sizes = {
-            'instagram_post': (1080, 1080),
-            'instagram_story': (1080, 1920),
-            'linkedin': (1200, 627),
-            'facebook': (1200, 630),
-            'linkedin_post': (1200, 627),
-            'facebook_post': (1200, 630)
-        }
-        image_gen_platform = platform
-        if platform == "linkedin_post":
-            image_gen_platform = "linkedin"
-        elif platform == "facebook_post":
-            image_gen_platform = "facebook"
-            
-        w, h = sizes.get(image_gen_platform, (1080, 1080))
+        # 2. Resolve aspect ratio (1:1, 4:5, 9:16) and dimensions
+        aspect_ratio, (w, h) = nano_banana_generator.normalize_aspect_ratio(platform)
         
-        # 3. Generate background using Pollinations
-        bg_bytes = None
-        try:
-            bg_bytes = await image_gen.generate_background(prompt, style=style, width=w, height=h)
-        except Exception as bg_err:
-            print(f"Background generation failed for {platform}: {bg_err}, falling back to solid color.")
-            colors = brand_profile.get("colors") or []
-            primary_hex = colors[0] if colors else (brand_profile.get("primary_color") or "#0F172A")
-            
-            hex_str = str(primary_hex).lstrip('#')
-            if len(hex_str) == 3:
-                hex_str = ''.join([c*2 for c in hex_str])
-            r, g, b = (15, 23, 42)
-            if len(hex_str) == 6:
-                r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
-            
-            from PIL import Image
-            solid_img = Image.new("RGBA", (w, h), (r, g, b, 255))
-            solid_io = io.BytesIO()
-            solid_img.save(solid_io, format='PNG')
-            bg_bytes = solid_io.getvalue()
-            
-        # 4. Draw branded elements using Pillow
-        final_bytes = await loop.run_in_executor(
-            None,
-            image_gen.create_branded_post,
-            bg_bytes,
-            brand_profile,
-            post_text,
-            image_gen_platform,
-            overlay_cta
+        # 3. Generate background visual via Google's Nano Banana 2.1 (Gemini API)
+        # Timeout, retry with backoff, and fallback to CSS ambient gradient are handled automatically.
+        bg_url = await nano_banana_generator.generate_background(
+            brand_profile=brand_profile,
+            daily_context=daily_context or {"topic": prompt, "focus": caption},
+            aspect_ratio=aspect_ratio,
+            user_id=user_id,
+            brand_id=brand_id,
+            db=db
         )
         
-        # 5. Save temporarily
+        # 4. Render Playwright HTML/CSS template (headline, logo, and CTA in HTML overlay)
+        final_bytes = await image_gen.create_branded_post_async(
+            brand_profile=brand_profile,
+            post_text=post_text,
+            platform=platform,
+            cta=overlay_cta,
+            background_image_url=bg_url,
+            aspect_ratio=aspect_ratio
+        )
+        
+        # 5. Upload to Cloudflare R2 / S3 CDN
+        image_gen_platform = platform.replace("_post", "")
         filename = f"post_{image_gen_platform}_{uuid.uuid4().hex[:10]}.png"
-        tmp_dir = "c:/dev2/brandai/backend/processed_images"
-        os.makedirs(tmp_dir, exist_ok=True)
-        tmp_path = os.path.join(tmp_dir, filename)
-        
-        with open(tmp_path, "wb") as f:
-            f.write(final_bytes)
-            
-        # 6. Upload to Supabase Storage if configured
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
-        uploaded = False
-        public_url = ""
-        
-        if supabase_url and supabase_key:
-            try:
-                headers = {
-                    "Authorization": f"Bearer {supabase_key}",
-                    "apikey": supabase_key
-                }
-                upload_url = f"{supabase_url}/storage/v1/object/posts/{filename}"
-                async with httpx.AsyncClient() as client:
-                    up_res = await client.post(
-                        upload_url,
-                        headers=headers,
-                        files={"file": (filename, final_bytes, "image/png")}
-                    )
-                    if up_res.status_code == 200:
-                        public_url = f"{supabase_url}/storage/v1/object/public/posts/{filename}"
-                        uploaded = True
-            except Exception as up_err:
-                print(f"Supabase upload failed for {platform}: {up_err}, reverting to local server route.")
-        
-        if not uploaded:
-            public_url = f"http://localhost:8000/static/{filename}"
-            
+        public_url = storage_service.upload_image(final_bytes, filename)
         return public_url
+    except Exception as e:
+        logger.error(f"Error in generate_image for {platform}: {e}")
+        return f"http://localhost:8000/static/fallback_{platform}.png"
     except Exception as e:
         print(f"Error in generate_image for {platform}: {e}")
         return f"http://localhost:8000/static/fallback_{platform}.png"
 
 @router.post("/questions")
 async def start_session(
+    brand_id: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Start or retrieve today's session."""
-    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
 
     # Check if session already exists for today
     existing_session = db.query(DailySession).filter(
         DailySession.user_id == user.id,
+        DailySession.brand_id == brand.id,
         DailySession.session_date == date.today()
     ).first()
 
@@ -184,13 +148,16 @@ async def start_session(
 
 @router.get("/recent-history")
 async def get_recent_history(
+    brand_id: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Return the last 7 generated content ideas for history tracking."""
-    ideas = db.query(ContentIdea).filter(
-        ContentIdea.user_id == user.id
-    ).order_by(ContentIdea.created_at.desc()).limit(7).all()
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
+    query = db.query(ContentIdea).filter(ContentIdea.user_id == user.id)
+    if brand:
+        query = query.filter(ContentIdea.brand_id == brand.id)
+    ideas = query.order_by(ContentIdea.created_at.desc()).limit(7).all()
     
     return [
         {
@@ -199,16 +166,20 @@ async def get_recent_history(
         } for idea in ideas
     ]
 
+@router.post("/generate-all")
 @router.post("/generate-content")
+@limiter.limit(RATE_LIMIT_SESSION_GEN)
 async def generate_session_content(
+    request: Request,
     req: SessionGenerationRequest,
+    brand_id: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Generate multi-platform content based on session answers and AI strategy decision."""
-    # 1. Get brand profile
-    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     session = db.query(DailySession).filter(DailySession.id == req.session_id).first()
+    target_brand_id = brand_id or (session.brand_id if session else None)
+    brand = resolve_user_brand(user, db, brand_id=target_brand_id)
     
     if not brand or not session:
         raise HTTPException(status_code=404, detail="Brand or Session not found")
@@ -238,38 +209,43 @@ async def generate_session_content(
         } for idea in recent_ideas
     ]
 
-    # 3. Decide content strategy (Gemini)
+    # 3. Build comprehensive Brand Kit profile (reads from saved kit, not raw scrape)
     is_special_day = "special" in req.answer_1.lower() or "yes" in req.answer_1.lower()
     special_message = req.answer_2 if is_special_day else ""
 
-    decided_strategy = gemini.decide_content_strategy(
-        brand_profile={
-            "business_name": brand.business_name,
-            "business_type": brand.business_type,
-            "brand_tone": brand.brand_tone,
-            "detected_products": brand.detected_products
-        },
-        special_message=special_message,
-        is_special_day=is_special_day,
-        last_posts_history=last_posts_history
-    )
-
-    # 4. Generate all platform captions (Gemini)
     brand_profile = {
         "business_name": brand.business_name,
+        "tagline": brand.tagline,
         "business_type": brand.business_type,
+        "industry": brand.industry,
+        "target_audience": brand.target_audience,
         "brand_tone": brand.brand_tone,
         "brand_personality": brand.brand_personality,
         "brand_voice": brand.brand_voice,
-        "detected_products": brand.detected_products,
-        "colors": brand.colors,
-        "primary_color": brand.primary_color,
-        "secondary_color": brand.secondary_color,
+        "brand_keywords": brand.brand_keywords or [],
+        "content_themes": brand.content_themes or [],
+        "products_services": brand.products_services or brand.detected_products or [],
+        "detected_products": brand.detected_products or brand.products_services or [],
+        "colors": brand.colors or ["#1558C9", "#D4FF24"],
+        "primary_color": brand.primary_color or "#1558C9",
+        "secondary_color": brand.secondary_color or "#D4FF24",
         "logo_style": brand.logo_style,
-        "brand_keywords": brand.brand_keywords,
-        "logo_url": brand.logo_url
+        "logo_url": brand.logo_url,
+        "clean_logo_url": brand.clean_logo_url
     }
-    
+
+    from services.analytics.learning_engine import learning_engine
+    learning_context = learning_engine.get_learning_prompt_context(brand.id, db)
+
+    decided_strategy = gemini.decide_content_strategy(
+        brand_profile=brand_profile,
+        special_message=special_message,
+        is_special_day=is_special_day,
+        last_posts_history=last_posts_history,
+        learning_context=learning_context
+    )
+
+    # 4. Generate all platform captions (Gemini)
     answers = {
         "answer_1": req.answer_1,
         "answer_2": req.answer_2,
@@ -281,7 +257,8 @@ async def generate_session_content(
         session_answers=answers,
         website_data=website_data,
         last_posts_history=last_posts_history,
-        decided_strategy=decided_strategy
+        decided_strategy=decided_strategy,
+        learning_context=learning_context
     )
     
     if not content_data:
@@ -310,17 +287,29 @@ async def generate_session_content(
     story_text = content_data.get("instagram_story", {}).get("text") or content_data.get("instagram_story", {}).get("caption") or ""
     story_cta = content_data.get("instagram_story", {}).get("cta") or ""
 
+    daily_context = {
+        "answer_1": req.answer_1,
+        "answer_2": req.answer_2,
+        "answer_3": req.answer_3,
+        "theme": content_data.get("session_theme", "Daily Content"),
+        "special_message": special_message
+    }
+
     instagram_task = generate_image(
-        prompt, 'instagram_post', brand_profile, instagram_caption, instagram_cta, style
+        prompt, 'instagram_post', brand_profile, instagram_caption, instagram_cta, style,
+        daily_context=daily_context, user_id=user.id, brand_id=brand.id, db=db
     )
     linkedin_task = generate_image(
-        prompt, 'linkedin_post', brand_profile, linkedin_caption, linkedin_cta, style
+        prompt, 'linkedin_post', brand_profile, linkedin_caption, linkedin_cta, style,
+        daily_context=daily_context, user_id=user.id, brand_id=brand.id, db=db
     )
     facebook_task = generate_image(
-        prompt, 'facebook_post', brand_profile, facebook_caption, facebook_cta, style
+        prompt, 'facebook_post', brand_profile, facebook_caption, facebook_cta, style,
+        daily_context=daily_context, user_id=user.id, brand_id=brand.id, db=db
     )
     story_task = generate_image(
-        prompt, 'instagram_story', brand_profile, story_text, story_cta, style
+        prompt, 'instagram_story', brand_profile, story_text, story_cta, style,
+        daily_context=daily_context, user_id=user.id, brand_id=brand.id, db=db
     )
 
     all_images = await asyncio.gather(
@@ -350,6 +339,7 @@ async def generate_session_content(
             post = GeneratedPost(
                 idea_id=idea.id,
                 user_id=user.id,
+                brand_id=brand.id,
                 platform=platform,
                 caption=p_data.get("caption") or p_data.get("text"),
                 hashtags=p_data.get("hashtags"),
@@ -400,16 +390,18 @@ async def generate_session_content(
 
 @router.get("/today")
 async def get_today_session(
+    brand_id: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Return today's session if it exists, or initialize a new one if not."""
-    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
 
     session = db.query(DailySession).filter(
         DailySession.user_id == user.id,
+        DailySession.brand_id == brand.id,
         DailySession.session_date == date.today()
     ).first()
     
@@ -430,16 +422,19 @@ async def get_today_session(
 
 @router.get("/streak")
 async def get_content_streak(
+    brand_id: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Calculate the consecutive content creation days and last 7 days history."""
     today = date.today()
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
     
-    # Get all session dates for the user, ordered descending
-    sessions = db.query(DailySession).filter(
-        DailySession.user_id == user.id
-    ).order_by(DailySession.session_date.desc()).all()
+    # Get all session dates for the user and brand, ordered descending
+    query = db.query(DailySession).filter(DailySession.user_id == user.id)
+    if brand:
+        query = query.filter(DailySession.brand_id == brand.id)
+    sessions = query.order_by(DailySession.session_date.desc()).all()
     
     session_dates = {s.session_date for s in sessions}
     

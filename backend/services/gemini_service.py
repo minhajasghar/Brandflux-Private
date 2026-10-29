@@ -20,13 +20,10 @@ class GeminiService:
                     logger.info(f"Available Gemini models: {available_models}")
                     
                     priorities = [
+                        "models/gemini-3.8-flash",
                         "models/gemini-2.5-flash",
-                        "models/gemini-2.0-flash",
                         "models/gemini-flash-latest",
-                        "models/gemini-pro-latest",
-                        "models/gemini-1.5-flash",
-                        "models/gemini-1.5-pro",
-                        "models/gemini-pro"
+                        "models/gemini-pro-latest"
                     ]
                     for p in priorities:
                         if p in available_models:
@@ -56,9 +53,10 @@ class GeminiService:
         self, brand_profile: Dict[str, Any], 
         special_message: str, 
         is_special_day: bool, 
-        last_posts_history: List[Dict[str, Any]]
+        last_posts_history: List[Dict[str, Any]],
+        learning_context: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Decide today's content strategy based on brand profile and history."""
+        """Decide today's content strategy based on brand profile, history, and learning context."""
         if not self.model:
             return {}
 
@@ -72,15 +70,24 @@ class GeminiService:
                 "content_angle": special_message
             }
 
-        prompt = f"""You are a social media strategist.
-Based on this brand profile, decide the best content strategy for today.
+        learning_section = f"\n{learning_context}\n" if learning_context else ""
 
-Brand: {brand_profile.get('business_name')} ({brand_profile.get('business_type')})
-Tone: {brand_profile.get('brand_tone')}
-Products: {brand_profile.get('detected_products')}
+        prompt = f"""You are a social media strategist.
+Based on this SAVED BRAND KIT, decide the best content strategy for today.
+
+SAVED BRAND KIT:
+- Business: {brand_profile.get('business_name')}
+- Tagline: {brand_profile.get('tagline') or 'N/A'}
+- Industry: {brand_profile.get('industry') or brand_profile.get('business_type')}
+- Target Audience: {brand_profile.get('target_audience') or 'General customers and prospects'}
+- Tone: {brand_profile.get('brand_tone')}
+- Voice & Personality: {brand_profile.get('brand_voice') or brand_profile.get('brand_personality') or 'Professional, distinct'}
+- Brand Keywords: {json.dumps(brand_profile.get('brand_keywords') or [])}
+- Content Pillars / Themes: {json.dumps(brand_profile.get('content_themes') or [])}
+- Products & Services: {json.dumps(brand_profile.get('products_services') or brand_profile.get('detected_products') or [])}
 Recent content history: {json.dumps(last_posts_history)}
 (avoid repeating recent content types and themes)
-
+{learning_section}
 Decide:
 1. What type of content to create today based on what's missing from recent history (e.g., educational, promotional, testimonial, behind-the-scenes)
 2. What angle/theme works best today
@@ -117,19 +124,28 @@ Return valid JSON strictly matching this structure:
         session_answers: Dict[str, str], 
         website_data: str,
         last_posts_history: List[Dict[str, Any]],
-        decided_strategy: Dict[str, Any]
+        decided_strategy: Dict[str, Any],
+        learning_context: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Generate complete content for all platforms based on brand, session, and decided strategy."""
+        """Generate complete content for all platforms based on brand, session, strategy, and learning context."""
         if not self.model:
             return {}
 
-        prompt = f"""Create high-converting social media content for multiple platforms based on this brand profile, check-in answers, and decided content strategy.
+        learning_section = f"\n{learning_context}\n" if learning_context else ""
 
-Brand Profile:
+        prompt = f"""Create high-converting social media content for multiple platforms based on this SAVED BRAND KIT, check-in answers, and decided content strategy.
+Strictly adhere to the brand kit's tone, voice, target audience, and core content pillars.
+
+SAVED BRAND KIT:
 - Business: {brand_profile.get('business_name')}
-- Type: {brand_profile.get('business_type')}
-- Tone: {brand_profile.get('brand_tone')}
-- Products/Services: {brand_profile.get('detected_products')}
+- Tagline: {brand_profile.get('tagline') or 'N/A'}
+- Industry / Type: {brand_profile.get('industry') or brand_profile.get('business_type')}
+- Target Audience: {brand_profile.get('target_audience') or 'Target audience & community'}
+- Brand Tone: {brand_profile.get('brand_tone')}
+- Brand Voice & Personality: {brand_profile.get('brand_voice') or brand_profile.get('brand_personality') or 'Professional, distinct'}
+- Voice Keywords: {', '.join(brand_profile.get('brand_keywords') or [])}
+- Content Pillars / Themes: {json.dumps(brand_profile.get('content_themes') or [])}
+- Products & Services: {json.dumps(brand_profile.get('products_services') or brand_profile.get('detected_products') or [])}
 
 Content Strategy Decided:
 - Focus: {decided_strategy.get('decided_focus')}
@@ -140,13 +156,11 @@ Content Strategy Decided:
 
 IMPORTANT: Do NOT repeat these recent content types and themes: {json.dumps(last_posts_history)}
 Create something fresh, distinct, and creative!
-
+{learning_section}
 Today's Session Answers:
 - Q1: {session_answers.get('answer_1')}
 - Q2: {session_answers.get('answer_2')}  
 - Q3: {session_answers.get('answer_3')}
-
-Website Data Snippet: {(website_data or "")[:2000]}
 
 Generate JSON strictly matching this structure:
 {{
@@ -324,6 +338,127 @@ Return JSON strictly matching this structure:
                 "subtext": "Smart strategies for everyday success",
                 "cta": "Learn More"
             }
+
+    def generate_carousel_content(
+        self,
+        topic: str,
+        brand_profile: Dict[str, Any],
+        slide_count: int = 5,
+        custom_cta: Optional[str] = None,
+        learning_context: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate structured carousel slides (Hook, Points, CTA) given a topic and brand profile.
+        Produces exactly slide_count slides: 1 hook slide, (slide_count - 2) point slides, 1 CTA slide.
+        """
+        slide_count = max(3, min(7, slide_count))
+        num_points = slide_count - 2
+
+        if not self.model:
+            # Fallback structured slides
+            return self._build_fallback_carousel(topic, brand_profile, slide_count, custom_cta)
+
+        learning_section = f"\n{learning_context}\n" if learning_context else ""
+
+        prompt = f"""You are a master social media content strategist specializing in viral, high-retention carousels for Instagram and LinkedIn.
+
+Brand Profile:
+- Name: {brand_profile.get('business_name', 'Brandflux')}
+- Tagline: {brand_profile.get('tagline', '')}
+- Industry: {brand_profile.get('industry', 'Business & Technology')}
+- Target Audience: {brand_profile.get('target_audience', 'Founders, Creators, & Marketers')}
+- Tone: {brand_profile.get('brand_tone', 'Confident, Authoritative, Actionable')}
+
+Topic: "{topic}"
+Requested Total Slides: {slide_count} (1 Hook slide, {num_points} Points slides, 1 CTA slide).
+Custom CTA Preference: {custom_cta or 'Save this post for later'}
+{learning_section}
+Generate an ordered array of exactly {slide_count} slides in valid JSON:
+[
+  {{
+    "role": "hook",
+    "topic_tag": "SHORT 2-WORD TAG",
+    "headline": "Catchy curiosity-gap hook title (max 8 words)",
+    "subtext": "Why this matters in 1 sentence. Builds anticipation."
+  }},
+  // Exactly {num_points} point slides:
+  {{
+    "role": "point",
+    "point_index": 1,
+    "headline": "Bold Point Title (max 6 words)",
+    "subtext": "Clear actionable explanation (1-2 sentences).",
+    "takeaway": "Key rule or insight in 1 punchy sentence."
+  }},
+  {{
+    "role": "cta",
+    "headline": "High-Impact Summary or Question (max 6 words)",
+    "subtext": "Call to action prompt inviting followers to save, comment, or visit.",
+    "cta_text": "{custom_cta or 'Save For Later'}"
+  }}
+]
+"""
+
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
+            )
+            data = self.safe_parse_json(response.text)
+            if isinstance(data, list) and len(data) >= 3:
+                return data[:slide_count]
+            elif isinstance(data, dict) and "slides" in data and isinstance(data["slides"], list):
+                return data["slides"][:slide_count]
+        except Exception as e:
+            logger.error(f"Gemini carousel generation failed: {e}")
+
+        return self._build_fallback_carousel(topic, brand_profile, slide_count, custom_cta)
+
+    def _build_fallback_carousel(
+        self,
+        topic: str,
+        brand_profile: Dict[str, Any],
+        slide_count: int,
+        custom_cta: Optional[str]
+    ) -> List[Dict[str, Any]]:
+        """Safe fallback carousel outline if LLM is unavailable."""
+        brand_name = brand_profile.get("business_name", "Brandflux")
+        num_points = slide_count - 2
+        
+        slides = [
+            {
+                "role": "hook",
+                "topic_tag": "GROWTH GUIDE",
+                "headline": f"How to Master {topic}",
+                "subtext": "A step-by-step framework to elevate your brand presence."
+            }
+        ]
+
+        generic_points = [
+            ("Define Clear Foundations", "Audit your current approach and remove low-impact friction.", "Simplicity scales faster than complexity."),
+            ("Automate Repetitive Workflows", "Use modern tools to schedule, publish, and analyze consistently.", "Consistency creates compounding momentum."),
+            ("Double Down on What Works", "Identify top 20% high-performing formats and replicate their angle.", "Data informs creative decisions."),
+            ("Build Systems, Not Just Tasks", "Create reusable templates to reduce cognitive load daily.", "Systems deliver freedom."),
+            ("Engage and Iterate", "Respond to feedback in real time and refine the message.", "Audience connection breeds loyalty.")
+        ]
+
+        for i in range(num_points):
+            title, desc, takeaway = generic_points[i % len(generic_points)]
+            slides.append({
+                "role": "point",
+                "point_index": i + 1,
+                "headline": title,
+                "subtext": desc,
+                "takeaway": takeaway
+            })
+
+        slides.append({
+            "role": "cta",
+            "headline": f"Ready to Scale with {brand_name}?",
+            "subtext": "Found this helpful? Save this carousel to your bookmarks and share it with your network.",
+            "cta_text": custom_cta or "Save Post"
+        })
+
+        return slides
 
     def safe_parse_json(self, response_text: str) -> Any:
         try:

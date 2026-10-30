@@ -492,4 +492,46 @@ class AuditLog(Base):
     admin = relationship("User", foreign_keys=[admin_id])
 
 
+# ═══════════════════════════════════════════════════════════
+# SESSION VARIANTS — Temporary and selected image variants
+# ═══════════════════════════════════════════════════════════
+class SessionVariant(Base):
+    __tablename__ = "session_variants"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    session_id = Column(String(36), ForeignKey("daily_sessions.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    platform = Column(String(50), nullable=False, default="instagram_post")
+
+    variant_index = Column(Integer, default=0)
+    variant_label = Column(String(100), default="Variant")
+    style_direction = Column(String(255), nullable=True)
+
+    image_url = Column(Text, nullable=False)
+    background_url = Column(Text, nullable=True)
+    headline = Column(Text, nullable=True)
+    caption = Column(Text, nullable=True)
+    hashtags = Column(JSON, nullable=True)
+    call_to_action = Column(Text, nullable=True)
+
+    is_selected = Column(Boolean, default=False)
+    expires_at = Column(DateTime, nullable=False)  # Auto-delete after 7 days if unselected
+    created_at = Column(DateTime, default=func.now())
+
+
+# ═══════════════════════════════════════════════════════════
+# SYSTEM SETTINGS — Dynamic Platform Plans & Feature Flags
+# ═══════════════════════════════════════════════════════════
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    updated_by = Column(String(255), nullable=True)
+
+
+
+
 

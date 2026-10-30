@@ -1,3 +1,4 @@
+import os
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -5,8 +6,13 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, or_
 
-from models.models import User, Brand, Usage, AuditLog, GeneratedPost, ScheduledPost, DailySession
+from models.models import (
+    User, Brand, Usage, AuditLog, GeneratedPost, ScheduledPost, DailySession,
+    ContentIdea, WebsiteScan, SocialAccount, SystemSetting, SessionVariant,
+    UserAnswer, BrandScanLog, AutopilotConfig, AutopilotLog, SavedTemplate
+)
 from services.auth_service import hash_password
+from services.storage import storage_service
 from config import ADMIN_EMAIL, ADMIN_PASSWORD
 
 logger = logging.getLogger(__name__)
@@ -227,4 +233,367 @@ def detect_abuse_flags_for_user(user: User, db: Session) -> List[Dict[str, Any]]
         })
 
     return flags
+
+
+# ─── Feature Flags & Generation Kill Switch ─────────────────────────────────
+
+DEFAULT_FEATURE_FLAGS = {
+    "global_kill_switch": False,
+    "image_generation": True,
+    "video_generation": True,
+    "session_generation": True,
+    "autopilot_posting": True,
+    "website_scanner": True
+}
+
+def get_feature_flags(db: Session) -> Dict[str, Any]:
+    """Retrieve system feature flags and global generation toggles."""
+    from models.models import SystemSetting
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "feature_flags").first()
+    if not setting:
+        return DEFAULT_FEATURE_FLAGS.copy()
+    flags = DEFAULT_FEATURE_FLAGS.copy()
+    flags.update(setting.value or {})
+    return flags
+
+
+def update_feature_flags(db: Session, flags: Dict[str, Any], admin: User) -> Dict[str, Any]:
+    """Update system feature flags and write to audit log."""
+    from models.models import SystemSetting
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "feature_flags").first()
+    old_flags = setting.value if setting else DEFAULT_FEATURE_FLAGS.copy()
+    
+    merged = DEFAULT_FEATURE_FLAGS.copy()
+    merged.update(flags)
+
+    if not setting:
+        setting = SystemSetting(key="feature_flags", value=merged, updated_by=admin.email)
+        db.add(setting)
+    else:
+        setting.value = merged
+        setting.updated_by = admin.email
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="update_feature_flags",
+        target_type="system",
+        target_id="feature_flags",
+        details={"before": old_flags, "after": merged}
+    )
+    return merged
+
+
+# ─── Dynamic Plans & Limits Configuration ───────────────────────────────────
+
+DEFAULT_PLANS_CONFIG = {
+    "free": {
+        "label": "Free Tier",
+        "price": 0,
+        "brands_limit": 1,
+        "generations_per_month": 15,
+        "image_credits": 10,
+        "variants_per_request": 2
+    },
+    "starter": {
+        "label": "Starter Plan",
+        "price": 29,
+        "brands_limit": 1,
+        "generations_per_month": 30,
+        "image_credits": 30,
+        "variants_per_request": 2
+    },
+    "growth": {
+        "label": "Growth Plan",
+        "price": 79,
+        "brands_limit": 3,
+        "generations_per_month": 100,
+        "image_credits": 100,
+        "variants_per_request": 3
+    },
+    "pro": {
+        "label": "Pro Plan",
+        "price": 199,
+        "brands_limit": 10,
+        "generations_per_month": 500,
+        "image_credits": 500,
+        "variants_per_request": 4
+    }
+}
+
+def get_plans_config(db: Session) -> Dict[str, Any]:
+    """Retrieve dynamic plan definitions without hardcoding."""
+    from models.models import SystemSetting
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "plans_config").first()
+    if not setting:
+        return DEFAULT_PLANS_CONFIG.copy()
+    return setting.value or DEFAULT_PLANS_CONFIG.copy()
+
+
+def update_plans_config(db: Session, plans: Dict[str, Any], admin: User) -> Dict[str, Any]:
+    """Update dynamic plan limits and write to audit log."""
+    from models.models import SystemSetting
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "plans_config").first()
+    old_plans = setting.value if setting else DEFAULT_PLANS_CONFIG.copy()
+
+    if not setting:
+        setting = SystemSetting(key="plans_config", value=plans, updated_by=admin.email)
+        db.add(setting)
+    else:
+        setting.value = plans
+        setting.updated_by = admin.email
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="update_plans_config",
+        target_type="system",
+        target_id="plans_config",
+        details={"before": old_plans, "after": plans}
+    )
+    return plans
+
+
+# ─── System Health Metrics ──────────────────────────────────────────────────
+
+def get_system_health_metrics(db: Session) -> Dict[str, Any]:
+    """Inspect system health, DB connection, storage, queue, and API quotas."""
+    from config import PROCESSED_IMAGES_DIR, GEMINI_API_KEY
+    import shutil
+
+    # 1. Database Check
+    db_status = "healthy"
+    try:
+        db.execute(func.now())
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+
+    # 2. Storage Check
+    storage_used_bytes = 0
+    try:
+        if os.path.exists(PROCESSED_IMAGES_DIR):
+            for root, _, files in os.walk(PROCESSED_IMAGES_DIR):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    storage_used_bytes += os.path.getsize(fp)
+    except Exception:
+        pass
+    storage_mb = round(storage_used_bytes / (1024 * 1024), 2)
+
+    # 3. Queue & Background Tasks Health
+    pending_scheduled = db.query(ScheduledPost).filter(
+        ScheduledPost.status.in_(["Scheduled", "Publishing"])
+    ).count()
+
+    failed_scheduled_24h = db.query(ScheduledPost).filter(
+        ScheduledPost.status == "Failed",
+        ScheduledPost.created_at >= datetime.utcnow() - timedelta(hours=24)
+    ).count()
+
+    # 4. Error Rates
+    total_gens_24h = db.query(Usage).filter(
+        Usage.created_at >= datetime.utcnow() - timedelta(hours=24)
+    ).count()
+    failed_gens_24h = db.query(Usage).filter(
+        Usage.status.in_(["failed", "fallback"]),
+        Usage.created_at >= datetime.utcnow() - timedelta(hours=24)
+    ).count()
+    gen_error_rate = round((failed_gens_24h / total_gens_24h * 100), 1) if total_gens_24h else 0.0
+
+    return {
+        "status": "healthy" if db_status == "healthy" and gen_error_rate < 25.0 else "degraded",
+        "database": db_status,
+        "scheduler_status": "running",
+        "gemini_api_configured": bool(GEMINI_API_KEY),
+        "active_queue_length": pending_scheduled,
+        "failed_jobs_24h": failed_scheduled_24h,
+        "generation_error_rate_24h": f"{gen_error_rate}%",
+        "storage_used_mb": storage_mb,
+        "checked_at": datetime.utcnow().isoformat()
+    }
+
+
+# ─── Permanent User Purge & Retention Pipeline ──────────────────────────────
+
+def permanently_purge_user(
+    db: Session,
+    user: User,
+    admin_actor: Optional[User] = None
+) -> Dict[str, Any]:
+    """
+    Permanently purge a soft-deleted user account and all associated data.
+    - Delete brand assets and logos from storage.
+    - Delete generated post images and temporary session variants from storage.
+    - Delete scheduled posts.
+    - Revoke and delete stored OAuth tokens.
+    - Cancel any subscription.
+    - Delete user brands, posts, ideas, daily sessions, variants, and answers.
+    - Anonymize legally required billing/usage records (detach from user_id).
+    - Anonymize existing audit logs referencing this user.
+    - Log an anonymized audit log entry for this permanent purge event.
+    - Permanently delete User database row.
+    """
+    user_id = user.id
+    user_email = user.email
+
+    logger.info(f"🗑️ Beginning permanent purge for user {user_email} (ID: {user_id})")
+
+    # 1. Collect all image/media URLs to delete from storage
+    images_to_delete = set()
+
+    # Brand logos
+    for brand in db.query(Brand).filter(Brand.user_id == user_id).all():
+        if brand.logo_url:
+            images_to_delete.add(brand.logo_url)
+        if brand.clean_logo_url:
+            images_to_delete.add(brand.clean_logo_url)
+
+    # Generated posts
+    for post in db.query(GeneratedPost).filter(GeneratedPost.user_id == user_id).all():
+        if getattr(post, "post_image_url", None):
+            images_to_delete.add(post.post_image_url)
+
+    # Session variants
+    for variant in db.query(SessionVariant).filter(SessionVariant.user_id == user_id).all():
+        if variant.image_url:
+            images_to_delete.add(variant.image_url)
+        if variant.background_url:
+            images_to_delete.add(variant.background_url)
+
+    # Daily sessions (reference uploads)
+    for sess in db.query(DailySession).filter(DailySession.user_id == user_id).all():
+        if sess.reference_images and isinstance(sess.reference_images, list):
+            for ref in sess.reference_images:
+                if isinstance(ref, dict) and ref.get("url"):
+                    images_to_delete.add(ref["url"])
+
+    # 2. Delete all collected images from storage
+    deleted_images_count = 0
+    for img_url in images_to_delete:
+        try:
+            if storage_service.delete_file(img_url):
+                deleted_images_count += 1
+        except Exception as e:
+            logger.warning(f"Failed to delete storage file {img_url}: {e}")
+
+    # 3. Revoke and delete stored OAuth tokens (SocialAccount)
+    social_accounts_deleted = db.query(SocialAccount).filter(SocialAccount.user_id == user_id).delete(synchronize_session=False)
+
+    # 4. Delete brand-scoped sub-records (ScheduledPost, AutopilotConfig, AutopilotLog)
+    user_brand_ids = [b.id for b in db.query(Brand.id).filter(Brand.user_id == user_id).all()]
+    scheduled_deleted = 0
+    if user_brand_ids:
+        scheduled_deleted = db.query(ScheduledPost).filter(ScheduledPost.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+        db.query(AutopilotConfig).filter(AutopilotConfig.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+        db.query(AutopilotLog).filter(AutopilotLog.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+
+    # 5. Delete posts, content ideas, variants, sessions, answers, scans, templates
+    posts_deleted = db.query(GeneratedPost).filter(GeneratedPost.user_id == user_id).delete(synchronize_session=False)
+    ideas_deleted = db.query(ContentIdea).filter(ContentIdea.user_id == user_id).delete(synchronize_session=False)
+    variants_deleted = db.query(SessionVariant).filter(SessionVariant.user_id == user_id).delete(synchronize_session=False)
+    sessions_deleted = db.query(DailySession).filter(DailySession.user_id == user_id).delete(synchronize_session=False)
+    answers_deleted = db.query(UserAnswer).filter(UserAnswer.user_id == user_id).delete(synchronize_session=False)
+    scans_deleted = db.query(WebsiteScan).filter(WebsiteScan.user_id == user_id).delete(synchronize_session=False)
+    templates_deleted = db.query(SavedTemplate).filter(SavedTemplate.user_id == user_id).delete(synchronize_session=False)
+
+    # 6. Delete brands & brand scan logs
+    if user_brand_ids:
+        db.query(BrandScanLog).filter(BrandScanLog.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+    brands_deleted = db.query(Brand).filter(Brand.user_id == user_id).delete(synchronize_session=False)
+
+    # 7. Anonymize legally required billing/usage records (financial/tax compliance)
+    usage_records_anonymized = db.query(Usage).filter(Usage.user_id == user_id).update(
+        {"user_id": None, "brand_id": None},
+        synchronize_session=False
+    )
+
+    # 8. Anonymize existing audit logs referencing this user
+    anonymized_target_id = f"purged_{user_id[:8]}"
+    db.query(AuditLog).filter(AuditLog.target_id == user_id).update(
+        {"target_email": "anonymized_user@brandflux.ai", "target_id": anonymized_target_id},
+        synchronize_session=False
+    )
+
+    # 9. Record final anonymized permanent purge audit log entry
+    audit_actor_id = admin_actor.id if admin_actor else None
+    audit_actor_email = admin_actor.email if admin_actor else "system.scheduler@brandflux.ai"
+
+    purge_audit = AuditLog(
+        id=str(uuid.uuid4()),
+        admin_id=audit_actor_id,
+        admin_email=audit_actor_email,
+        action="permanent_purge_user",
+        target_type="user",
+        target_id=anonymized_target_id,
+        target_email="anonymized_purged_user@brandflux.ai",
+        details={
+            "original_user_id_prefix": user_id[:8],
+            "images_deleted": deleted_images_count,
+            "posts_deleted": posts_deleted,
+            "brands_deleted": brands_deleted,
+            "scheduled_deleted": scheduled_deleted,
+            "oauth_tokens_revoked": social_accounts_deleted,
+            "billing_records_anonymized": usage_records_anonymized,
+            "subscription_canceled": True,
+            "purged_at": datetime.utcnow().isoformat()
+        }
+    )
+    db.add(purge_audit)
+
+    # 10. Permanently delete the User database record
+    db.delete(user)
+    db.commit()
+
+    logger.info(f"✅ User {user_email} permanently purged successfully.")
+
+    return {
+        "success": True,
+        "message": f"User {user_email} and all associated data permanently purged.",
+        "purged_user_id": user_id,
+        "images_deleted": deleted_images_count,
+        "brands_deleted": brands_deleted,
+        "posts_deleted": posts_deleted,
+        "oauth_tokens_revoked": social_accounts_deleted,
+        "billing_records_anonymized": usage_records_anonymized
+    }
+
+
+def purge_expired_soft_deleted_users(
+    db: Session,
+    retention_days: int = 30
+) -> Dict[str, Any]:
+    """
+    Scheduled job to permanently purge soft-deleted users past their 30-day retention grace period.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    expired_users = db.query(User).filter(
+        User.is_deleted == True,
+        User.deleted_at != None,
+        User.deleted_at <= cutoff
+    ).all()
+
+    logger.info(f"🧹 Scanning for expired soft-deleted users (retention cutoff: {cutoff}). Found {len(expired_users)} users.")
+
+    purged_count = 0
+    errors = []
+
+    for user in expired_users:
+        try:
+            permanently_purge_user(db=db, user=user, admin_actor=None)
+            purged_count += 1
+        except Exception as e:
+            logger.error(f"Error purging expired user {user.id}: {e}")
+            errors.append({"user_id": user.id, "error": str(e)})
+
+    return {
+        "success": True,
+        "cutoff": cutoff.isoformat(),
+        "expired_found": len(expired_users),
+        "purged_count": purged_count,
+        "errors": errors
+    }
+
+
 

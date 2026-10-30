@@ -85,12 +85,31 @@ def require_admin(
 ) -> User:
     """
     Dependency for all /admin routes.
-    Ensures the user has the 'admin' role.
+    Ensures the user has 'admin' or 'support_admin' role.
+    Throws 403 Forbidden for standard 'user' role.
     """
-    if getattr(user, "role", "user") != "admin":
+    role = getattr(user, "role", "user") or "user"
+    if role not in ("admin", "support_admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required to access this endpoint."
+        )
+    return user
+
+
+def require_admin_write(
+    user: User = Depends(require_admin)
+) -> User:
+    """
+    Dependency for administrative mutation/write actions.
+    Ensures the administrator has full 'admin' write privileges.
+    Throws 403 Forbidden for 'support_admin' (read-only role).
+    """
+    role = getattr(user, "role", "user") or "user"
+    if role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Write privileges required. Support Admin accounts have read-only permissions."
         )
     return user
 

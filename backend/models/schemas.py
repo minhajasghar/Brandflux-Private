@@ -244,11 +244,60 @@ class WebsiteScanResponse(BaseModel):
 # ═══════════════════════════════════════════════════════════
 # DAILY SESSION SCHEMAS
 # ═══════════════════════════════════════════════════════════
+class ReferenceImageItem(BaseModel):
+    url: str
+    mode: str = "use_photo"  # "use_photo" | "style_inspiration"
+    filename: Optional[str] = None
+
 class SessionGenerationRequest(BaseModel):
     session_id: str
     answer_1: str
     answer_2: str
     answer_3: str
+    context_text: Optional[str] = None
+    reference_images: Optional[List[ReferenceImageItem]] = []
+    variant_count: Optional[int] = None
+    target_platform: Optional[str] = "instagram_post"
+
+class SelectVariantRequest(BaseModel):
+    variant_id: str
+    session_id: str
+    adjusted_caption: Optional[str] = None
+    adjusted_hashtags: Optional[List[str]] = None
+
+class RegenerateVariantRequest(BaseModel):
+    session_id: str
+    variant_id: Optional[str] = None
+    style_direction: Optional[str] = None
+    reference_context: Optional[str] = None
+    target_platform: Optional[str] = "instagram_post"
+
+class VariantResponseItem(BaseModel):
+    id: str
+    variant_index: int
+    variant_label: str
+    style_direction: str
+    image_url: str
+    headline: Optional[str] = None
+    caption: Optional[str] = None
+    hashtags: Optional[List[str]] = None
+    call_to_action: Optional[str] = None
+    is_selected: bool
+    status: str = "ready"
+    error: Optional[str] = None
+
+class MultiVariantSessionResponse(BaseModel):
+    session_id: str
+    session_theme: str
+    caption: str
+    hashtags: List[str]
+    call_to_action: str
+    posting_time_suggestion: Optional[str] = None
+    variants: List[VariantResponseItem]
+    credits_remaining: int
+    plan: str
+    max_variants_allowed: int
+    guidance: Optional[Dict[str, Any]] = None
 
 class DailySessionResponse(BaseModel):
     id: str

@@ -87,9 +87,50 @@ from models.schemas import BrandKitResponse
 app.add_api_route("/brand-kit", get_brand_kit, methods=["GET"], response_model=BrandKitResponse, tags=["brand-kit"])
 app.add_api_route("/brand-kit", update_brand_kit, methods=["PUT"], response_model=BrandKitResponse, tags=["brand-kit"])
 
-# ─── Static Files (Fallback) ──────────────────────────────
+# ─── Static Files & Public Media Delivery ───────────────────
+from fastapi.responses import FileResponse, Response
+from services.storage import storage_service
+
 os.makedirs(PROCESSED_IMAGES_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=PROCESSED_IMAGES_DIR), name="static")
+
+@app.get("/api/media/posts/{filename}")
+@app.head("/api/media/posts/{filename}")
+def serve_post_media(filename: str):
+    """
+    Serve public, unguessable generated post images with full CORS and caching headers.
+    If the file is temporarily missing from disk, dynamically produces a 200 OK branded fallback.
+    """
+    clean_name = os.path.basename(filename)
+    local_path = os.path.join(PROCESSED_IMAGES_DIR, clean_name)
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "Content-Type": "image/png"
+    }
+    if os.path.exists(local_path) and os.path.getsize(local_path) >= 500:
+        return FileResponse(local_path, media_type="image/png", headers=headers)
+
+    # Dynamic fallback generation so browsers NEVER get a broken 404 image
+    fallback_bytes = storage_service.generate_fallback_image(
+        headline=f"Brand Creative: {clean_name[:12]}"
+    )
+    # Save it to disk so subsequent hits are cached
+    try:
+        with open(local_path, "wb") as f:
+            f.write(fallback_bytes)
+    except Exception:
+        pass
+    return Response(content=fallback_bytes, media_type="image/png", headers=headers)
+
+@app.get("/api/media/references/{filename}")
+def serve_reference_media(filename: str):
+    clean_name = os.path.basename(filename)
+    local_path = os.path.join(PROCESSED_IMAGES_DIR, clean_name)
+    if os.path.exists(local_path):
+        return FileResponse(local_path, media_type="image/jpeg", headers={"Access-Control-Allow-Origin": "*"})
+    return Response(status_code=404)
 
 # ─── Health Check ──────────────────────────────────────────
 @app.get("/")

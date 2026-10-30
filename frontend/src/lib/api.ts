@@ -57,31 +57,35 @@ api.interceptors.response.use(
 
 export async function signup(data: any) {
   const response = await api.post('/auth/signup', data)
-  const { token, onboarding_complete } = response.data
+  const { token, onboarding_complete, role } = response.data
   if (typeof window !== 'undefined') {
     localStorage.setItem('brandflux_token', token)
     // Default signup behavior is persistent login
     document.cookie = `brandflux_token=${token}; path=/; max-age=604800;`
     document.cookie = `brandflux_onboarding_complete=${onboarding_complete ? 'true' : 'false'}; path=/; max-age=604800;`
+    document.cookie = `brandflux_user_role=${role || 'user'}; path=/; max-age=604800;`
   }
   return response.data
 }
 
 export async function login(data: any, rememberMe: boolean = false) {
   const response = await api.post('/auth/login', data)
-  const { token, onboarding_complete } = response.data
+  const { token, onboarding_complete, role } = response.data
+  const userRole = role || 'user'
   if (typeof window !== 'undefined') {
     if (rememberMe) {
       localStorage.setItem('brandflux_token', token)
       sessionStorage.removeItem('brandflux_token')
       document.cookie = `brandflux_token=${token}; path=/; max-age=604800;`
       document.cookie = `brandflux_onboarding_complete=${onboarding_complete ? 'true' : 'false'}; path=/; max-age=604800;`
+      document.cookie = `brandflux_user_role=${userRole}; path=/; max-age=604800;`
     } else {
       sessionStorage.setItem('brandflux_token', token)
       localStorage.removeItem('brandflux_token')
       // Session-only cookie (no max-age/expires)
       document.cookie = `brandflux_token=${token}; path=/;`
       document.cookie = `brandflux_onboarding_complete=${onboarding_complete ? 'true' : 'false'}; path=/;`
+      document.cookie = `brandflux_user_role=${userRole}; path=/;`
     }
   }
   return response.data
@@ -89,6 +93,10 @@ export async function login(data: any, rememberMe: boolean = false) {
 
 export async function getProfile() {
   const response = await api.get('/auth/me')
+  if (typeof window !== 'undefined' && response.data?.user?.role) {
+    const role = response.data.user.role
+    document.cookie = `brandflux_user_role=${role}; path=/; max-age=604800;`
+  }
   return response.data
 }
 
@@ -340,8 +348,16 @@ export async function adminForceLogoutUser(userId: string) {
   return response.data
 }
 
-export async function adminDeleteUser(userId: string) {
-  const response = await api.delete(`/admin/users/${userId}`)
+export async function adminDeleteUser(userId: string, confirmEmail?: string, reason?: string) {
+  const response = await api.delete(`/admin/users/${userId}`, {
+    params: confirmEmail ? { confirm_email: confirmEmail } : {},
+    data: { confirm_email: confirmEmail, reason }
+  })
+  return response.data
+}
+
+export async function adminPurgeUser(userId: string) {
+  const response = await api.post(`/admin/users/${userId}/purge`)
   return response.data
 }
 
@@ -352,6 +368,141 @@ export async function getAdminUsageReport(params?: { skip?: number; limit?: numb
 
 export async function getAdminAuditLogs(params?: { action?: string; search?: string; skip?: number; limit?: number }) {
   const response = await api.get('/admin/audit-logs', { params })
+  return response.data
+}
+
+export async function adminAdjustUserLimits(userId: string, data: { posts_used_this_month?: number; plan?: string; reason?: string }) {
+  const response = await api.put(`/admin/users/${userId}/limits`, data)
+  return response.data
+}
+
+export async function adminResetPassword(userId: string) {
+  const response = await api.post(`/admin/users/${userId}/reset-password`)
+  return response.data
+}
+
+export async function adminRestoreUser(userId: string) {
+  const response = await api.post(`/admin/users/${userId}/restore`)
+  return response.data
+}
+
+export async function adminExportUserData(userId: string) {
+  const response = await api.get(`/admin/users/${userId}/export`)
+  return response.data
+}
+
+export async function getAdminScans(params?: { skip?: number; limit?: number; status?: string }) {
+  const response = await api.get('/admin/scans', { params })
+  return response.data
+}
+
+export async function adminTestScan(websiteUrl: string) {
+  const response = await api.post('/admin/scans/test', { website_url: websiteUrl })
+  return response.data
+}
+
+export async function adminRescanUser(userId: string, websiteUrl?: string) {
+  const response = await api.post('/admin/scans/rescan-user', { user_id: userId, website_url: websiteUrl })
+  return response.data
+}
+
+export async function getAdminFeatureFlags() {
+  const response = await api.get('/admin/feature-flags')
+  return response.data
+}
+
+export async function updateAdminFeatureFlags(flags: any) {
+  const response = await api.put('/admin/feature-flags', flags)
+  return response.data
+}
+
+export async function getAdminPublishingMonitor() {
+  const response = await api.get('/admin/publishing/monitor')
+  return response.data
+}
+
+export async function adminRetryPost(postId: string) {
+  const response = await api.post(`/admin/publishing/retry/${postId}`)
+  return response.data
+}
+
+export async function getAdminPlans() {
+  const response = await api.get('/admin/plans')
+  return response.data
+}
+
+export async function updateAdminPlans(plans: any) {
+  const response = await api.put('/admin/plans', plans)
+  return response.data
+}
+
+export async function getAdminSystemHealth() {
+  const response = await api.get('/admin/system-health')
+  return response.data
+}
+
+export async function getAdminTeam() {
+  const response = await api.get('/admin/admins')
+  return response.data
+}
+
+export async function adminCreateAdmin(data: { email: string; password: string; full_name?: string; role: string }) {
+  const response = await api.post('/admin/admins', data)
+  return response.data
+}
+
+export async function adminUpdateAdminRole(adminId: string, role: string) {
+  const response = await api.put(`/admin/admins/${adminId}/role`, { role })
+  return response.data
+}
+
+// ─── Reference Images & Multi-Variant Sessions ──────────────────────────────
+
+export async function uploadReferenceImage(file: File, mode: 'use_photo' | 'style_inspiration') {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('mode', mode)
+
+  const response = await api.post('/sessions/upload-reference', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return response.data
+}
+
+export async function generateSessionVariants(payload: {
+  session_id: string
+  answer_1: string
+  answer_2: string
+  answer_3: string
+  context_text?: string
+  reference_images?: Array<{ url: string; mode: string; filename?: string }>
+  variant_count?: number
+  target_platform?: string
+}) {
+  const response = await api.post('/sessions/generate-variants', payload)
+  return response.data
+}
+
+export async function selectSessionVariant(payload: {
+  variant_id: string
+  session_id: string
+  adjusted_caption?: string
+  adjusted_hashtags?: string[]
+}) {
+  const response = await api.post('/sessions/select-variant', payload)
+  return response.data
+}
+
+export async function regenerateSingleVariant(payload: {
+  session_id: string
+  variant_id?: string
+  style_direction?: string
+  reference_context?: string
+  target_platform?: string
+}) {
+  const response = await api.post('/sessions/regenerate-variant', payload)
   return response.data
 }
 

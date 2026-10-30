@@ -96,6 +96,9 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         )
 
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    user_role = getattr(user, "role", "user") or "user"
+    # Admins do not need brand onboarding to access the admin portal
+    is_onboarding_complete = True if user_role == "admin" else (brand.onboarding_complete if brand else False)
 
     # 5. Generate JWT token
     token = auth_service.create_token(user.id, token_version=getattr(user, "token_version", 1) or 1)
@@ -106,9 +109,9 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         user_id=user.id,
         email=user.email,
         full_name=user.full_name,
-        role=getattr(user, "role", "user") or "user",
+        role=user_role,
         is_suspended=getattr(user, "is_suspended", False) or False,
-        onboarding_complete=brand.onboarding_complete if brand else False
+        onboarding_complete=is_onboarding_complete
     )
 
 @router.get("/me")
@@ -185,7 +188,12 @@ async def _run_first_scan(brand_id: str, user_id: str, website_url: str):
         
         if scraped_data.get("colors"):
             brand.colors = scraped_data["colors"]
-            brand.primary_color = scraped_data["colors"][0]
+            brand.primary_color = scraped_data.get("primary_color") or scraped_data["colors"][0]
+            brand.secondary_color = scraped_data.get("secondary_color") or (scraped_data["colors"][1] if len(scraped_data["colors"]) > 1 else None)
+            from services.brand_service import build_brand_kit_dict
+            brand.brand_kit = build_brand_kit_dict(brand)
+            if scraped_data.get("color_palette"):
+                brand.brand_kit["color_palette"] = scraped_data.get("color_palette")
 
         if scraped_data.get("logo_url"):
             try:

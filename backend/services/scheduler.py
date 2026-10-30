@@ -141,6 +141,23 @@ async def generate_weekly_guidance():
 
 
 # ═══════════════════════════════════════════════════════════
+# JOB 3: Permanent Purge of Soft-Deleted Accounts (runs daily at 3 AM)
+# ═══════════════════════════════════════════════════════════
+async def purge_expired_soft_deleted_users_job():
+    """Permanently purges users whose 30-day soft-delete grace period has elapsed."""
+    from services.admin_service import purge_expired_soft_deleted_users
+    logger.info("⏰ Running expired soft-deleted users purge job...")
+    db = SessionLocal()
+    try:
+        result = purge_expired_soft_deleted_users(db, retention_days=30)
+        logger.info(f"✅ User purge job finished: {result.get('purged_count', 0)} users purged.")
+    except Exception as e:
+        logger.error(f"❌ User purge job error: {e}")
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════════════════════
 # SCHEDULER SETUP
 # ═══════════════════════════════════════════════════════════
 def start_scheduler():
@@ -161,6 +178,15 @@ def start_scheduler():
         id="weekly_guidance",
         replace_existing=True,
         name="Generate Weekly Content Guidance"
+    )
+
+    # Daily account retention purge at 3 AM
+    scheduler.add_job(
+        purge_expired_soft_deleted_users_job,
+        CronTrigger(hour=3, minute=0),
+        id="purge_expired_users",
+        replace_existing=True,
+        name="Permanent Purge Expired Soft-Deleted Users (30-day grace period)"
     )
 
     scheduler.start()

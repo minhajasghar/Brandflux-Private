@@ -11,10 +11,17 @@ load_dotenv()
 
 # ─── Database Configuration ────────────────────────────────
 DEFAULT_SQLITE_PATH = os.path.join(BASE_DIR, "brandai.db").replace("\\", "/")
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"postgresql://brandflux:brandflux_secret@localhost:5432/brandflux"
-)
+DATABASE_URL_ENV = os.getenv("DATABASE_URL", "")
+
+if DATABASE_URL_ENV:
+    # If a relative SQLite path like sqlite:///./brandai.db is given, pin it to backend/brandai.db
+    if DATABASE_URL_ENV.startswith("sqlite:///./"):
+        db_filename = DATABASE_URL_ENV.replace("sqlite:///./", "")
+        DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, db_filename).replace(chr(92), '/')}"
+    else:
+        DATABASE_URL = DATABASE_URL_ENV
+else:
+    DATABASE_URL = f"sqlite:///{DEFAULT_SQLITE_PATH}"
 # Fix SQLAlchemy dialect for heroku/render style URLs if present
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)

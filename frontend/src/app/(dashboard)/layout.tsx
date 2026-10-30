@@ -57,11 +57,21 @@ export default function DashboardLayout({
       try {
         const profile = await getProfile()
         if (profile && profile.user) {
+          const userRole = profile.user.role || 'user'
           setUserEmail(profile.user.email)
           setUserPlan(profile.user.plan ? profile.user.plan.toUpperCase() : 'FREE')
-          setUserRole(profile.user.role || 'user')
+          setUserRole(userRole)
 
-          const onboardingComplete = profile.brand?.onboarding_complete
+          // Admin users must never open user routes - redirect immediately to /admin
+          if (userRole === 'admin' || userRole === 'support_admin') {
+            document.cookie = `brandflux_user_role=${userRole}; path=/; max-age=604800;`
+            router.replace('/admin')
+            return
+          }
+
+          document.cookie = `brandflux_user_role=${userRole}; path=/; max-age=604800;`
+
+          const onboardingComplete = Boolean(profile.brand?.onboarding_complete)
           const isCurrentlyOnboarding = pathname === '/onboarding'
 
           if (!onboardingComplete && !isCurrentlyOnboarding) {
@@ -104,7 +114,6 @@ export default function DashboardLayout({
     { icon: Calendar, label: 'Calendar', href: '/calendar' },
     { icon: BarChart3, label: 'Analytics', href: '/analytics' },
     { icon: Settings, label: 'Settings', href: '/settings' },
-    ...(userRole === 'admin' ? [{ icon: ShieldAlert, label: 'Admin Portal', href: '/admin' }] : []),
   ]
 
   if (isOnboarding) return <>{children}</>

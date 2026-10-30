@@ -62,13 +62,36 @@ class HTMLRenderer:
     ) -> bytes:
         """
         Render raw HTML string to PNG bytes with high-DPI scaling.
+        Auto-recovers from closed connections or event-loop recycling.
         """
-        browser = await self._get_browser()
-        context = await browser.new_context(
-            viewport={"width": width, "height": height},
-            device_scale_factor=device_scale_factor
-        )
-        page = await context.new_page()
+        context = None
+        page = None
+        for attempt in range(2):
+            try:
+                browser = await self._get_browser()
+                context = await browser.new_context(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=device_scale_factor
+                )
+                page = await context.new_page()
+                break
+            except Exception as e:
+                logger.warning(f"Browser context creation failed (attempt {attempt+1}): {e}, recycling browser instance...")
+                async with self._init_lock:
+                    try:
+                        if self._browser:
+                            await self._browser.close()
+                    except Exception:
+                        pass
+                    try:
+                        if self._playwright:
+                            await self._playwright.stop()
+                    except Exception:
+                        pass
+                    self._browser = None
+                    self._playwright = None
+                if attempt == 1:
+                    raise
 
         try:
             # Set HTML content and wait for DOM and styling
@@ -90,8 +113,16 @@ class HTMLRenderer:
             )
             return png_bytes
         finally:
-            await page.close()
-            await context.close()
+            if page:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+            if context:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
 
     async def render_template(
         self,

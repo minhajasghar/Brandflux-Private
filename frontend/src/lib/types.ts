@@ -6,6 +6,21 @@ export interface User {
   created_at: string
 }
 
+export interface ColorDetail {
+  hex: string
+  confidence?: number
+  source?: string
+}
+
+export interface ColorPalette {
+  primary?: ColorDetail
+  secondary?: ColorDetail
+  accent?: ColorDetail
+  neutrals?: ColorDetail[]
+  colors?: string[]
+  extraction_method?: string
+}
+
 export interface Brand {
   id: string
   business_name: string
@@ -13,10 +28,13 @@ export interface Brand {
   logo_url?: string
   primary_color?: string
   secondary_color?: string
+  accent_color?: string
   onboarding_complete: boolean
   scan_status: 'pending' | 'scanning' | 'completed' | 'failed'
   business_type?: string
   colors?: string[]
+  color_palette?: ColorPalette
+  brand_kit?: any
 }
 
 export interface AuthResponse {
@@ -78,4 +96,44 @@ export interface SessionResult {
     this_week_suggestion: string
     best_performing_type: string
   }
+}
+
+export interface ReferenceImageItem {
+  id: string
+  file?: File
+  preview: string
+  url?: string
+  mode: 'use_photo' | 'style_inspiration'
+  filename?: string
+  uploading?: boolean
+  error?: string
+}
+
+export interface SessionVariantItem {
+  id: string
+  variant_index: number
+  variant_label: string
+  style_direction: string
+  image_url: string
+  headline?: string
+  caption?: string
+  hashtags?: string[]
+  call_to_action?: string
+  is_selected: boolean
+  status: 'ready' | 'fallback' | 'failed' | 'generating'
+  error?: string
+}
+
+export interface MultiVariantSessionResult {
+  session_id: string
+  session_theme: string
+  caption: string
+  hashtags: string[]
+  call_to_action: string
+  posting_time_suggestion?: string
+  variants: SessionVariantItem[]
+  credits_remaining: number
+  plan: string
+  max_variants_allowed: number
+  guidance?: any
 }

@@ -153,10 +153,14 @@ async def scan_website(
         brand.website_url = req.website_url
         brand.detected_products = brand_data.get("products_services")
         brand.primary_color = brand_data.get("primary_color")
+        brand.secondary_color = brand_data.get("secondary_color")
         brand.colors = brand_data.get("colors")
         brand.logo_url = brand_data.get("logo_url")
         brand.brand_tone = brand_data.get("brand_tone")
         brand.business_type = brand_data.get("business_type")
+        brand.brand_kit = build_brand_kit_dict(brand)
+        if brand_data.get("color_palette"):
+            brand.brand_kit["color_palette"] = brand_data.get("color_palette")
         brand.last_scanned_at = datetime.utcnow()
         brand.scan_status = "completed"
         

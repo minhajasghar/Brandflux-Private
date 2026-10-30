@@ -27,10 +27,37 @@ class BrandScraper:
 
         soup = BeautifulSoup(html, "html.parser")
         
-        # Extract data
+        # Extract text data
         text_data = self._extract_text(soup)
-        colors = self._extract_colors(html)
         logo_url = self._extract_logo(soup)
+        
+        # Layered Brand Color Extraction Pipeline (Playwright, CSS vars, DOM sampling, ColorThief, Gemini Vision)
+        palette_data = {}
+        try:
+            from services.brand_color_extractor import BrandColorExtractor
+            color_extractor = BrandColorExtractor(self.url)
+            if logo_url:
+                color_extractor.logo_url = logo_url
+            palette_data = await color_extractor.extract_palette()
+            if not logo_url and color_extractor.logo_url:
+                logo_url = color_extractor.logo_url
+        except Exception as e:
+            logger.warning(f"Layered color extractor failed: {e}; falling back to static regex.")
+            fallback_colors = self._extract_colors(html)
+            palette_data = {
+                "primary": {"hex": fallback_colors[0] if fallback_colors else "#1558C9", "confidence": 0.50, "source": "static_regex"},
+                "secondary": {"hex": fallback_colors[1] if len(fallback_colors) > 1 else "#D4FF24", "confidence": 0.50, "source": "static_regex"},
+                "accent": {"hex": "#D4FF24", "confidence": 0.50, "source": "default"},
+                "neutrals": [],
+                "colors": fallback_colors or ["#1558C9", "#D4FF24"],
+                "extraction_method": "static_regex_fallback"
+            }
+
+        colors = palette_data.get("colors") or ["#1558C9", "#D4FF24"]
+        primary_color = palette_data.get("primary", {}).get("hex") if palette_data.get("primary") else colors[0]
+        secondary_color = palette_data.get("secondary", {}).get("hex") if palette_data.get("secondary") else (colors[1] if len(colors) > 1 else "#D4FF24")
+        accent_color = palette_data.get("accent", {}).get("hex") if palette_data.get("accent") else "#D4FF24"
+        neutrals = palette_data.get("neutrals", [])
         
         # Detect brand attributes
         all_text = f"{text_data['business_name']} {text_data['tagline']} {text_data['about_text']} {' '.join(text_data['products_services'])}"
@@ -46,7 +73,11 @@ class BrandScraper:
             "contact_info": text_data["contact_info"],
             "social_links": text_data["social_links"],
             "colors": colors,
-            "primary_color": colors[0] if colors else None,
+            "primary_color": primary_color,
+            "secondary_color": secondary_color,
+            "accent_color": accent_color,
+            "neutrals": neutrals,
+            "color_palette": palette_data,
             "logo_url": logo_url,
             "brand_tone": brand_tone,
             "business_type": business_type,

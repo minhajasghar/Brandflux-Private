@@ -5,7 +5,7 @@ import uuid
 import base64
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 import httpx
 from sqlalchemy.orm import Session
 
@@ -106,10 +106,14 @@ class NanoBananaGenerator:
         self,
         brand_profile: Dict[str, Any],
         daily_context: Optional[Dict[str, Any]] = None,
-        aspect_ratio: str = "1:1"
+        aspect_ratio: str = "1:1",
+        reference_images: Optional[List[Dict[str, Any]]] = None,
+        reference_context: Optional[str] = None,
+        variant_style: Optional[str] = None
     ) -> str:
         """
-        Construct a background visual prompt using brand kit and daily check-in context.
+        Construct a background visual prompt using brand kit, daily check-in context,
+        reference images (modes: 'use_photo' vs 'style_inspiration'), and variant composition styles.
         Explicitly instructs the model NOT to generate text or logos.
         """
         daily_context = daily_context or {}
@@ -131,8 +135,26 @@ class NanoBananaGenerator:
             context_clues.append(f"Subject theme: {focus}")
         if special_message:
             context_clues.append(f"Context notes: {special_message}")
+        if reference_context:
+            context_clues.append(f"User Creative Context: {reference_context}")
 
-        context_str = "; ".join(context_clues) if context_clues else f"Theme: {theme}"
+        # Reference Images Guidance
+        ref_guidance = []
+        if reference_images:
+            for i, ref in enumerate(reference_images, 1):
+                mode = ref.get("mode", "use_photo")
+                if mode == "use_photo":
+                    ref_guidance.append(
+                        f"[Reference {i} - 'Use my photo' mode]: Preserve and enhance the exact subject/product from this reference image, "
+                        f"elevating it into a premium studio presentation integrated with {primary_color} ambient lighting."
+                    )
+                else:  # style_inspiration
+                    ref_guidance.append(
+                        f"[Reference {i} - 'Style inspiration' mode]: Match the aesthetic mood, color harmony, and artistic lighting of this reference, "
+                        f"but generate completely new content. STRICT RESTRICTION: Do NOT copy any logos, text, or identifiable persons from this reference."
+                    )
+
+        ref_section = " ".join(ref_guidance) if ref_guidance else ""
 
         ratio_desc = {
             "1:1": "square 1:1 framing with balanced central atmospheric composition",
@@ -140,12 +162,19 @@ class NanoBananaGenerator:
             "9:16": "tall 9:16 vertical composition with ample breathing room in the upper and center regions"
         }.get(aspect_ratio, "1:1 composition")
 
+        # Composition / Angle / Mood variation prompt
+        variant_angle = variant_style or "cinematic volumetric lighting with modern dynamic perspective"
+
+        context_str = "; ".join(context_clues) if context_clues else f"Theme: {theme}"
+
         prompt = (
             f"Commercial atmospheric hero background visual for a {industry} brand with {tone} aesthetic. "
             f"Visual elements inspired by {context_str}. "
+            f"{ref_section} "
+            f"Style direction: {variant_angle}. "
             f"Lighting and ambient color accents harmoniously incorporating luminous cobalt blue ({primary_color}) "
             f"and electric lime highlights ({secondary_color}) with deep charcoal studio atmosphere. "
-            f"Composition: {ratio_desc}, cinematic volumetric lighting, 8k resolution, clean architectural negative space, "
+            f"Composition: {ratio_desc}, 8k resolution, clean architectural negative space, "
             f"smooth subtle 3D textures, clean studio render. "
             f"CRITICAL STRICT REQUIREMENT: Absolutely NO text, NO typography, NO words, NO letters, NO numbers, "
             f"NO logos, NO icons, NO watermarks, NO badges, and NO slogans. "
@@ -321,11 +350,14 @@ class NanoBananaGenerator:
         aspect_ratio: str = "1:1",
         user_id: Optional[str] = None,
         brand_id: Optional[str] = None,
+        reference_images: Optional[List[Dict[str, Any]]] = None,
+        reference_context: Optional[str] = None,
+        variant_style: Optional[str] = None,
         db: Optional[Session] = None
     ) -> Optional[str]:
         """
         High-level orchestrator:
-        1. Formulates prompt from brand kit and daily check-in.
+        1. Formulates prompt from brand kit, daily check-in, reference images & modes, and variant composition style.
         2. Normalizes aspect ratio to 1:1, 4:5, or 9:16.
         3. Calls Nano Banana 2.1 via Gemini API with retries and timeout.
         4. Uploads generated visual to Cloudflare R2 and gets public CDN URL.
@@ -333,7 +365,14 @@ class NanoBananaGenerator:
         6. On failure or missing billing: logs failure and returns None (triggering CSS gradient fallback).
         """
         norm_ratio, (w, h) = self.normalize_aspect_ratio(aspect_ratio)
-        prompt = self.build_background_prompt(brand_profile, daily_context, norm_ratio)
+        prompt = self.build_background_prompt(
+            brand_profile=brand_profile,
+            daily_context=daily_context,
+            aspect_ratio=norm_ratio,
+            reference_images=reference_images,
+            reference_context=reference_context,
+            variant_style=variant_style
+        )
         model_name = self.get_active_model()
         start_time = time.time()
 
@@ -409,11 +448,14 @@ class NanoBananaGenerator:
         aspect_ratio: str = "1:1",
         user_id: Optional[str] = None,
         brand_id: Optional[str] = None,
+        reference_images: Optional[List[Dict[str, Any]]] = None,
+        reference_context: Optional[str] = None,
+        variant_style: Optional[str] = None,
         db: Optional[Session] = None
     ) -> Tuple[bytes, str, Optional[str]]:
         """
         Full pipeline:
-        1. Generate AI background via Nano Banana 2.1 (or fallback to None).
+        1. Generate AI background via Nano Banana 2.1 (or fallback to None), incorporating references and variant styles.
         2. Inject `background_image_url` into template context.
         3. Render Playwright HTML/CSS template to crisp PNG bytes.
         4. Upload post PNG to R2.
@@ -428,6 +470,9 @@ class NanoBananaGenerator:
             aspect_ratio=norm_ratio,
             user_id=user_id,
             brand_id=brand_id,
+            reference_images=reference_images,
+            reference_context=reference_context,
+            variant_style=variant_style,
             db=db
         )
 

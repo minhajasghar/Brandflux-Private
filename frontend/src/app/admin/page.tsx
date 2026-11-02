@@ -1523,24 +1523,110 @@ function AdminPortalContent() {
       {/* ─── TAB 8: SYSTEM HEALTH ─── */}
       {activeTab === 'health' && (
         <div className="space-y-6">
+          {/* Header & Controls */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-3xl bg-surface border border-border shadow-xl">
+            <div className="space-y-1">
+              <h2 className="text-lg font-extrabold text-text flex items-center gap-2">
+                <Cpu className="h-5 w-5 text-primary-light" />
+                <span>Platform System Health &amp; Telemetry</span>
+              </h2>
+              <p className="text-xs text-muted max-w-2xl leading-relaxed">
+                Live monitoring of database connectivity, background job queue, storage footprint, and AI generation error rates over rolling 24-hour windows.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {systemHealth?.checked_at && (
+                <span className="text-[11px] text-muted font-mono hidden sm:inline-block">
+                  Checked {new Date(systemHealth.checked_at).toLocaleTimeString()}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={fetchHealth}
+                disabled={loadingHealth}
+                className="px-4 py-2 rounded-xl bg-surface-secondary border border-border text-xs font-bold text-text hover:bg-surface-secondary/80 flex items-center gap-1.5 transition"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingHealth ? 'animate-spin text-primary-light' : 'text-muted'}`} />
+                <span>Refresh Metrics</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Diagnostic Alert Box when DEGRADED */}
+          {systemHealth?.status === 'degraded' && (
+            <div className="p-5 rounded-3xl bg-danger/10 border border-danger/30 text-text space-y-2">
+              <div className="flex items-center gap-2 text-danger font-extrabold text-xs uppercase tracking-wide">
+                <AlertTriangle className="h-4 w-4 text-danger shrink-0" />
+                <span>Why is Status Marked as &ldquo;DEGRADED&rdquo;?</span>
+              </div>
+              <p className="text-xs text-muted leading-relaxed">
+                The platform monitors AI generation success vs failure rates across all users over the last 24 hours.
+                Because the Google API key encountered <strong className="text-danger">401 Unauthenticated errors</strong> earlier today,
+                the rolling 24-hour error rate is currently at <strong className="text-danger font-mono">{systemHealth.generation_error_rate_24h}</strong> (threshold is &lt;25%).
+              </p>
+              <p className="text-[11px] text-muted">
+                ✅ <strong>Next Step:</strong> Once you update and save a valid API key in the <strong className="text-primary-light">AI &amp; Models</strong> tab and run generations, successful calls will lower this failure rate and status will automatically switch back to <strong className="text-emerald-400">HEALTHY</strong>.
+              </p>
+            </div>
+          )}
+
+          {/* KPI Metrics Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
               <span className="text-xs font-bold text-muted uppercase">Overall Status</span>
               <p className={`text-2xl font-black uppercase mt-1 ${systemHealth?.status === 'healthy' ? 'text-emerald-400' : 'text-danger'}`}>
                 {systemHealth?.status || 'Unknown'}
               </p>
+              <span className="text-[11px] text-muted mt-1 block">
+                {systemHealth?.status === 'healthy' ? 'All systems nominal' : 'High 24h AI error rate'}
+              </span>
             </div>
+
             <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
               <span className="text-xs font-bold text-muted uppercase">Database Latency</span>
-              <p className="text-2xl font-black text-text mt-1">{systemHealth?.database || 'OK'}</p>
+              <p className="text-2xl font-black text-emerald-400 mt-1 capitalize">{systemHealth?.database || 'OK'}</p>
+              <span className="text-[11px] text-muted mt-1 block">SQLite connection active</span>
             </div>
+
             <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
               <span className="text-xs font-bold text-muted uppercase">Queue Length</span>
               <p className="text-2xl font-black text-primary-light mt-1">{systemHealth?.active_queue_length || 0}</p>
+              <span className="text-[11px] text-muted mt-1 block">Pending scheduled posts</span>
             </div>
+
             <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
               <span className="text-xs font-bold text-muted uppercase">Storage Used</span>
               <p className="text-2xl font-black text-accent mt-1">{systemHealth?.storage_used_mb || 0} MB</p>
+              <span className="text-[11px] text-muted mt-1 block">Rendered images &amp; assets</span>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
+              <span className="text-xs font-bold text-muted uppercase">AI Error Rate (24h)</span>
+              <p className={`text-2xl font-black font-mono mt-1 ${parseFloat(systemHealth?.generation_error_rate_24h || '0') > 25 ? 'text-danger' : 'text-emerald-400'}`}>
+                {systemHealth?.generation_error_rate_24h || '0.0%'}
+              </p>
+              <span className="text-[11px] text-muted mt-1 block">Failed / total generation requests</span>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
+              <span className="text-xs font-bold text-muted uppercase">Failed Jobs (24h)</span>
+              <p className="text-2xl font-black text-text mt-1">{systemHealth?.failed_jobs_24h || 0}</p>
+              <span className="text-[11px] text-muted mt-1 block">Scheduler publishing errors</span>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
+              <span className="text-xs font-bold text-muted uppercase">Scheduler Engine</span>
+              <p className="text-2xl font-black text-emerald-400 mt-1 capitalize">{systemHealth?.scheduler_status || 'Running'}</p>
+              <span className="text-[11px] text-muted mt-1 block">APScheduler background daemon</span>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
+              <span className="text-xs font-bold text-muted uppercase">Gemini AI Key</span>
+              <p className="text-2xl font-black text-primary-light mt-1">
+                {systemHealth?.gemini_api_configured ? 'Configured' : 'Missing'}
+              </p>
+              <span className="text-[11px] text-muted mt-1 block">Managed via database</span>
             </div>
           </div>
         </div>

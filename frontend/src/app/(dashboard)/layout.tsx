@@ -109,7 +109,7 @@ export default function DashboardLayout({
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-    { icon: Sparkles, label: 'Create Content', href: '/session', isHighlighted: true },
+    { icon: Sparkles, label: 'Create Content', href: '/session' },
     { icon: Lightbulb, label: 'My Ideas', href: '/ideas' },
     { icon: Calendar, label: 'Calendar', href: '/calendar' },
     { icon: BarChart3, label: 'Analytics', href: '/analytics' },
@@ -144,40 +144,22 @@ export default function DashboardLayout({
         </div>
 
         {/* Navigation Section */}
-        <nav className="flex-1 px-4 space-y-2 mt-6 overflow-y-auto">
+        <nav className="flex-1 px-4 space-y-1.5 mt-6 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = pathname === item.href
-            
-            if (item.isHighlighted) {
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-                    isActive 
-                      ? 'bg-accent text-black font-extrabold shadow-accent-glow' 
-                      : 'bg-primary/10 hover:bg-primary/20 text-text border border-primary/25 font-bold'
-                  }`}
-                >
-                  <item.icon className={`h-4.5 w-4.5 ${isActive ? 'text-black' : 'text-accent'}`} />
-                  <span className="text-sm">{item.label}</span>
-                </Link>
-              )
-            }
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium ${
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm group ${
                   isActive 
-                    ? 'bg-surface-secondary text-text border border-border font-bold' 
-                    : 'text-muted hover:text-text hover:bg-surface-secondary/70'
+                    ? 'bg-surface-secondary text-text border border-border font-bold shadow-sm' 
+                    : 'text-muted hover:text-text hover:bg-surface-secondary/70 font-medium'
                 }`}
               >
-                <item.icon className={`h-4.5 w-4.5 ${isActive ? 'text-accent' : 'text-muted'}`} />
+                <item.icon className={`h-4.5 w-4.5 transition-colors ${isActive ? 'text-accent' : 'text-muted group-hover:text-text'}`} />
                 <span>{item.label}</span>
               </Link>
             )

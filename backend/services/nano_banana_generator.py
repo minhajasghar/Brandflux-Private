@@ -183,7 +183,7 @@ class NanoBananaGenerator:
             f"{ref_section} "
             f"Style & Composition: {variant_angle}, {ratio_desc}. "
             f"Color palette: Harmoniously incorporating brand accents {primary_color} and {secondary_color}. "
-            f"Ultra-high definition, 8k resolution, photorealistic, cinematic commercial studio lighting, "
+            f"1K resolution, ultra-high definition, photorealistic, cinematic commercial studio lighting, "
             f"crisp details, depth of field, premium award-winning product and lifestyle presentation."
         )
         return prompt
@@ -200,11 +200,18 @@ class NanoBananaGenerator:
             "x-goog-api-key": api_key
         }
 
-        # Exclusively call gemini-nano-banana-2.1 generateContent
+        # Exclusively call gemini-nano-banana-2.1 generateContent with 1K image quality
+        api_aspect_ratio = aspect_ratio if aspect_ratio in ("1:1", "4:5", "9:16", "16:9") else "1:1"
         content_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent"
         content_payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseModalities": ["IMAGE"]}
+            "generationConfig": {
+                "responseModalities": ["IMAGE"],
+                "imageConfig": {
+                    "imageSize": "1K",
+                    "aspectRatio": api_aspect_ratio
+                }
+            }
         }
 
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:

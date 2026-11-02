@@ -10,9 +10,25 @@ from config import GEMINI_API_KEY, GEMINI_MODEL
 logger = logging.getLogger(__name__)
 
 class GeminiService:
-    def __init__(self):
-        self.api_key = GEMINI_API_KEY
-        self.model_name = GEMINI_MODEL or os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
+    def __init__(self, db=None):
+        self.api_key = ""
+        self.model_name = "models/gemini-2.5-flash"
+        self.model = None
+        self.last_error_message = None
+        self.reload_credentials(db)
+
+    def reload_credentials(self, db=None):
+        """Load API key and model dynamically from DB, falling back to environment."""
+        try:
+            from services.admin_service import get_ai_credentials
+            creds = get_ai_credentials(db)
+            self.api_key = creds.get("gemini_api_key") or os.getenv("GEMINI_API_KEY", GEMINI_API_KEY or "")
+            self.model_name = creds.get("gemini_model") or os.getenv("GEMINI_MODEL", GEMINI_MODEL or "models/gemini-2.5-flash")
+        except Exception as e:
+            logger.warning(f"Could not load AI credentials from DB: {e}")
+            self.api_key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY or "")
+            self.model_name = os.getenv("GEMINI_MODEL", GEMINI_MODEL or "models/gemini-2.5-flash")
+
         self.last_error_message = None
         if self.api_key:
             try:
@@ -28,9 +44,16 @@ class GeminiService:
             except Exception as e:
                 logger.error(f"[Gemini Init Failed] {e}\n{traceback.format_exc()}")
                 self.model = None
+                self.last_error_message = str(e)
         else:
             logger.warning("[Gemini Init] No GEMINI_API_KEY provided")
             self.model = None
+
+    def ensure_configured(self):
+        """Lazy load or re-check credentials if not currently initialized."""
+        if not self.model or not self.api_key:
+            self.reload_credentials()
+        return self.model is not None
 
     def decide_content_strategy(
         self, brand_profile: Dict[str, Any], 
@@ -40,6 +63,7 @@ class GeminiService:
         learning_context: Optional[str] = None
     ) -> Dict[str, Any]:
         """Decide today's content strategy based on brand profile, history, and learning context."""
+        self.ensure_configured()
         if not self.model:
             return {}
 
@@ -111,6 +135,7 @@ Return valid JSON strictly matching this structure:
         learning_context: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate complete content for all platforms based on brand, session, strategy, and learning context."""
+        self.ensure_configured()
         if not self.model:
             return {}
 

@@ -416,6 +416,29 @@ export async function updateAdminFeatureFlags(flags: any) {
   return response.data
 }
 
+export async function getAdminAICredentials() {
+  const response = await api.get('/admin/ai-credentials')
+  return response.data
+}
+
+export async function updateAdminAICredentials(data: {
+  gemini_api_key?: string
+  gemini_model?: string
+  image_model?: string
+}) {
+  const response = await api.put('/admin/ai-credentials', data)
+  return response.data
+}
+
+export async function testAdminAICredentials(data: {
+  gemini_api_key?: string
+  gemini_model?: string
+  image_model?: string
+}) {
+  const response = await api.post('/admin/ai-credentials/test', data)
+  return response.data
+}
+
 export async function getAdminPublishingMonitor() {
   const response = await api.get('/admin/publishing/monitor')
   return response.data

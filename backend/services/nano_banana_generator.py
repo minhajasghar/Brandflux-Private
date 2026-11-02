@@ -49,6 +49,13 @@ class NanoBananaGenerator:
     def model_id(self) -> str:
         if self._model_override is not None:
             return self._model_override
+        try:
+            from services.admin_service import get_ai_credentials
+            creds = get_ai_credentials()
+            if creds.get("image_model"):
+                return creds["image_model"]
+        except Exception:
+            pass
         return os.getenv("IMAGE_MODEL", IMAGE_MODEL or "gemini-nano-banana-2.1").strip()
 
     @model_id.setter
@@ -59,6 +66,13 @@ class NanoBananaGenerator:
     def api_key(self) -> str:
         if self._api_key_override is not None:
             return self._api_key_override
+        try:
+            from services.admin_service import get_ai_credentials
+            creds = get_ai_credentials()
+            if creds.get("gemini_api_key"):
+                return creds["gemini_api_key"]
+        except Exception:
+            pass
         return os.getenv("GEMINI_API_KEY", GEMINI_API_KEY or "").strip().strip('"').strip("'")
 
     @api_key.setter

@@ -16,7 +16,8 @@ import {
   Menu,
   X,
   Radar,
-  Radio
+  Radio,
+  KeyRound
 } from 'lucide-react'
 import Cookies from 'js-cookie'
 import { getProfile } from '@/lib/api'
@@ -25,6 +26,7 @@ const adminNavItems = [
   { id: 'overview', label: 'Overview', icon: Activity, href: '/admin?tab=overview' },
   { id: 'users', label: 'Users & Accounts', icon: Users, href: '/admin?tab=users' },
   { id: 'usage', label: 'Usage & Costs', icon: Sliders, href: '/admin?tab=usage' },
+  { id: 'credentials', label: 'AI & Models', icon: KeyRound, href: '/admin?tab=credentials' },
   { id: 'scans', label: 'Website Scans', icon: Radar, href: '/admin?tab=scans' },
   { id: 'publishing', label: 'Publishing Monitor', icon: Radio, href: '/admin?tab=publishing' },
   { id: 'plans', label: 'Plans & Limits', icon: Layers, href: '/admin?tab=plans' },

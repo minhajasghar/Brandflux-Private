@@ -1,6 +1,8 @@
 import os
+import time
 import logging
 import uuid
+import httpx
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
@@ -354,6 +356,303 @@ def update_plans_config(db: Session, plans: Dict[str, Any], admin: User) -> Dict
         details={"before": old_plans, "after": plans}
     )
     return plans
+
+
+# ─── AI Credentials & Models Configuration ──────────────────────────────────
+
+def mask_api_key(key: Optional[str]) -> str:
+    """Mask an API key for safe UI rendering, e.g. AIzaSy...9xK2."""
+    if not key:
+        return ""
+    cleaned = str(key).strip().strip('"').strip("'")
+    if len(cleaned) <= 8:
+        return "••••••••"
+    return f"{cleaned[:6]}...{cleaned[-4:]}"
+
+
+def get_ai_credentials(db: Optional[Session] = None) -> Dict[str, Any]:
+    """
+    Retrieve configured AI credentials from SystemSetting table.
+    Falls back to config.py / environment variables if not stored in DB.
+    """
+    from models.models import SystemSetting
+    from config import GEMINI_API_KEY, GEMINI_MODEL, IMAGE_MODEL
+
+    close_db = False
+    if db is None:
+        try:
+            from database import SessionLocal
+            db = SessionLocal()
+            close_db = True
+        except Exception:
+            db = None
+
+    db_creds = {}
+    if db is not None:
+        try:
+            setting = db.query(SystemSetting).filter(SystemSetting.key == "ai_credentials").first()
+            if setting and isinstance(setting.value, dict):
+                db_creds = setting.value
+        except Exception as e:
+            logger.warning(f"Failed to query ai_credentials from database: {e}")
+        finally:
+            if close_db:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+
+    raw_key = (
+        db_creds.get("gemini_api_key")
+        or os.getenv("GEMINI_API_KEY")
+        or GEMINI_API_KEY
+        or ""
+    ).strip().strip('"').strip("'")
+
+    gemini_model = (
+        db_creds.get("gemini_model")
+        or os.getenv("GEMINI_MODEL")
+        or GEMINI_MODEL
+        or "models/gemini-2.5-flash"
+    ).strip()
+
+    image_model = (
+        db_creds.get("image_model")
+        or os.getenv("IMAGE_MODEL")
+        or IMAGE_MODEL
+        or "models/gemini-nano-banana-2.1"
+    ).strip()
+
+    return {
+        "gemini_api_key": raw_key,
+        "gemini_model": gemini_model,
+        "image_model": image_model,
+        "is_database_backed": bool(db_creds.get("gemini_api_key"))
+    }
+
+
+def get_masked_ai_credentials(db: Session) -> Dict[str, Any]:
+    """Return AI credentials safe for admin UI (API key masked)."""
+    creds = get_ai_credentials(db)
+    raw_key = creds.get("gemini_api_key", "")
+
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "ai_credentials").first()
+    has_db_setting = setting is not None and isinstance(setting.value, dict)
+
+    return {
+        "gemini_api_key_masked": mask_api_key(raw_key),
+        "has_api_key": bool(raw_key),
+        "gemini_model": creds.get("gemini_model", "models/gemini-2.5-flash"),
+        "image_model": creds.get("image_model", "models/gemini-nano-banana-2.1"),
+        "source": "database" if has_db_setting else "environment",
+        "updated_at": setting.updated_at.isoformat() if setting and setting.updated_at else None,
+        "updated_by": setting.updated_by if setting else None,
+        "recommended_text_models": [
+            {"id": "models/gemini-2.5-flash", "name": "Gemini 2.5 Flash", "description": "Ultra-fast, high intelligence & low latency (Recommended)"},
+            {"id": "models/gemini-2.0-flash", "name": "Gemini 2.0 Flash", "description": "Next-generation multimodal model"},
+            {"id": "models/gemini-1.5-flash", "name": "Gemini 1.5 Flash", "description": "Legacy general-purpose model"},
+            {"id": "models/gemini-2.5-pro", "name": "Gemini 2.5 Pro", "description": "Most powerful model for complex creative reasoning"}
+        ],
+        "recommended_image_models": [
+            {"id": "models/gemini-nano-banana-2.1", "name": "Nano Banana 2.1", "description": "High-fidelity native background generator (Recommended)"},
+            {"id": "gemini-nano-banana-2.1", "name": "gemini-nano-banana-2.1", "description": "Shorthand model identifier"},
+            {"id": "models/imagen-3.0-generate-002", "name": "Imagen 3.0", "description": "Google Deepmind Imagen 3 High-Quality"}
+        ]
+    }
+
+
+def update_ai_credentials(db: Session, data: Dict[str, Any], admin: User) -> Dict[str, Any]:
+    """
+    Save AI model and API key configuration into SystemSetting table,
+    update active environment variables, and notify singleton services.
+    """
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "ai_credentials").first()
+    existing_value = setting.value if setting and isinstance(setting.value, dict) else {}
+
+    new_api_key = data.get("gemini_api_key")
+    if new_api_key is not None:
+        new_api_key = str(new_api_key).strip().strip('"').strip("'")
+        if "..." in new_api_key or "••" in new_api_key or "***" in new_api_key or not new_api_key:
+            # Retain existing key if user submitted masked or empty string
+            persisted_key = existing_value.get("gemini_api_key") or os.getenv("GEMINI_API_KEY") or ""
+        else:
+            persisted_key = new_api_key
+    else:
+        persisted_key = existing_value.get("gemini_api_key") or os.getenv("GEMINI_API_KEY") or ""
+
+    gemini_model = (data.get("gemini_model") or existing_value.get("gemini_model") or "models/gemini-2.5-flash").strip()
+    image_model = (data.get("image_model") or existing_value.get("image_model") or "models/gemini-nano-banana-2.1").strip()
+
+    new_value = {
+        "gemini_api_key": persisted_key,
+        "gemini_model": gemini_model,
+        "image_model": image_model,
+        "updated_at": datetime.utcnow().isoformat(),
+        "updated_by": admin.email
+    }
+
+    if not setting:
+        setting = SystemSetting(key="ai_credentials", value=new_value, updated_by=admin.email)
+        db.add(setting)
+    else:
+        setting.value = new_value
+        setting.updated_by = admin.email
+        setting.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(setting)
+
+    # Synchronize process environment variables so sub-modules read updated config
+    if persisted_key:
+        os.environ["GEMINI_API_KEY"] = persisted_key
+    os.environ["GEMINI_MODEL"] = gemini_model
+    os.environ["IMAGE_MODEL"] = image_model
+
+    # Reload singleton services
+    try:
+        from services.nano_banana_generator import nano_banana_generator
+        nano_banana_generator.model_id = image_model
+        if persisted_key:
+            nano_banana_generator.api_key = persisted_key
+    except Exception as e:
+        logger.warning(f"Could not update nano_banana_generator singleton: {e}")
+
+    try:
+        from services.gemini_service import GeminiService
+        import google.generativeai as genai
+        if persisted_key:
+            genai.configure(api_key=persisted_key)
+    except Exception as e:
+        logger.warning(f"Could not configure genai: {e}")
+
+    # Audit log (never leak raw API key in logs)
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="update_ai_credentials",
+        target_type="system",
+        target_id="ai_credentials",
+        details={
+            "gemini_model": gemini_model,
+            "image_model": image_model,
+            "gemini_api_key_masked": mask_api_key(persisted_key),
+            "key_updated": bool(new_api_key and "..." not in new_api_key and "••" not in new_api_key and "***" not in new_api_key)
+        }
+    )
+
+    return get_masked_ai_credentials(db)
+
+
+def test_ai_credentials_live(
+    db: Session,
+    api_key: Optional[str] = None,
+    gemini_model: Optional[str] = None,
+    image_model: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Test AI credentials live against Google Generative Language API.
+    Validates both text generation and image model reachability.
+    """
+    # Resolve real key
+    raw_key = None
+    if api_key and "..." not in api_key and "••" not in api_key and "***" not in api_key:
+        raw_key = api_key.strip().strip('"').strip("'")
+    if not raw_key:
+        creds = get_ai_credentials(db)
+        raw_key = creds.get("gemini_api_key")
+
+    if not raw_key:
+        return {
+            "status": "fail",
+            "message": "No API key found. Please enter a valid Gemini API key.",
+            "text_model": {"status": "fail", "error": "Missing API Key"},
+            "image_model": {"status": "fail", "error": "Missing API Key"}
+        }
+
+    text_m = (gemini_model or "models/gemini-2.5-flash").strip()
+    img_m = (image_model or "models/gemini-nano-banana-2.1").strip()
+
+    # Format model names for API URLs
+    formatted_text_m = text_m if text_m.startswith("models/") else f"models/{text_m}"
+    formatted_img_m = img_m if img_m.startswith("models/") else f"models/{img_m}"
+
+    result = {
+        "status": "pass",
+        "message": "AI credentials verified successfully!",
+        "gemini_api_key_masked": mask_api_key(raw_key),
+        "text_model": {"model": text_m, "status": "pending", "latency_ms": 0, "error": None},
+        "image_model": {"model": img_m, "status": "pending", "latency_ms": 0, "error": None}
+    }
+
+    # 1. Test Text Model via generateContent
+    t0 = time.time()
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/{formatted_text_m}:generateContent?key={raw_key}"
+        payload = {
+            "contents": [{"parts": [{"text": "Reply with 'PONG' only."}]}],
+            "generationConfig": {"maxOutputTokens": 10}
+        }
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.post(url, json=payload)
+            latency = int((time.time() - t0) * 1000)
+            result["text_model"]["latency_ms"] = latency
+
+            if resp.status_code == 200:
+                result["text_model"]["status"] = "pass"
+            else:
+                err_data = resp.json().get("error", {}) if resp.headers.get("content-type", "").startswith("application/json") else {}
+                err_msg = err_data.get("message") or f"HTTP {resp.status_code}: {resp.text[:150]}"
+                result["text_model"]["status"] = "fail"
+                result["text_model"]["error"] = err_msg
+                result["status"] = "fail"
+    except Exception as e:
+        result["text_model"]["status"] = "fail"
+        result["text_model"]["error"] = str(e)
+        result["status"] = "fail"
+
+    # 2. Test Image Model reachability
+    t0_img = time.time()
+    try:
+        url_img = f"https://generativelanguage.googleapis.com/v1beta/{formatted_img_m}?key={raw_key}"
+        with httpx.Client(timeout=10.0) as client:
+            resp_img = client.get(url_img)
+            latency_img = int((time.time() - t0_img) * 1000)
+            result["image_model"]["latency_ms"] = latency_img
+
+            if resp_img.status_code == 200:
+                result["image_model"]["status"] = "pass"
+            elif resp_img.status_code == 404:
+                # Some models like gemini-nano-banana-2.1 might only respond to generateContent
+                # Try a lightweight check or accept if 400 bad request (model exists, request bad)
+                test_url = f"https://generativelanguage.googleapis.com/v1beta/{formatted_img_m}:generateContent?key={raw_key}"
+                test_resp = client.post(test_url, json={"contents": [{"parts": [{"text": "test"}]}], "generationConfig": {"maxOutputTokens": 2}})
+                if test_resp.status_code in (200, 400):
+                    result["image_model"]["status"] = "pass"
+                else:
+                    err_data = test_resp.json().get("error", {}) if test_resp.headers.get("content-type", "").startswith("application/json") else {}
+                    err_msg = err_data.get("message") or f"Model not found (HTTP {test_resp.status_code})"
+                    result["image_model"]["status"] = "fail"
+                    result["image_model"]["error"] = err_msg
+                    result["status"] = "fail"
+            else:
+                err_data = resp_img.json().get("error", {}) if resp_img.headers.get("content-type", "").startswith("application/json") else {}
+                err_msg = err_data.get("message") or f"HTTP {resp_img.status_code}: {resp_img.text[:150]}"
+                result["image_model"]["status"] = "fail"
+                result["image_model"]["error"] = err_msg
+                result["status"] = "fail"
+    except Exception as e:
+        result["image_model"]["status"] = "fail"
+        result["image_model"]["error"] = str(e)
+        result["status"] = "fail"
+
+    if result["status"] == "fail":
+        reasons = []
+        if result["text_model"]["error"]:
+            reasons.append(f"Text Model: {result['text_model']['error']}")
+        if result["image_model"]["error"]:
+            reasons.append(f"Image Model: {result['image_model']['error']}")
+        result["message"] = " | ".join(reasons)
+
+    return result
 
 
 # ─── System Health Metrics ──────────────────────────────────────────────────

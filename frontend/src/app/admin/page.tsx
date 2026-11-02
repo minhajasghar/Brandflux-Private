@@ -26,6 +26,9 @@ import {
   Layers, 
   ShieldCheck, 
   Eye,
+  EyeOff,
+  Sparkles,
+  Lock,
   KeyRound,
   Download,
   RotateCcw,
@@ -58,6 +61,9 @@ import {
   adminRescanUser,
   getAdminFeatureFlags,
   updateAdminFeatureFlags,
+  getAdminAICredentials,
+  updateAdminAICredentials,
+  testAdminAICredentials,
   getAdminPublishingMonitor,
   adminRetryPost,
   getAdminPlans,
@@ -68,7 +74,7 @@ import {
   adminUpdateAdminRole
 } from '@/lib/api'
 
-type AdminTab = 'overview' | 'users' | 'usage' | 'scans' | 'publishing' | 'plans' | 'audit' | 'health' | 'admins'
+type AdminTab = 'overview' | 'users' | 'usage' | 'credentials' | 'scans' | 'publishing' | 'plans' | 'audit' | 'health' | 'admins'
 
 function AdminPortalContent() {
   const searchParams = useSearchParams()
@@ -123,6 +129,19 @@ function AdminPortalContent() {
   })
   const [savingFlags, setSavingFlags] = useState(false)
 
+  // ─── 3b. AI Credentials State ───────────────────────────────────────────────
+  const [aiCreds, setAiCreds] = useState<any>(null)
+  const [loadingAiCreds, setLoadingAiCreds] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [selectedGeminiModel, setSelectedGeminiModel] = useState('models/gemini-2.5-flash')
+  const [customGeminiModel, setCustomGeminiModel] = useState('')
+  const [selectedImageModel, setSelectedImageModel] = useState('models/gemini-nano-banana-2.1')
+  const [customImageModel, setCustomImageModel] = useState('')
+  const [savingAiCreds, setSavingAiCreds] = useState(false)
+  const [testingAiCreds, setTestingAiCreds] = useState(false)
+  const [aiTestResult, setAiTestResult] = useState<any>(null)
+
   // ─── 4. Scan Logs State ─────────────────────────────────────────────────────
   const [scans, setScans] = useState<any[]>([])
   const [totalScans, setTotalScans] = useState(0)
@@ -167,6 +186,7 @@ function AdminPortalContent() {
   useEffect(() => {
     if (activeTab === 'users') fetchUsers()
     else if (activeTab === 'usage') { fetchUsageReport(); fetchFlags() }
+    else if (activeTab === 'credentials') fetchAICredentials()
     else if (activeTab === 'scans') fetchScans()
     else if (activeTab === 'publishing') fetchPublishingMonitor()
     else if (activeTab === 'plans') fetchPlans()
@@ -242,6 +262,101 @@ function AdminPortalContent() {
       toast.error(err.response?.data?.detail || 'Failed to update flag')
     } finally {
       setSavingFlags(false)
+    }
+  }
+
+  // ─── AI Credentials Handlers ────────────────────────────────────────────────
+  const fetchAICredentials = async () => {
+    try {
+      setLoadingAiCreds(true)
+      const data = await getAdminAICredentials()
+      setAiCreds(data)
+      if (data.gemini_model) {
+        setSelectedGeminiModel(data.gemini_model)
+      }
+      if (data.image_model) {
+        setSelectedImageModel(data.image_model)
+      }
+      setApiKeyInput('')
+      setAiTestResult(null)
+    } catch (err: any) {
+      toast.error('Failed to load AI credentials configuration')
+    } finally {
+      setLoadingAiCreds(false)
+    }
+  }
+
+  const handleSaveAICredentials = async () => {
+    try {
+      setSavingAiCreds(true)
+      const textModelToSave = selectedGeminiModel === 'custom' ? customGeminiModel.trim() : selectedGeminiModel
+      const imageModelToSave = selectedImageModel === 'custom' ? customImageModel.trim() : selectedImageModel
+
+      if (!textModelToSave) {
+        toast.error('Please choose or enter a valid text generation model')
+        setSavingAiCreds(false)
+        return
+      }
+      if (!imageModelToSave) {
+        toast.error('Please choose or enter a valid image generation model')
+        setSavingAiCreds(false)
+        return
+      }
+
+      const payload: any = {
+        gemini_model: textModelToSave,
+        image_model: imageModelToSave
+      }
+
+      if (apiKeyInput.trim()) {
+        payload.gemini_api_key = apiKeyInput.trim()
+      }
+
+      const updated = await updateAdminAICredentials(payload)
+      setAiCreds(updated)
+      setApiKeyInput('')
+      toast.success('AI credentials and model settings saved in database!')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to update AI credentials')
+    } finally {
+      setSavingAiCreds(false)
+    }
+  }
+
+  const handleTestAICredentials = async () => {
+    try {
+      setTestingAiCreds(true)
+      setAiTestResult(null)
+      const textModelToTest = selectedGeminiModel === 'custom' ? customGeminiModel.trim() : selectedGeminiModel
+      const imageModelToTest = selectedImageModel === 'custom' ? customImageModel.trim() : selectedImageModel
+
+      const payload: any = {
+        gemini_model: textModelToTest,
+        image_model: imageModelToTest
+      }
+
+      if (apiKeyInput.trim()) {
+        payload.gemini_api_key = apiKeyInput.trim()
+      }
+
+      const res = await testAdminAICredentials(payload)
+      setAiTestResult(res)
+      if (res.status === 'pass') {
+        toast.success('AI credentials verified successfully!')
+      } else {
+        toast.error(res.message || 'Connection test failed')
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || 'Failed to run test connection'
+      setAiTestResult({
+        status: 'fail',
+        message: msg,
+        text_model: { status: 'fail', error: msg },
+        image_model: { status: 'fail', error: msg }
+      })
+      toast.error(msg)
+    } finally {
+      setTestingAiCreds(false)
     }
   }
 
@@ -824,6 +939,285 @@ function AdminPortalContent() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ─── TAB 3b: AI CREDENTIALS & MODELS ─── */}
+      {activeTab === 'credentials' && (
+        <div className="space-y-6">
+          {/* Header Card */}
+          <div className="p-6 rounded-3xl bg-surface border border-border shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-xl bg-primary/20 border border-primary/40 flex items-center justify-center text-primary-light">
+                    <KeyRound className="h-4 w-4" />
+                  </div>
+                  <h2 className="text-lg font-extrabold text-text">AI Credentials &amp; Model Engine</h2>
+                </div>
+                <p className="text-xs text-muted max-w-2xl leading-relaxed">
+                  Manage your Google Gemini API key and AI models safely. Stored in the encrypted platform database
+                  (<code className="font-mono text-primary-light">SystemSetting</code>) so credentials persist reliably across server restarts and updates.
+                </p>
+              </div>
+
+              {/* Status Badge */}
+              <div className="flex items-center gap-2">
+                {loadingAiCreds ? (
+                  <span className="text-xs text-muted flex items-center gap-1.5">
+                    <RefreshCw className="h-3 w-3 animate-spin text-muted" /> Loading...
+                  </span>
+                ) : aiCreds?.has_api_key ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                    <Check className="h-3.5 w-3.5" />
+                    Key Active ({aiCreds.source === 'database' ? 'Database-backed' : 'Environment fallback'})
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-danger/10 border border-danger/30 text-danger">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    No API Key Set
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {aiCreds?.updated_at && (
+              <div className="text-[11px] text-muted flex items-center gap-2 border-t border-border pt-3">
+                <Lock className="h-3.5 w-3.5 text-muted" />
+                <span>Last updated by <strong className="text-text">{aiCreds.updated_by || 'Admin'}</strong> on {new Date(aiCreds.updated_at).toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Form Card */}
+          <div className="p-6 rounded-3xl bg-surface border border-border shadow-xl space-y-6">
+            {/* 1. API Key Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-text uppercase tracking-wider flex items-center justify-between">
+                <span>Google Gemini API Key</span>
+                {aiCreds?.gemini_api_key_masked && (
+                  <span className="text-[11px] font-mono text-muted lowercase tracking-normal">
+                    Current Active: <span className="text-primary-light font-bold">{aiCreds.gemini_api_key_masked}</span>
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder={
+                    aiCreds?.gemini_api_key_masked
+                      ? `Saved key: ${aiCreds.gemini_api_key_masked} (Type new key to change)`
+                      : 'Paste your Gemini API key (AIzaSy...)'
+                  }
+                  className="w-full bg-background border border-border rounded-xl px-4 py-3 text-xs font-mono text-text placeholder:text-muted/60 focus:outline-none focus:border-primary pr-12 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted hover:text-text p-1 transition-colors"
+                  title={showApiKey ? 'Hide API Key' : 'Show API Key'}
+                >
+                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-muted leading-relaxed">
+                To retain your existing saved key, leave this field blank. Entering a new key will overwrite the saved key in the database and immediately activate across all workers.
+              </p>
+            </div>
+
+            {/* 2. Text Model Selector */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary-light" />
+                <span>Text Strategy &amp; Copywriting Model (Gemini)</span>
+              </label>
+              <select
+                value={
+                  ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-flash', 'models/gemini-2.5-pro'].includes(selectedGeminiModel)
+                    ? selectedGeminiModel
+                    : 'custom'
+                }
+                onChange={(e) => {
+                  const val = e.target.value
+                  if (val === 'custom') {
+                    setCustomGeminiModel(selectedGeminiModel)
+                    setSelectedGeminiModel('custom')
+                  } else {
+                    setSelectedGeminiModel(val)
+                  }
+                }}
+                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-xs font-bold text-text focus:outline-none focus:border-primary transition-all"
+              >
+                <option value="models/gemini-2.5-flash">models/gemini-2.5-flash — Gemini 2.5 Flash (Recommended: Ultra-fast, high intelligence)</option>
+                <option value="models/gemini-2.0-flash">models/gemini-2.0-flash — Gemini 2.0 Flash (Next-gen multimodal)</option>
+                <option value="models/gemini-1.5-flash">models/gemini-1.5-flash — Gemini 1.5 Flash (Legacy standard)</option>
+                <option value="models/gemini-2.5-pro">models/gemini-2.5-pro — Gemini 2.5 Pro (Complex reasoning &amp; strategy)</option>
+                <option value="custom">Custom text model ID...</option>
+              </select>
+
+              {selectedGeminiModel === 'custom' && (
+                <input
+                  type="text"
+                  value={customGeminiModel}
+                  onChange={(e) => setCustomGeminiModel(e.target.value)}
+                  placeholder="e.g. models/gemini-2.5-flash or custom tuned model"
+                  className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-xs font-mono text-text placeholder:text-muted/60 focus:outline-none focus:border-primary mt-2"
+                />
+              )}
+            </div>
+
+            {/* 3. Image Model Selector */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                <Radar className="h-3.5 w-3.5 text-primary-light" />
+                <span>Visual / Background Generation Model (Nano Banana / Imagen)</span>
+              </label>
+              <select
+                value={
+                  ['models/gemini-nano-banana-2.1', 'gemini-nano-banana-2.1', 'models/imagen-3.0-generate-002'].includes(selectedImageModel)
+                    ? selectedImageModel
+                    : 'custom'
+                }
+                onChange={(e) => {
+                  const val = e.target.value
+                  if (val === 'custom') {
+                    setCustomImageModel(selectedImageModel)
+                    setSelectedImageModel('custom')
+                  } else {
+                    setSelectedImageModel(val)
+                  }
+                }}
+                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-xs font-bold text-text focus:outline-none focus:border-primary transition-all"
+              >
+                <option value="models/gemini-nano-banana-2.1">models/gemini-nano-banana-2.1 — Nano Banana 2.1 (Recommended: Native Brandflux backgrounds)</option>
+                <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1 — Nano Banana 2.1 (Shorthand alias)</option>
+                <option value="models/imagen-3.0-generate-002">models/imagen-3.0-generate-002 — Google Imagen 3 (High quality photorealism)</option>
+                <option value="custom">Custom image model ID...</option>
+              </select>
+
+              {selectedImageModel === 'custom' && (
+                <input
+                  type="text"
+                  value={customImageModel}
+                  onChange={(e) => setCustomImageModel(e.target.value)}
+                  placeholder="e.g. models/gemini-nano-banana-2.1"
+                  className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-xs font-mono text-text placeholder:text-muted/60 focus:outline-none focus:border-primary mt-2"
+                />
+              )}
+            </div>
+
+            {/* Test Connection Results Card */}
+            {aiTestResult && (
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  aiTestResult.status === 'pass'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    : 'bg-danger/10 border-danger/30 text-danger'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  {aiTestResult.status === 'pass' ? (
+                    <Check className="h-4 w-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 text-danger shrink-0" />
+                  )}
+                  <span className="text-xs font-extrabold uppercase tracking-wide">
+                    {aiTestResult.status === 'pass' ? 'Live Validation Succeeded' : 'Live Validation Failed'}
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed mb-3">
+                  {aiTestResult.message}
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs border-t border-border/40 pt-3">
+                  <div className="p-2.5 rounded-xl bg-background/50 border border-border/40">
+                    <span className="text-[10px] font-bold uppercase text-muted block">Text Model Check</span>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="font-mono text-text">{aiTestResult.text_model?.model || 'Gemini'}</span>
+                      <span
+                        className={`text-[10px] font-extrabold px-2 py-0.5 rounded ${
+                          aiTestResult.text_model?.status === 'pass'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-danger/20 text-danger'
+                        }`}
+                      >
+                        {aiTestResult.text_model?.status === 'pass'
+                          ? `PASS (${aiTestResult.text_model.latency_ms}ms)`
+                          : 'FAIL'}
+                      </span>
+                    </div>
+                    {aiTestResult.text_model?.error && (
+                      <p className="text-[10px] text-danger mt-1 leading-snug">{aiTestResult.text_model.error}</p>
+                    )}
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-background/50 border border-border/40">
+                    <span className="text-[10px] font-bold uppercase text-muted block">Image Model Check</span>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="font-mono text-text">{aiTestResult.image_model?.model || 'Nano Banana'}</span>
+                      <span
+                        className={`text-[10px] font-extrabold px-2 py-0.5 rounded ${
+                          aiTestResult.image_model?.status === 'pass'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-danger/20 text-danger'
+                        }`}
+                      >
+                        {aiTestResult.image_model?.status === 'pass'
+                          ? `PASS (${aiTestResult.image_model.latency_ms}ms)`
+                          : 'FAIL'}
+                      </span>
+                    </div>
+                    {aiTestResult.image_model?.error && (
+                      <p className="text-[10px] text-danger mt-1 leading-snug">{aiTestResult.image_model.error}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Buttons Bar */}
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleTestAICredentials}
+                disabled={testingAiCreds || savingAiCreds}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-surface-secondary border border-border text-xs font-bold text-text hover:bg-surface-secondary/80 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              >
+                {testingAiCreds ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary-light" />
+                    <span>Testing Connection...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-3.5 w-3.5 text-primary-light" />
+                    <span>Test Connection</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveAICredentials}
+                disabled={savingAiCreds || testingAiCreds}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-primary text-black font-extrabold text-xs hover:bg-primary-light flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20 disabled:opacity-50"
+              >
+                {savingAiCreds ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-black" />
+                    <span>Saving to Database...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-black" />
+                    <span>Save Configuration</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

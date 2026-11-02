@@ -22,6 +22,9 @@ from services.admin_service import (
     update_feature_flags,
     get_plans_config,
     update_plans_config,
+    get_masked_ai_credentials,
+    update_ai_credentials,
+    test_ai_credentials_live,
     get_system_health_metrics,
     permanently_purge_user,
     purge_expired_soft_deleted_users
@@ -64,6 +67,16 @@ class FeatureFlagsRequest(BaseModel):
     session_generation: Optional[bool] = None
     autopilot_posting: Optional[bool] = None
     website_scanner: Optional[bool] = None
+
+class UpdateAICredentialsRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+    gemini_model: Optional[str] = None
+    image_model: Optional[str] = None
+
+class TestAICredentialsRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+    gemini_model: Optional[str] = None
+    image_model: Optional[str] = None
 
 class CreateAdminRequest(BaseModel):
     email: str
@@ -938,6 +951,43 @@ def update_flags(
     """Toggle global kill switch or feature flags with audit logging."""
     updates = req.model_dump(exclude_unset=True)
     return update_feature_flags(db, updates, admin)
+
+
+# ─── 6b. AI Credentials & Models ────────────────────────────────────────────
+
+@router.get("/ai-credentials")
+def get_admin_ai_credentials(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Read AI model preferences and masked Gemini API key."""
+    return get_masked_ai_credentials(db)
+
+
+@router.put("/ai-credentials")
+def update_admin_ai_credentials(
+    req: UpdateAICredentialsRequest,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Persist AI API keys and model configurations into the database."""
+    updates = req.model_dump(exclude_unset=True)
+    return update_ai_credentials(db, updates, admin)
+
+
+@router.post("/ai-credentials/test")
+def test_admin_ai_credentials(
+    req: TestAICredentialsRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Validate AI credentials and model availability live without saving."""
+    return test_ai_credentials_live(
+        db=db,
+        api_key=req.gemini_api_key,
+        gemini_model=req.gemini_model,
+        image_model=req.image_model
+    )
 
 
 # ─── 7. Content & Publishing Monitor ────────────────────────────────────────

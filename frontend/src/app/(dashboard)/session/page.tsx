@@ -91,8 +91,10 @@ export default function SessionPage() {
   // Helper to ensure public, stable media resolution across devices
   const resolveMediaUrl = (url?: string | null): string => {
     if (!url) return ''
-    if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost') {
-      url = url.replace('http://localhost:8000', `http://${window.location.hostname}:8000`)
+    if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      const currentHost = window.location.hostname
+      url = url.replace(/http:\/\/localhost:8000/g, `http://${currentHost}:8000`)
+               .replace(/http:\/\/127\.0\.0\.1:8000/g, `http://${currentHost}:8000`)
     }
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url
@@ -948,7 +950,7 @@ export default function SessionPage() {
                           ) : (
                             <>
                               <img 
-                                src={v.image_url} 
+                                src={resolveMediaUrl(v.image_url)} 
                                 alt={v.variant_label} 
                                 className="w-full h-full object-cover transition duration-300 group-hover:scale-105" 
                               />
@@ -1049,7 +1051,7 @@ export default function SessionPage() {
                   <div className="relative rounded-2xl overflow-hidden aspect-square border-2 border-accent bg-surface-secondary">
                     {selectedVariantImage ? (
                       <img 
-                        src={selectedVariantImage} 
+                        src={resolveMediaUrl(selectedVariantImage)} 
                         alt="Selected Variant" 
                         className="w-full h-full object-cover" 
                       />
@@ -1244,12 +1246,12 @@ export default function SessionPage() {
               </div>
 
               <div className="relative rounded-2xl overflow-hidden aspect-square bg-black">
-                <img src={previewImageUrl} alt="Full Size Preview" className="w-full h-full object-contain" />
+                <img src={resolveMediaUrl(previewImageUrl)} alt="Full Size Preview" className="w-full h-full object-contain" />
               </div>
 
               <div className="flex items-center justify-end gap-3 mt-4 pt-3 border-t border-border">
                 <a
-                  href={previewImageUrl}
+                  href={resolveMediaUrl(previewImageUrl)}
                   target="_blank"
                   rel="noreferrer"
                   className="px-4 py-2 rounded-xl bg-surface-secondary border border-border text-text font-bold text-xs flex items-center gap-1.5 hover:bg-surface-hover transition"

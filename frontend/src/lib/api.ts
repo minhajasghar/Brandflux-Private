@@ -31,9 +31,34 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Handle 401 Unauthorized globally without breaking public routes or auth endpoints
+// Handle responses: translate localhost URLs to current host & handle 401 Unauthorized globally
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      const currentHost = window.location.hostname
+      const rewriteHost = (data: any): any => {
+        if (!data) return data
+        if (typeof data === 'string') {
+          return data
+            .replace(/http:\/\/localhost:8000/g, `http://${currentHost}:8000`)
+            .replace(/http:\/\/127\.0\.0\.1:8000/g, `http://${currentHost}:8000`)
+        }
+        if (Array.isArray(data)) {
+          return data.map(rewriteHost)
+        }
+        if (typeof data === 'object') {
+          const res: any = {}
+          for (const key of Object.keys(data)) {
+            res[key] = rewriteHost(data[key])
+          }
+          return res
+        }
+        return data
+      }
+      response.data = rewriteHost(response.data)
+    }
+    return response
+  },
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {

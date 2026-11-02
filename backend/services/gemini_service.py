@@ -13,6 +13,7 @@ class GeminiService:
     def __init__(self):
         self.api_key = GEMINI_API_KEY
         self.model_name = GEMINI_MODEL or os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
+        self.last_error_message = None
         if self.api_key:
             try:
                 genai.configure(api_key=self.api_key)
@@ -168,8 +169,15 @@ Generate JSON strictly matching this structure:
             logger.info(f"✓ [Gemini Text Generated] Generated multi-platform copy in {elapsed:.2f}s")
             return ensured
         except Exception as e:
+            err_str = str(e)
+            if "401" in err_str or "UNAUTHENTICATED" in err_str or "API key not valid" in err_str:
+                self.last_error_message = "Google Gemini API key invalid or unauthenticated (HTTP 401). Please check GEMINI_API_KEY in backend/.env."
+            elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                self.last_error_message = "Google Gemini quota limit exceeded (HTTP 429). Please wait a moment or check your AI Studio quota."
+            else:
+                self.last_error_message = f"Gemini text generation failed: {err_str[:120]}"
             logger.error(f"❌ [Gemini Text Generation Error] {e}\n{traceback.format_exc()}")
-            return {"_source": "fallback"}
+            return {"_source": "fallback", "_error": self.last_error_message}
 
     def _ensure_all_platforms(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Guarantee all 4 platform keys exist; synthesize fallbacks from instagram_post."""

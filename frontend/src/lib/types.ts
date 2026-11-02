@@ -138,4 +138,6 @@ export interface MultiVariantSessionResult {
   plan: string
   max_variants_allowed: number
   guidance?: any
+  generation_status?: 'success' | 'partial' | 'failed' | 'fallback'
+  generation_error?: string
 }

@@ -34,13 +34,16 @@ class NanoBananaGenerator:
     - Saves outputs to Cloudflare R2 and logs usage/cost to the database
     """
 
-    COST_PER_IMAGE_USD = 0.030  # Standard Imagen/Nano Banana image generation tier
+    # Google AI Studio / Gemini API native image pricing (gemini-nano-banana-2.1 / flash-image at 1K resolution):
+    # Output tokens billed at ~$60/M tokens ≈ $0.067 per 1024x1024 image
+    COST_PER_IMAGE_USD = 0.067
 
     def __init__(self):
         self._model_override = None
         self._api_key_override = None
         self.timeout_seconds = 38.0
         self.max_retries = 2
+        self.last_error_message = None
 
     @property
     def model_id(self) -> str:
@@ -399,6 +402,7 @@ class NanoBananaGenerator:
         except GeminiBillingError as bill_err:
             elapsed_ms = int((time.time() - start_time) * 1000)
             logger.error(f"⚠️ Falling back to CSS ambient/solid background: {bill_err}")
+            self.last_error_message = f"Google Cloud billing required: {bill_err}"
             self._log_usage(
                 user_id=user_id,
                 brand_id=brand_id,
@@ -416,6 +420,16 @@ class NanoBananaGenerator:
 
         except Exception as gen_err:
             elapsed_ms = int((time.time() - start_time) * 1000)
+            err_str = str(gen_err)
+            if "401" in err_str or "UNAUTHENTICATED" in err_str or "API key not valid" in err_str:
+                self.last_error_message = "Google Gemini API key invalid or unauthenticated (HTTP 401). Please check GEMINI_API_KEY in backend/.env."
+            elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                self.last_error_message = "Google Gemini rate limit / quota exceeded (HTTP 429). Please wait a moment or check your AI Studio quota."
+            elif "timeout" in err_str.lower():
+                self.last_error_message = "Image generation timed out after 38s. Google AI Studio server took too long to respond."
+            else:
+                self.last_error_message = f"Image generation failed: {err_str[:120]}"
+
             logger.error(
                 f"❌ Nano Banana generation failed ({gen_err}) after {elapsed_ms}ms:\n{traceback.format_exc()}\nFalling back to template gradient/solid background."
             )

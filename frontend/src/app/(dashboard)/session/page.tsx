@@ -284,7 +284,13 @@ export default function SessionPage() {
           }
 
           setPhase(3)
-          toast.success('Generated tailored image variants!')
+          if (res.generation_status === 'failed' || res.variants?.every(v => v.source === 'fallback')) {
+            toast.error(res.generation_error || 'AI generation failed - showing local emergency templates', { duration: 6000 })
+          } else if (res.generation_status === 'partial') {
+            toast('Some variants used emergency fallback templates', { icon: '⚠️', duration: 4000 })
+          } else {
+            toast.success('Generated tailored image variants!')
+          }
         }, 600)
       }
     } catch (err: any) {
@@ -730,10 +736,17 @@ export default function SessionPage() {
             {/* Header with Theme, Credits & Action Buttons */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-6">
               <div>
-                <span className="text-success font-bold uppercase tracking-wider text-xs flex items-center gap-1.5">
-                  <CheckCircle className="h-4 w-4 text-success" />
-                  Variants Generated Successfully
-                </span>
+                {variantSessionData.generation_status === 'failed' || variantSessionData.variants?.every(v => v.source === 'fallback') ? (
+                  <span className="text-amber-400 font-bold uppercase tracking-wider text-xs flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4 text-amber-400" />
+                    AI Generation Failed (Local Emergency Templates Shown)
+                  </span>
+                ) : (
+                  <span className="text-success font-bold uppercase tracking-wider text-xs flex items-center gap-1.5">
+                    <CheckCircle className="h-4 w-4 text-success" />
+                    Variants Generated Successfully
+                  </span>
+                )}
                 <h1 className="text-3xl font-black mt-1 tracking-tight text-text">
                   {variantSessionData.session_theme || "Today's Content"}
                 </h1>
@@ -770,6 +783,29 @@ export default function SessionPage() {
                 </button>
               </div>
             </div>
+
+            {/* Prominent Diagnostic Alert Banner when AI generation has issues */}
+            {variantSessionData.generation_error && (
+              <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-4 text-amber-300">
+                <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1.5 flex-1 text-xs">
+                  <div className="flex items-center justify-between">
+                    <p className="font-extrabold text-sm text-amber-200">
+                      Why did AI generation fail?
+                    </p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      0 Credits Deducted
+                    </span>
+                  </div>
+                  <p className="font-medium text-amber-100 leading-relaxed bg-black/50 p-3 rounded-xl border border-amber-500/20 font-mono text-[11px]">
+                    {variantSessionData.generation_error}
+                  </p>
+                  <p className="text-[11px] text-muted">
+                    No post credits were consumed. To fix: update your <code>GEMINI_API_KEY</code> in <code>backend/.env</code> and click <strong>Regenerate All</strong>.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* ─── VARIANTS GRID WITH SKELETON LOADERS & SELECTION ─────────── */}
             <div className="space-y-4">
@@ -825,11 +861,18 @@ export default function SessionPage() {
                               {v.source === 'fallback' && (
                                 <div 
                                   onClick={(e) => { e.stopPropagation(); handleRegenerateVariant(v, false) }}
-                                  className="absolute bottom-2 left-2 right-2 z-10 px-2 py-1.5 rounded-lg bg-amber-500/95 hover:bg-amber-400 text-black font-extrabold text-[10px] flex items-center justify-center gap-1 shadow-md transition cursor-pointer backdrop-blur-sm"
-                                  title="AI generation failed, tap to retry"
+                                  className="absolute bottom-2 left-2 right-2 z-10 p-2.5 rounded-xl bg-black/90 hover:bg-black/95 border border-amber-500/50 text-amber-300 font-bold text-[10px] shadow-xl transition cursor-pointer backdrop-blur-md space-y-1"
+                                  title={v.error || "AI generation failed, tap to retry"}
                                 >
-                                  <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                                  <span>AI generation failed, tap to retry</span>
+                                  <div className="flex items-center gap-1.5 text-amber-400 font-extrabold">
+                                    <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                                    <span>AI Generation Failed (Tap to Retry)</span>
+                                  </div>
+                                  {v.error && (
+                                    <p className="text-[10px] text-muted line-clamp-2 leading-tight font-mono">
+                                      {v.error}
+                                    </p>
+                                  )}
                                 </div>
                               )}
                               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">

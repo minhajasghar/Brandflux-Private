@@ -300,6 +300,8 @@ class MultiVariantSessionResponse(BaseModel):
     plan: str
     max_variants_allowed: int
     guidance: Optional[Dict[str, Any]] = None
+    generation_status: str = "success"  # "success" | "partial" | "failed"
+    generation_error: Optional[str] = None
 
 class DailySessionResponse(BaseModel):
     id: str

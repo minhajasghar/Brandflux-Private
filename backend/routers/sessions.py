@@ -619,6 +619,7 @@ async def generate_single_variant(
         filename = f"variant_{index}_{image_gen_platform}_{uuid.uuid4().hex}.png"
         public_url = storage_service.upload_image(final_bytes, filename)
         variant_source = "ai" if bg_url else "fallback"
+        variant_error = None if bg_url else (nano_banana_generator.last_error_message or "AI background generation failed")
 
         # 4. Save to session_variants with 7-day auto-expiry
         expiry = datetime.utcnow() + timedelta(days=7)
@@ -656,7 +657,7 @@ async def generate_single_variant(
             is_selected=False,
             status="ready",
             source=variant_source,
-            error=None
+            error=variant_error
         )
     except Exception as e:
         import traceback
@@ -921,6 +922,26 @@ async def generate_session_variants(
     caption_source = "ai" if content_data.get("_source") == "ai" else "fallback"
     credits_rem = get_credits_remaining_for_user(user, db)
 
+    all_fallback = all(v.source == "fallback" for v in variant_results)
+    any_fallback = any(v.source == "fallback" for v in variant_results)
+
+    gen_status = "success"
+    gen_error = None
+
+    if all_fallback:
+        gen_status = "failed"
+        gen_error = (
+            nano_banana_generator.last_error_message
+            or content_data.get("_error")
+            or "All AI generation calls failed. Displaying local branded emergency templates."
+        )
+    elif any_fallback:
+        gen_status = "partial"
+        gen_error = nano_banana_generator.last_error_message or "Some AI variant requests failed or timed out."
+    elif content_data.get("_source") == "fallback":
+        gen_status = "partial"
+        gen_error = content_data.get("_error") or "AI copywriting failed; emergency branded copy used."
+
     return MultiVariantSessionResponse(
         session_id=session.id,
         session_theme=content_data.get("session_theme", "Daily Content"),
@@ -933,7 +954,9 @@ async def generate_session_variants(
         credits_remaining=credits_rem,
         plan=(user.plan or "starter").capitalize(),
         max_variants_allowed=max_allowed,
-        guidance=content_data.get("guidance") or {}
+        guidance=content_data.get("guidance") or {},
+        generation_status=gen_status,
+        generation_error=gen_error
     )
 
 

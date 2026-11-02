@@ -38,8 +38,8 @@ class NanoBananaGenerator:
     def __init__(self):
         self._model_override = None
         self._api_key_override = None
-        self.timeout_seconds = 30.0
-        self.max_retries = 3
+        self.timeout_seconds = 22.0
+        self.max_retries = 1
 
     @property
     def model_id(self) -> str:

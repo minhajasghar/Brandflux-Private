@@ -26,7 +26,7 @@ class HTMLRenderer:
         )
         self._playwright: Optional[Playwright] = None
         self._browser: Optional[Browser] = None
-        self._init_lock = asyncio.Lock()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     @classmethod
     def get_instance(cls) -> "HTMLRenderer":
@@ -35,23 +35,34 @@ class HTMLRenderer:
         return cls._instance
 
     async def _get_browser(self) -> Browser:
-        async with self._init_lock:
-            if self._browser is None or not self._browser.is_connected():
-                if self._playwright is None:
-                    self._playwright = await async_playwright().start()
-                
-                self._browser = await self._playwright.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--font-render-hinting=none",
-                    ]
-                )
-                logger.info("🚀 Playwright Chromium browser initialized for HTML template rendering")
-            return self._browser
+        current_loop = asyncio.get_running_loop()
+        # If loop changed (e.g. across requests or threads) or browser disconnected, recycle cleanly
+        if self._browser is None or self._loop != current_loop or not self._browser.is_connected():
+            if self._browser:
+                try:
+                    await asyncio.wait_for(self._browser.close(), timeout=3.0)
+                except Exception:
+                    pass
+            if self._playwright:
+                try:
+                    await asyncio.wait_for(self._playwright.stop(), timeout=3.0)
+                except Exception:
+                    pass
+            
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--font-render-hinting=none",
+                ]
+            )
+            self._loop = current_loop
+            logger.info("🚀 Playwright Chromium browser initialized for HTML template rendering")
+        return self._browser
 
     async def render_html(
         self,
@@ -62,54 +73,69 @@ class HTMLRenderer:
     ) -> bytes:
         """
         Render raw HTML string to PNG bytes with high-DPI scaling.
-        Auto-recovers from closed connections or event-loop recycling.
+        Guaranteed to not hang with strict timeouts and automatic browser recycling.
         """
+        return await asyncio.wait_for(
+            self._do_render_html(html_content, width, height, device_scale_factor),
+            timeout=15.0
+        )
+
+    async def _do_render_html(
+        self,
+        html_content: str,
+        width: int = 1080,
+        height: int = 1080,
+        device_scale_factor: int = 2
+    ) -> bytes:
         context = None
         page = None
         for attempt in range(2):
             try:
                 browser = await self._get_browser()
-                context = await browser.new_context(
-                    viewport={"width": width, "height": height},
-                    device_scale_factor=device_scale_factor
+                context = await asyncio.wait_for(
+                    browser.new_context(
+                        viewport={"width": width, "height": height},
+                        device_scale_factor=device_scale_factor
+                    ),
+                    timeout=5.0
                 )
-                page = await context.new_page()
+                page = await asyncio.wait_for(context.new_page(), timeout=5.0)
                 break
             except Exception as e:
                 logger.warning(f"Browser context creation failed (attempt {attempt+1}): {e}, recycling browser instance...")
-                async with self._init_lock:
-                    try:
-                        if self._browser:
-                            await self._browser.close()
-                    except Exception:
-                        pass
-                    try:
-                        if self._playwright:
-                            await self._playwright.stop()
-                    except Exception:
-                        pass
-                    self._browser = None
-                    self._playwright = None
+                try:
+                    if self._browser:
+                        await self._browser.close()
+                except Exception:
+                    pass
+                try:
+                    if self._playwright:
+                        await self._playwright.stop()
+                except Exception:
+                    pass
+                self._browser = None
+                self._playwright = None
+                self._loop = None
                 if attempt == 1:
                     raise
 
         try:
             # Set HTML content and wait for DOM and styling
             try:
-                await page.set_content(html_content, wait_until="load", timeout=8000)
+                await page.set_content(html_content, wait_until="load", timeout=6000)
             except Exception:
-                await page.set_content(html_content, wait_until="domcontentloaded", timeout=5000)
+                await page.set_content(html_content, wait_until="domcontentloaded", timeout=4000)
             
-            # Wait for Google Fonts to finish loading in DOM
+            # Wait for Google Fonts to finish loading in DOM (max 2 seconds)
             try:
-                await page.evaluate("document.fonts.ready")
+                await asyncio.wait_for(page.evaluate("document.fonts.ready"), timeout=2.0)
             except Exception:
                 pass
 
             # Screenshot exact viewport
-            png_bytes = await page.screenshot(
-                type="png",
-                full_page=False
+            png_bytes = await asyncio.wait_for(
+                page.screenshot(type="png", full_page=False),
+                timeout=6.0
             )
             return png_bytes
         finally:

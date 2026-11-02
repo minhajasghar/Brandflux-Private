@@ -143,17 +143,18 @@ export default function SessionPage() {
 
   const startProgressBar = () => {
     setProgress(0)
-    setProgressLabel('Starting...')
+    setProgressLabel('Analyzing brand tone & strategic focus...')
     progressTimersRef.current.forEach(clearTimeout)
     progressTimersRef.current = []
 
     const schedule = [
-      { delay: 400,   pct: 15, label: 'Analyzing brand tone & references...' },
-      { delay: 1800,  pct: 30, label: 'Drafting multi-channel copy...' },
-      { delay: 3500,  pct: 50, label: 'Nano Banana 2.1 formulating hero visuals...' },
-      { delay: 6500,  pct: 75, label: 'Rendering crisp HTML/CSS typography variants...' },
-      { delay: 9000,  pct: 90, label: 'Harmonizing brand logos and CTA overlays...' },
-      { delay: 11000, pct: 96, label: 'Almost ready...' },
+      { delay: 400,   pct: 12, label: 'Analyzing brand tone & references...' },
+      { delay: 2500,  pct: 28, label: 'Drafting multi-channel copy & hashtags...' },
+      { delay: 6000,  pct: 46, label: 'Formulating hero visual concepts...' },
+      { delay: 11000, pct: 68, label: 'Rendering crisp HTML/CSS typography layouts...' },
+      { delay: 18000, pct: 84, label: 'Harmonizing brand logos and CTA overlays...' },
+      { delay: 25000, pct: 92, label: 'Polishing high-retina visual variants...' },
+      { delay: 35000, pct: 96, label: 'Finalizing design files...' },
     ]
 
     schedule.forEach(({ delay, pct, label }) => {
@@ -163,6 +164,16 @@ export default function SessionPage() {
       }, delay)
       progressTimersRef.current.push(timer)
     })
+
+    // Fail-safe timeout: after 55 seconds, alert the user rather than leaving them hanging indefinitely
+    const timeoutTimer = setTimeout(() => {
+      if (phase === 2) {
+        toast.error('Generation took longer than expected. Please try again or simplify inputs.')
+        setPhase(1)
+        setIsGenerating(false)
+      }
+    }, 55000)
+    progressTimersRef.current.push(timeoutTimer)
   }
 
   const completeProgressBar = () => {
@@ -691,6 +702,19 @@ export default function SessionPage() {
                 />
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                progressTimersRef.current.forEach(clearTimeout)
+                setPhase(1)
+                setIsGenerating(false)
+                toast('Generation canceled', { icon: '↩️' })
+              }}
+              className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold text-muted hover:text-text bg-surface-secondary/50 hover:bg-surface-secondary border border-border transition-all"
+            >
+              Cancel & Return to Inputs
+            </button>
           </div>
         )}
 

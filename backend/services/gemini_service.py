@@ -1,3 +1,4 @@
+import os
 import google.generativeai as genai
 import json
 import logging
@@ -9,32 +10,10 @@ logger = logging.getLogger(__name__)
 class GeminiService:
     def __init__(self):
         self.api_key = GEMINI_API_KEY
-        self.model_name = "models/gemini-2.5-flash"  # Default known stable model
+        self.model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         if self.api_key:
             try:
                 genai.configure(api_key=self.api_key)
-                
-                # Auto-detect available models
-                try:
-                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    logger.info(f"Available Gemini models: {available_models}")
-                    
-                    priorities = [
-                        "models/gemini-3.8-flash",
-                        "models/gemini-2.5-flash",
-                        "models/gemini-flash-latest",
-                        "models/gemini-pro-latest"
-                    ]
-                    for p in priorities:
-                        if p in available_models:
-                            self.model_name = p
-                            break
-                    else:
-                        if available_models:
-                            self.model_name = available_models[0]
-                except Exception as list_err:
-                    logger.warning(f"Failed to auto-detect Gemini models, falling back to priority list: {str(list_err)}")
-                
                 logger.info(f"Selected Gemini model: {self.model_name}")
                 self.model = genai.GenerativeModel(
                     model_name=self.model_name,

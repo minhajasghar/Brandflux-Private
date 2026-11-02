@@ -88,13 +88,19 @@ export default function SessionPage() {
     call_to_action?: string
   }>>({})
 
-  // Helper to ensure public, stable media resolution
+  // Helper to ensure public, stable media resolution across devices
   const resolveMediaUrl = (url?: string | null): string => {
     if (!url) return ''
+    if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost') {
+      url = url.replace('http://localhost:8000', `http://${window.location.hostname}:8000`)
+    }
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url
     }
-    const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+    const host = typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost'
+      ? window.location.hostname
+      : 'localhost'
+    const base = `http://${host}:8000`
     const path = url.startsWith('/') ? url : `/${url}`
     return `${base.replace(/\/+$/, '')}${path}`
   }

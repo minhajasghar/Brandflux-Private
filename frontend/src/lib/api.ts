@@ -1,17 +1,28 @@
 import axios from 'axios'
 
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+const getInitialBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    const host = window.location.hostname
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      return `http://${host}:8000`
+    }
+  }
+  return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+}
 
 const api = axios.create({
-  baseURL: API_BASE,
+  baseURL: getInitialBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// Interceptor for tokens
+// Interceptor for tokens & dynamic LAN routing
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
+    if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      config.baseURL = `http://${window.location.hostname}:8000`
+    }
     const token = localStorage.getItem('brandflux_token') || sessionStorage.getItem('brandflux_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`

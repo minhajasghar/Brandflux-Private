@@ -4,6 +4,7 @@ import time
 import uuid
 import base64
 import asyncio
+import traceback
 import logging
 from typing import Dict, Any, Optional, Tuple, List
 import httpx
@@ -38,8 +39,8 @@ class NanoBananaGenerator:
     def __init__(self):
         self._model_override = None
         self._api_key_override = None
-        self.timeout_seconds = 22.0
-        self.max_retries = 1
+        self.timeout_seconds = 38.0
+        self.max_retries = 2
 
     @property
     def model_id(self) -> str:
@@ -185,38 +186,63 @@ class NanoBananaGenerator:
     async def _call_gemini_api(self, prompt: str, aspect_ratio: str) -> bytes:
         """
         Execute API call to Gemini with timeout and return raw PNG bytes.
-        Supports standard predict / generateImages endpoints for Google image models.
+        Calls the generateContent endpoint with responseModalities=['IMAGE'],
+        and falls back to predict for Imagen models.
         """
         self.validate_api_key()
         api_key = self.get_api_key()
         model_name = self.get_active_model()
-
-        # Try Google Generative Language predict endpoint
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:predict?key={api_key}"
+        clean_model = model_name.replace("models/", "")
         headers = {"Content-Type": "application/json"}
-        payload = {
-            "instances": [
-                {
-                    "prompt": prompt
-                }
-            ],
-            "parameters": {
-                "sampleCount": 1,
-                "aspectRatio": aspect_ratio,
-                "outputMimeType": "image/png"
-            }
+
+        # 1. Primary: generateContent endpoint (standard for gemini-nano-banana and multimodal Gemini models)
+        content_url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
+        content_payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["IMAGE"]}
         }
 
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.post(url, json=payload, headers=headers)
+            try:
+                res = await client.post(content_url, json=content_payload, headers=headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        for part in parts:
+                            inline = part.get("inlineData", {})
+                            if inline.get("data"):
+                                return base64.b64decode(inline["data"])
+                elif res.status_code in (400, 402, 403, 429):
+                    err_text = res.text
+                    if any(kw in err_text.lower() for kw in ("billing", "quota", "resource_exhausted", "permission_denied", "payment")):
+                        raise GeminiBillingError(
+                            f"Gemini API image generation failed ({res.status_code}): Billing must be enabled on your "
+                            f"Google Cloud / AI Studio project for model '{model_name}'. Details: {err_text}"
+                        )
+                    logger.info(f"generateContent returned status {res.status_code}, falling through to predict endpoint")
+            except GeminiBillingError:
+                raise
+            except Exception as ex:
+                logger.warning(f"generateContent attempt encountered exception: {ex}")
 
-            if response.status_code == 200:
-                data = response.json()
-                # Parse predictions array
+            # 2. Secondary fallback: predict endpoint (for Imagen-style endpoints)
+            predict_url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:predict?key={api_key}"
+            predict_payload = {
+                "instances": [{"prompt": prompt}],
+                "parameters": {
+                    "sampleCount": 1,
+                    "aspectRatio": aspect_ratio,
+                    "outputMimeType": "image/png"
+                }
+            }
+            pred_res = await client.post(predict_url, json=predict_payload, headers=headers)
+            if pred_res.status_code == 200:
+                data = pred_res.json()
                 predictions = data.get("predictions") or []
                 if predictions:
                     first_pred = predictions[0]
-                    # Support both bytesBase64Encoded and image.imageBytes
                     b64 = (
                         first_pred.get("bytesBase64Encoded")
                         or (first_pred.get("image", {}).get("imageBytes") if isinstance(first_pred, dict) else None)
@@ -225,39 +251,7 @@ class NanoBananaGenerator:
                     if b64:
                         return base64.b64decode(b64)
 
-            # Check for billing or quota errors
-            if response.status_code in (400, 402, 403, 429):
-                err_text = response.text
-                if any(kw in err_text.lower() for kw in ("billing", "quota", "resource_exhausted", "permission_denied", "payment")):
-                    raise GeminiBillingError(
-                        f"Gemini API image generation failed ({response.status_code}): Billing must be enabled on your "
-                        f"Google Cloud / AI Studio project for model '{model_name}'. Details: {err_text}"
-                    )
-                raise Exception(f"Gemini API returned status {response.status_code}: {err_text}")
-
-            # Try alternate generateContent endpoint if predict is unsupported by this specific model key
-            if response.status_code == 404:
-                alt_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                alt_payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"responseModalities": ["IMAGE"]}
-                }
-                alt_res = await client.post(alt_url, json=alt_payload, headers=headers)
-                if alt_res.status_code == 200:
-                    alt_data = alt_res.json()
-                    candidates = alt_data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        for part in parts:
-                            inline = part.get("inlineData", {})
-                            if inline.get("data"):
-                                return base64.b64decode(inline["data"])
-                elif alt_res.status_code in (400, 402, 403):
-                    raise GeminiBillingError(
-                        f"Gemini image generation requires an active paid account with billing enabled. {alt_res.text}"
-                    )
-
-            raise Exception(f"Gemini API call failed with HTTP {response.status_code}: {response.text}")
+            raise Exception(f"Gemini API image generation failed. generateContent: {res.status_code if 'res' in locals() else 'error'}, predict: {pred_res.status_code}: {pred_res.text}")
 
     async def generate_background_with_retry(
         self,
@@ -422,8 +416,8 @@ class NanoBananaGenerator:
 
         except Exception as gen_err:
             elapsed_ms = int((time.time() - start_time) * 1000)
-            logger.warning(
-                f"⚠️ Nano Banana generation failed ({gen_err}). Falling back to template gradient/solid background."
+            logger.error(
+                f"❌ Nano Banana generation failed ({gen_err}) after {elapsed_ms}ms:\n{traceback.format_exc()}\nFalling back to template gradient/solid background."
             )
             self._log_usage(
                 user_id=user_id,

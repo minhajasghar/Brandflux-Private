@@ -516,6 +516,7 @@ class SessionVariant(Base):
     call_to_action = Column(Text, nullable=True)
 
     is_selected = Column(Boolean, default=False)
+    source = Column(String(20), default="ai")  # "ai" or "fallback"
     expires_at = Column(DateTime, nullable=False)  # Auto-delete after 7 days if unselected
     created_at = Column(DateTime, default=func.now())
 

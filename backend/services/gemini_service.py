@@ -1,16 +1,18 @@
 import os
+import time
+import traceback
 import google.generativeai as genai
 import json
 import logging
 from typing import Dict, Any, List, Optional
-from config import GEMINI_API_KEY
+from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
 class GeminiService:
     def __init__(self):
         self.api_key = GEMINI_API_KEY
-        self.model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        self.model_name = GEMINI_MODEL or os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
         if self.api_key:
             try:
                 genai.configure(api_key=self.api_key)
@@ -23,9 +25,10 @@ class GeminiService:
                     )
                 )
             except Exception as e:
-                logger.error(f"Gemini initialization failed: {str(e)}")
+                logger.error(f"[Gemini Init Failed] {e}\n{traceback.format_exc()}")
                 self.model = None
         else:
+            logger.warning("[Gemini Init] No GEMINI_API_KEY provided")
             self.model = None
 
     def decide_content_strategy(
@@ -152,15 +155,21 @@ Generate JSON strictly matching this structure:
 }}"""
 
         try:
+            t0 = time.time()
             response = self.model.generate_content(
                 prompt,
                 generation_config={"response_mime_type": "application/json"}
             )
             result = self.safe_parse_json(response.text)
-            return self._ensure_all_platforms(result)
+            ensured = self._ensure_all_platforms(result)
+            if ensured:
+                ensured["_source"] = "ai"
+            elapsed = time.time() - t0
+            logger.info(f"✓ [Gemini Text Generated] Generated multi-platform copy in {elapsed:.2f}s")
+            return ensured
         except Exception as e:
-            logger.error(f"Gemini generation error: {str(e)}")
-            return {}
+            logger.error(f"❌ [Gemini Text Generation Error] {e}\n{traceback.format_exc()}")
+            return {"_source": "fallback"}
 
     def _ensure_all_platforms(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Guarantee all 4 platform keys exist; synthesize fallbacks from instagram_post."""

@@ -121,6 +121,7 @@ export interface SessionVariantItem {
   call_to_action?: string
   is_selected: boolean
   status: 'ready' | 'fallback' | 'failed' | 'generating'
+  source?: 'ai' | 'fallback'
   error?: string
 }
 
@@ -128,6 +129,7 @@ export interface MultiVariantSessionResult {
   session_id: string
   session_theme: string
   caption: string
+  caption_source?: 'ai' | 'fallback'
   hashtags: string[]
   call_to_action: string
   posting_time_suggestion?: string

@@ -62,7 +62,8 @@ os.makedirs(PROCESSED_IMAGES_DIR, exist_ok=True)
 
 # ─── Gemini AI & Image Generation ─────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
-IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gemini-nano-banana-2.1").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash").strip()
+IMAGE_MODEL = os.getenv("IMAGE_MODEL", "models/gemini-nano-banana-2.1").strip()
 
 # ─── Auth & Security ───────────────────────────────────────
 SECRET_KEY = os.getenv("SECRET_KEY", "brandflux-super-secret-key-12345")

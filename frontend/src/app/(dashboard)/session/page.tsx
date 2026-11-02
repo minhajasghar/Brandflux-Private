@@ -822,6 +822,16 @@ export default function SessionPage() {
                                 alt={v.variant_label} 
                                 className="w-full h-full object-cover transition duration-300 group-hover:scale-105" 
                               />
+                              {v.source === 'fallback' && (
+                                <div 
+                                  onClick={(e) => { e.stopPropagation(); handleRegenerateVariant(v, false) }}
+                                  className="absolute bottom-2 left-2 right-2 z-10 px-2 py-1.5 rounded-lg bg-amber-500/95 hover:bg-amber-400 text-black font-extrabold text-[10px] flex items-center justify-center gap-1 shadow-md transition cursor-pointer backdrop-blur-sm"
+                                  title="AI generation failed, tap to retry"
+                                >
+                                  <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                  <span>AI generation failed, tap to retry</span>
+                                </div>
+                              )}
                               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                 <button
                                   type="button"
@@ -912,7 +922,13 @@ export default function SessionPage() {
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span>Unselected variants auto-deleted after 7 days</span>
-                    <span className="text-accent font-bold">1 Credit Deducted</span>
+                    {variantSessionData.variants.find(v => v.id === selectedVariantId)?.source === 'fallback' ? (
+                      <span className="text-amber-400 font-bold bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5" /> 0 Credits Deducted (Fallback)
+                      </span>
+                    ) : (
+                      <span className="text-accent font-bold">1 Credit Deducted</span>
+                    )}
                   </div>
                 </div>
 
@@ -920,7 +936,14 @@ export default function SessionPage() {
                 <div className="space-y-5">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted">Caption</label>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold uppercase tracking-wider text-muted">Caption</label>
+                        {variantSessionData.caption_source === 'fallback' && (
+                          <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> Fallback Copy
+                          </span>
+                        )}
+                      </div>
                       <CopyButton text={captionText} label="Caption" />
                     </div>
                     <textarea

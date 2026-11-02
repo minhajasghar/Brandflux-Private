@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict, Any
 import os
 import io
+import time
 import uuid
 import httpx
 import asyncio
@@ -583,9 +584,11 @@ async def generate_single_variant(
     """Generate a single variant in parallel with independent error handling."""
     variant_id = str(uuid.uuid4())
     aspect_ratio, (w, h) = nano_banana_generator.normalize_aspect_ratio(platform)
+    t0_var = time.time()
 
     try:
         # 1. Generate background via Nano Banana 2.1 incorporating references and style direction
+        t_bg = time.time()
         bg_url = await nano_banana_generator.generate_background(
             brand_profile=brand_profile,
             daily_context=daily_context,
@@ -597,8 +600,10 @@ async def generate_single_variant(
             variant_style=style_info["direction"],
             db=db
         )
+        logger.info(f"✓ [Variant {index}] Background generated in {time.time()-t_bg:.2f}s: {bg_url}")
 
         # 2. Render Playwright HTML/CSS template to crisp PNG bytes
+        t_pw = time.time()
         final_bytes = await image_gen.create_branded_post_async(
             brand_profile=brand_profile,
             post_text=headline,
@@ -607,11 +612,13 @@ async def generate_single_variant(
             background_image_url=bg_url,
             aspect_ratio=aspect_ratio
         )
+        logger.info(f"✓ [Variant {index}] Playwright overlay rendered in {time.time()-t_pw:.2f}s ({len(final_bytes)} bytes)")
 
         # 3. Upload variant PNG to storage with unguessable token
         image_gen_platform = platform.replace("_post", "")
         filename = f"variant_{index}_{image_gen_platform}_{uuid.uuid4().hex}.png"
         public_url = storage_service.upload_image(final_bytes, filename)
+        variant_source = "ai" if bg_url else "fallback"
 
         # 4. Save to session_variants with 7-day auto-expiry
         expiry = datetime.utcnow() + timedelta(days=7)
@@ -630,11 +637,13 @@ async def generate_single_variant(
             caption=caption,
             call_to_action=cta,
             is_selected=False,
+            source=variant_source,
             expires_at=expiry
         )
         db.add(variant_record)
         db.commit()
 
+        logger.info(f"✓ [Variant {index}] Complete in {time.time()-t0_var:.2f}s (source={variant_source})")
         return VariantResponseItem(
             id=variant_id,
             variant_index=index,
@@ -646,10 +655,12 @@ async def generate_single_variant(
             call_to_action=cta,
             is_selected=False,
             status="ready",
+            source=variant_source,
             error=None
         )
     except Exception as e:
-        logger.error(f"Error generating variant {index} ({style_info['label']}): {e}")
+        import traceback
+        logger.error(f"❌ [Variant {index} Generation Failed after {time.time()-t0_var:.2f}s] ({style_info['label']}): {e}\n{traceback.format_exc()}")
         # Produce a real branded fallback PNG to guarantee valid 200 image serving
         try:
             fallback_bytes = storage_service.generate_fallback_image(
@@ -683,6 +694,7 @@ async def generate_single_variant(
                 caption=caption,
                 call_to_action=cta,
                 is_selected=False,
+                source="fallback",
                 expires_at=expiry
             )
             db.add(variant_record)
@@ -702,6 +714,7 @@ async def generate_single_variant(
             call_to_action=cta,
             is_selected=False,
             status=status_val,
+            source="fallback",
             error=str(e)
         )
 
@@ -730,12 +743,35 @@ async def generate_session_variants(
             detail="Portal boundary enforcement: Platform administrators cannot generate customer brand content. Please use a customer account."
         )
 
-    session = db.query(DailySession).filter(DailySession.id == req.session_id).first()
+    session = None
+    if req.session_id and req.session_id != "session_default":
+        session = db.query(DailySession).filter(DailySession.id == req.session_id).first()
+
     target_brand_id = brand_id or (session.brand_id if session else None)
     brand = resolve_user_brand(user, db, brand_id=target_brand_id)
 
-    if not brand or not session:
-        raise HTTPException(status_code=404, detail="Brand or Session not found")
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand profile not found")
+
+    if not session:
+        # Resolve today's session or create an active one for the brand
+        session = db.query(DailySession).filter(
+            DailySession.user_id == user.id,
+            DailySession.brand_id == brand.id,
+            DailySession.session_date == date.today()
+        ).first()
+
+        if not session:
+            session = DailySession(
+                id=str(uuid.uuid4()),
+                user_id=user.id,
+                brand_id=brand.id,
+                session_date=date.today(),
+                status="in_progress"
+            )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
 
     # 1. Update session answers
     session.answer_1 = req.answer_1
@@ -802,9 +838,23 @@ async def generate_session_variants(
         learning_context=learning_context
     ) or {}
 
-    platform = req.target_platform or "instagram_post"
-    p_data = content_data.get(platform, {})
-    caption = p_data.get("caption") or f"Exciting new perspectives from {brand.business_name}."
+    platform_key_map = {
+        "instagram": "instagram_post",
+        "instagram_post": "instagram_post",
+        "instagram_story": "instagram_story",
+        "linkedin": "linkedin_post",
+        "linkedin_post": "linkedin_post",
+        "facebook": "facebook_post",
+        "facebook_post": "facebook_post"
+    }
+    raw_platform = req.target_platform or "instagram_post"
+    platform_key = platform_key_map.get(raw_platform.lower(), "instagram_post")
+    platform = platform_key
+    p_data = content_data.get(platform_key, {}) or content_data.get("instagram_post", {})
+    caption = p_data.get("caption")
+    caption_source = "ai" if caption and content_data.get("_source") != "fallback" else "fallback"
+    if not caption:
+        caption = f"Exciting new perspectives from {brand.business_name}."
     hashtags = p_data.get("hashtags") or ["#business", "#innovation", "#growth"]
     cta = p_data.get("call_to_action") or p_data.get("cta") or "Discover more today"
     best_time = f"{p_data.get('best_day', 'Today')} {p_data.get('best_time', '7:00 PM')}".strip()
@@ -830,24 +880,30 @@ async def generate_session_variants(
 
     ref_imgs = [r.dict() for r in (req.reference_images or [])]
 
-    # 5. Execute N variants in parallel with per-variant resilience
+    # 5. Execute N variants in parallel with per-variant resilience and semaphore
+    variant_sem = asyncio.Semaphore(2)
+
+    async def _safe_variant_task(i, style):
+        async with variant_sem:
+            return await generate_single_variant(
+                index=i,
+                style_info=style,
+                platform=platform,
+                brand_profile=brand_profile,
+                headline=headline,
+                caption=caption,
+                cta=overlay_cta,
+                daily_context=daily_context,
+                reference_images=ref_imgs,
+                reference_context=req.context_text,
+                user=user,
+                brand=brand,
+                session=session,
+                db=db
+            )
+
     variant_tasks = [
-        generate_single_variant(
-            index=i,
-            style_info=style,
-            platform=platform,
-            brand_profile=brand_profile,
-            headline=headline,
-            caption=caption,
-            cta=overlay_cta,
-            daily_context=daily_context,
-            reference_images=ref_imgs,
-            reference_context=req.context_text,
-            user=user,
-            brand=brand,
-            session=session,
-            db=db
-        )
+        _safe_variant_task(i, style)
         for i, style in enumerate(selected_styles)
     ]
 
@@ -862,12 +918,14 @@ async def generate_session_variants(
             db_var.is_selected = True
             db.commit()
 
+    caption_source = "ai" if content_data.get("_source") == "ai" else "fallback"
     credits_rem = get_credits_remaining_for_user(user, db)
 
     return MultiVariantSessionResponse(
         session_id=session.id,
         session_theme=content_data.get("session_theme", "Daily Content"),
         caption=caption,
+        caption_source=caption_source,
         hashtags=hashtags,
         call_to_action=overlay_cta,
         posting_time_suggestion=best_time,
@@ -951,8 +1009,10 @@ def select_session_variant(
             detail="The selected variant image is not verified or reachable in storage. Please click 'Regenerate this variant' to generate a fresh image before saving."
         )
 
-    # Increment user monthly posts counter ONLY after image verification succeeds
-    user.posts_used_this_month = (user.posts_used_this_month or 0) + 1
+    # Increment user monthly posts counter ONLY after image verification succeeds and ONLY IF NOT FALLBACK
+    is_fallback = getattr(variant, "source", "ai") == "fallback"
+    if not is_fallback:
+        user.posts_used_this_month = (user.posts_used_this_month or 0) + 1
     db.commit()
 
     return {
@@ -962,7 +1022,9 @@ def select_session_variant(
         "selected_variant_id": variant.id,
         "image_url": variant.image_url,
         "caption": final_caption,
-        "hashtags": final_hashtags
+        "hashtags": final_hashtags,
+        "credit_deducted": not is_fallback,
+        "source": getattr(variant, "source", "ai")
     }
 
 

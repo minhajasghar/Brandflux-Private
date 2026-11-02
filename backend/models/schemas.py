@@ -284,12 +284,14 @@ class VariantResponseItem(BaseModel):
     call_to_action: Optional[str] = None
     is_selected: bool
     status: str = "ready"
+    source: str = "ai"  # "ai" or "fallback"
     error: Optional[str] = None
 
 class MultiVariantSessionResponse(BaseModel):
     session_id: str
     session_theme: str
     caption: str
+    caption_source: str = "ai"  # "ai" or "fallback"
     hashtags: List[str]
     call_to_action: str
     posting_time_suggestion: Optional[str] = None

@@ -83,9 +83,11 @@ app.include_router(admin_router.router)
 
 # ─── Direct /brand-kit Route Aliases ───────────────────────
 from routers.brand import get_brand_kit, update_brand_kit
+from routers.admin import health_check_generation
 from models.schemas import BrandKitResponse
 app.add_api_route("/brand-kit", get_brand_kit, methods=["GET"], response_model=BrandKitResponse, tags=["brand-kit"])
 app.add_api_route("/brand-kit", update_brand_kit, methods=["PUT"], response_model=BrandKitResponse, tags=["brand-kit"])
+app.add_api_route("/health/generation", health_check_generation, methods=["GET"], tags=["health"])
 
 # ─── Static Files & Public Media Delivery ───────────────────
 from fastapi.responses import FileResponse, Response

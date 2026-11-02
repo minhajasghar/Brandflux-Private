@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -1062,6 +1063,109 @@ def get_system_health(
 ):
     """API, database, background scheduler, storage, and AI service health."""
     return get_system_health_metrics(db)
+
+
+@router.get("/health/generation")
+async def health_check_generation(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Live Generation Health Check (Admin Only):
+    Runs a tiny real text call, a tiny real image call, and a Playwright render,
+    and reports pass/fail with timing and detailed error diagnostics.
+    """
+    import time
+    from services.gemini_service import GeminiService
+    from services.nano_banana_generator import nano_banana_generator
+    from services.renderer.html_renderer import html_renderer
+
+    results = {
+        "status": "pass",
+        "timestamp": datetime.utcnow().isoformat(),
+        "checks": {}
+    }
+
+    # 1. Real Gemini Text Call
+    t0 = time.time()
+    try:
+        gemini = GeminiService()
+        if not gemini.model:
+            raise Exception("GeminiService model is None (check GEMINI_API_KEY / GEMINI_MODEL)")
+        loop = asyncio.get_running_loop()
+        res = await asyncio.wait_for(
+            loop.run_in_executor(None, gemini.model.generate_content, "Return JSON: {\"status\": \"ok\"}"),
+            timeout=12.0
+        )
+        results["checks"]["gemini_text"] = {
+            "status": "pass",
+            "model": gemini.model_name,
+            "duration_ms": int((time.time() - t0) * 1000),
+            "sample_response": (res.text or "").strip()[:60]
+        }
+    except Exception as e:
+        results["status"] = "fail"
+        results["checks"]["gemini_text"] = {
+            "status": "fail",
+            "duration_ms": int((time.time() - t0) * 1000),
+            "error": str(e)
+        }
+
+    # 2. Real Nano Banana Image Call
+    t0 = time.time()
+    try:
+        img_bytes = await asyncio.wait_for(
+            nano_banana_generator._call_gemini_api("Minimalist geometric cube with ambient blue light", "1:1"),
+            timeout=35.0
+        )
+        if not img_bytes or len(img_bytes) < 1000:
+            raise Exception("Returned image bytes were empty or truncated")
+        results["checks"]["nano_banana_image"] = {
+            "status": "pass",
+            "model": nano_banana_generator.get_active_model(),
+            "bytes_received": len(img_bytes),
+            "duration_ms": int((time.time() - t0) * 1000)
+        }
+    except Exception as e:
+        results["status"] = "fail"
+        results["checks"]["nano_banana_image"] = {
+            "status": "fail",
+            "duration_ms": int((time.time() - t0) * 1000),
+            "error": str(e)
+        }
+
+    # 3. Real Playwright Template Render
+    t0 = time.time()
+    try:
+        context = {
+            "headline": "System Diagnostic Pass",
+            "cta": "Operational",
+            "brand_name": "Brandflux Admin",
+            "brand_colors": {
+                "bg": "#05060A", "surface": "#0D0F16", "primary": "#1558C9",
+                "accent": "#D4FF24", "text": "#F4F5F7", "muted": "#8A90A2"
+            }
+        }
+        png_bytes = await asyncio.wait_for(
+            html_renderer.render_template("quote_bold.html", context),
+            timeout=15.0
+        )
+        if not png_bytes or len(png_bytes) < 1000:
+            raise Exception("Playwright rendered empty PNG bytes")
+        results["checks"]["playwright_render"] = {
+            "status": "pass",
+            "bytes_rendered": len(png_bytes),
+            "duration_ms": int((time.time() - t0) * 1000)
+        }
+    except Exception as e:
+        results["status"] = "fail"
+        results["checks"]["playwright_render"] = {
+            "status": "fail",
+            "duration_ms": int((time.time() - t0) * 1000),
+            "error": str(e)
+        }
+
+    return results
 
 
 # ─── 10. Audit Log Viewer ───────────────────────────────────────────────────

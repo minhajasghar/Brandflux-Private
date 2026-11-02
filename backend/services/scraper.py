@@ -45,18 +45,18 @@ class BrandScraper:
             logger.warning(f"Layered color extractor failed: {e}; falling back to static regex.")
             fallback_colors = self._extract_colors(html)
             palette_data = {
-                "primary": {"hex": fallback_colors[0] if fallback_colors else "#1558C9", "confidence": 0.50, "source": "static_regex"},
-                "secondary": {"hex": fallback_colors[1] if len(fallback_colors) > 1 else "#D4FF24", "confidence": 0.50, "source": "static_regex"},
-                "accent": {"hex": "#D4FF24", "confidence": 0.50, "source": "default"},
+                "primary": {"hex": fallback_colors[0] if fallback_colors else "#2563EB", "confidence": 0.50, "source": "static_regex"},
+                "secondary": {"hex": fallback_colors[1] if len(fallback_colors) > 1 else "#64748B", "confidence": 0.50, "source": "static_regex"},
+                "accent": {"hex": fallback_colors[2] if len(fallback_colors) > 2 else "#38BDF8", "confidence": 0.50, "source": "default"},
                 "neutrals": [],
-                "colors": fallback_colors or ["#1558C9", "#D4FF24"],
+                "colors": fallback_colors or ["#2563EB", "#64748B"],
                 "extraction_method": "static_regex_fallback"
             }
 
-        colors = palette_data.get("colors") or ["#1558C9", "#D4FF24"]
+        colors = palette_data.get("colors") or ["#2563EB", "#64748B"]
         primary_color = palette_data.get("primary", {}).get("hex") if palette_data.get("primary") else colors[0]
-        secondary_color = palette_data.get("secondary", {}).get("hex") if palette_data.get("secondary") else (colors[1] if len(colors) > 1 else "#D4FF24")
-        accent_color = palette_data.get("accent", {}).get("hex") if palette_data.get("accent") else "#D4FF24"
+        secondary_color = palette_data.get("secondary", {}).get("hex") if palette_data.get("secondary") else (colors[1] if len(colors) > 1 else "#64748B")
+        accent_color = palette_data.get("accent", {}).get("hex") if palette_data.get("accent") else (colors[2] if len(colors) > 2 else "#38BDF8")
         neutrals = palette_data.get("neutrals", [])
         
         # Detect brand attributes

@@ -39,7 +39,7 @@ def rgb_to_hex(r: int, g: int, b: int) -> str:
 
 
 def parse_css_color(color_str: str) -> Optional[str]:
-    """Parse rgb(), rgba(), or hex string to normalized #RRGGBB hex."""
+    """Parse rgb(), rgba(), hsl(), hsla(), or hex string to normalized #RRGGBB hex."""
     if not color_str:
         return None
     color_str = color_str.strip()
@@ -63,6 +63,18 @@ def parse_css_color(color_str: str) -> Optional[str]:
         if alpha < 0.15:  # Transparent or near transparent
             return None
         return rgb_to_hex(r, g, b)
+
+    # hsl / hsla
+    m_hsl = re.match(r"hsla?\(\s*([\d\.]+)(?:deg)?\s*,\s*([\d\.]+)%\s*,\s*([\d\.]+)%(?:\s*,\s*([\d\.]+))?\s*\)", color_str)
+    if m_hsl:
+        h = float(m_hsl.group(1)) / 360.0
+        s = float(m_hsl.group(2)) / 100.0
+        l = float(m_hsl.group(3)) / 100.0
+        alpha = float(m_hsl.group(4)) if m_hsl.group(4) is not None else 1.0
+        if alpha < 0.15:
+            return None
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        return rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
 
     return None
 
@@ -214,22 +226,47 @@ class BrandColorExtractor:
 
                 # Layer 1 in Playwright: Meta & Manifest
                 meta_colors = await page.evaluate("""() => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 1;
+                    canvas.height = 1;
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+                    function toHex(cssColor) {
+                        if (!cssColor || cssColor === 'transparent' || cssColor === 'inherit' || cssColor === 'initial') return null;
+                        ctx.fillStyle = '#00000000';
+                        ctx.clearRect(0, 0, 1, 1);
+                        ctx.fillStyle = cssColor;
+                        ctx.fillRect(0, 0, 1, 1);
+                        const data = ctx.getImageData(0, 0, 1, 1).data;
+                        if (data[3] < 20) return null;
+                        return '#' + [data[0], data[1], data[2]].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+                    }
+
                     const colors = [];
                     const metaTheme = document.querySelector('meta[name="theme-color"]');
-                    if (metaTheme && metaTheme.content) colors.push({ color: metaTheme.content, source: 'meta_theme_color' });
+                    if (metaTheme && metaTheme.content) {
+                        const h = toHex(metaTheme.content);
+                        if (h) colors.push({ color: h, source: 'meta_theme_color' });
+                    }
 
                     const metaTile = document.querySelector('meta[name="msapplication-TileColor"]');
-                    if (metaTile && metaTile.content) colors.push({ color: metaTile.content, source: 'meta_tile_color' });
+                    if (metaTile && metaTile.content) {
+                        const h = toHex(metaTile.content);
+                        if (h) colors.push({ color: h, source: 'meta_tile_color' });
+                    }
 
                     const metaNav = document.querySelector('meta[name="msapplication-navbutton-color"]');
-                    if (metaNav && metaNav.content) colors.push({ color: metaNav.content, source: 'meta_nav_color' });
+                    if (metaNav && metaNav.content) {
+                        const h = toHex(metaNav.content);
+                        if (h) colors.push({ color: h, source: 'meta_nav_color' });
+                    }
 
                     return colors;
                 }""")
                 for item in (meta_colors or []):
-                    hex_val = parse_css_color(item.get("color"))
+                    hex_val = parse_css_color(item.get("color")) or item.get("color")
                     if hex_val:
-                        self.candidates.append(ColorCandidate(hex_val, weight=70.0, source=item.get("source", "meta")))
+                        self.candidates.append(ColorCandidate(hex_val, weight=75.0, source=item.get("source", "meta")))
 
                 # Check Web App Manifest link
                 manifest_url = await page.evaluate("""() => {
@@ -239,8 +276,24 @@ class BrandColorExtractor:
                 if manifest_url:
                     await self._fetch_manifest_colors(manifest_url)
 
-                # Layer 2: Read CSS Custom Properties (--primary, --brand, etc.)
+                # Layer 2: Read CSS Custom Properties (--primary, --brand, etc.) normalized via canvas
                 css_vars = await page.evaluate("""() => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 1;
+                    canvas.height = 1;
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+                    function toHex(cssColor) {
+                        if (!cssColor || cssColor === 'transparent' || cssColor === 'inherit' || cssColor === 'initial') return null;
+                        ctx.fillStyle = '#00000000';
+                        ctx.clearRect(0, 0, 1, 1);
+                        ctx.fillStyle = cssColor;
+                        ctx.fillRect(0, 0, 1, 1);
+                        const data = ctx.getImageData(0, 0, 1, 1).data;
+                        if (data[3] < 20) return null;
+                        return '#' + [data[0], data[1], data[2]].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+                    }
+
                     const found = [];
                     const rootStyle = getComputedStyle(document.documentElement);
                     const brandKeywords = [
@@ -250,15 +303,14 @@ class BrandColorExtractor:
                         '--brand-accent', '--color-btn-primary', '--btn-primary-bg'
                     ];
 
-                    // Check common variable names
                     for (const name of brandKeywords) {
                         const val = rootStyle.getPropertyValue(name);
                         if (val && val.trim()) {
-                            found.push({ name, value: val.trim() });
+                            const hex = toHex(val.trim());
+                            if (hex) found.push({ name, value: hex });
                         }
                     }
 
-                    // Scan stylesheets for variables containing brand terms
                     try {
                         for (const sheet of document.styleSheets) {
                             try {
@@ -271,14 +323,15 @@ class BrandColorExtractor:
                                             if (prop.startsWith('--') &&
                                                 (prop.includes('primary') || prop.includes('brand') || prop.includes('accent') || prop.includes('theme'))) {
                                                 const v = rule.style.getPropertyValue(prop);
-                                                if (v && v.trim()) found.push({ name: prop, value: v.trim() });
+                                                if (v && v.trim()) {
+                                                    const hex = toHex(v.trim());
+                                                    if (hex) found.push({ name: prop, value: hex });
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            } catch (e) {
-                                // cross-origin stylesheet
-                            }
+                            } catch (e) {}
                         }
                     } catch (e) {}
 
@@ -286,30 +339,37 @@ class BrandColorExtractor:
                 }""")
 
                 for v in (css_vars or []):
-                    hex_val = parse_css_color(v.get("value"))
+                    hex_val = parse_css_color(v.get("value")) or v.get("value")
                     if hex_val:
-                        self.candidates.append(ColorCandidate(hex_val, weight=55.0, source=f"css_var({v.get('name')})"))
+                        self.candidates.append(ColorCandidate(hex_val, weight=60.0, source=f"css_var({v.get('name')})"))
 
-                # Layer 3: Sample computed colors of buttons, links, headings, nav, CTA elements
+                # Layer 3: Sample computed colors of buttons, links, headings, badges, text, and borders
                 dom_samples = await page.evaluate("""() => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 1;
+                    canvas.height = 1;
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+                    function toHex(cssColor) {
+                        if (!cssColor || cssColor === 'transparent' || cssColor === 'inherit' || cssColor === 'initial' || cssColor === 'none') return null;
+                        ctx.fillStyle = '#00000000';
+                        ctx.clearRect(0, 0, 1, 1);
+                        ctx.fillStyle = cssColor;
+                        ctx.fillRect(0, 0, 1, 1);
+                        const data = ctx.getImageData(0, 0, 1, 1).data;
+                        if (data[3] < 20) return null; // transparent
+                        return '#' + [data[0], data[1], data[2]].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+                    }
+
                     const results = [];
                     const selectors = [
-                        'button',
-                        'a.btn',
-                        'a.button',
-                        '[role="button"]',
-                        'input[type="submit"]',
-                        '.cta',
-                        '[class*="btn"]',
-                        '[class*="button"]',
-                        '[class*="cta"]',
-                        '[class*="primary"]',
-                        'nav',
-                        'header',
-                        'h1',
-                        'h2',
-                        'h3',
-                        'a[href]'
+                        'button', 'a', '[role="button"]', 'input[type="submit"]',
+                        'nav', 'header', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                        'span', 'p', 'strong', 'em', 'svg',
+                        '[class*="btn"]', '[class*="button"]', '[class*="cta"]',
+                        '[class*="primary"]', '[class*="accent"]', '[class*="badge"]',
+                        '[class*="tag"]', '[class*="pill"]', '[class*="chip"]',
+                        '[class*="text-"]', '[class*="bg-"]', '[class*="border-"]'
                     ];
 
                     const elements = document.querySelectorAll(selectors.join(','));
@@ -317,25 +377,30 @@ class BrandColorExtractor:
 
                     for (const el of elements) {
                         const rect = el.getBoundingClientRect();
-                        if (rect.width < 8 || rect.height < 8) continue;
+                        if (rect.width < 4 || rect.height < 4) continue;
 
                         const style = window.getComputedStyle(el);
                         if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) < 0.2) continue;
 
-                        const bg = style.backgroundColor;
-                        const col = style.color;
-                        const border = style.borderColor;
+                        const bg = toHex(style.backgroundColor);
+                        const col = toHex(style.color);
+                        const border = toHex(style.borderColor);
+
+                        // If all are transparent or missing, skip
+                        if (!bg && !col && !border) continue;
 
                         const className = (el.className || '').toString();
                         const isCta = /btn|button|cta|submit|primary/i.test(className + ' ' + (el.getAttribute('role') || '') + ' ' + el.tagName);
-                        const isHeading = /^H[1-3]$/i.test(el.tagName);
+                        const isHeading = /^H[1-6]$/i.test(el.tagName);
                         const isNav = /nav|header/i.test(el.tagName + ' ' + className);
+                        const isBadge = /badge|tag|pill|chip|highlight/i.test(className);
                         const inViewport = (rect.top >= 0 && rect.top <= vh);
 
                         const area = Math.min(rect.width * rect.height, 80000);
                         let w = Math.sqrt(area);
 
                         if (isCta) w *= 3.5;
+                        else if (isBadge) w *= 2.5;
                         else if (isHeading) w *= 2.0;
                         else if (isNav) w *= 1.4;
                         if (inViewport) w *= 1.3;
@@ -349,21 +414,26 @@ class BrandColorExtractor:
                             tag: el.tagName.toLowerCase()
                         });
                     }
-                    return results.slice(0, 90);
+                    return results.slice(0, 300);
                 }""")
 
                 for s in (dom_samples or []):
                     w = float(s.get("weight", 10.0))
                     # Background color
-                    bg_hex = parse_css_color(s.get("bg"))
+                    bg_hex = s.get("bg")
                     if bg_hex:
                         tag_desc = "cta_button" if s.get("isCta") else s.get("tag", "element")
-                        self.candidates.append(ColorCandidate(bg_hex, weight=w * (1.8 if s.get("isCta") else 1.0), source=f"dom_bg({tag_desc})"))
+                        self.candidates.append(ColorCandidate(bg_hex, weight=w * (2.0 if s.get("isCta") else 1.0), source=f"dom_bg({tag_desc})"))
 
                     # Text color
-                    col_hex = parse_css_color(s.get("col"))
+                    col_hex = s.get("col")
                     if col_hex:
-                        self.candidates.append(ColorCandidate(col_hex, weight=w * 0.8, source=f"dom_text({s.get('tag')})"))
+                        self.candidates.append(ColorCandidate(col_hex, weight=w * 1.0, source=f"dom_text({s.get('tag')})"))
+
+                    # Border color
+                    border_hex = s.get("border")
+                    if border_hex and not is_neutral(border_hex):
+                        self.candidates.append(ColorCandidate(border_hex, weight=w * 1.2, source=f"dom_border({s.get('tag')})"))
 
                 # Capture logo URL and Page Screenshot for Layer 6 fallback
                 self.logo_url = await page.evaluate("""() => {
@@ -504,18 +574,18 @@ class BrandColorExtractor:
     def _cluster_and_rank_palette(self) -> Dict[str, Any]:
         """Cluster candidates by color distance, sum weights, rank, and separate into primary/secondary/accent/neutrals."""
         if not self.candidates:
-            # Fallback default Brandflux colors
+            # Fallback neutral palette if site is completely unreachable
             return {
-                "primary": {"hex": "#1558C9", "confidence": 0.50, "source": "default_fallback"},
-                "secondary": {"hex": "#D4FF24", "confidence": 0.50, "source": "default_fallback"},
-                "accent": {"hex": "#D4FF24", "confidence": 0.50, "source": "default_fallback"},
+                "primary": {"hex": "#2563EB", "confidence": 0.35, "source": "universal_fallback"},
+                "secondary": {"hex": "#64748B", "confidence": 0.35, "source": "universal_fallback"},
+                "accent": {"hex": "#38BDF8", "confidence": 0.35, "source": "universal_fallback"},
                 "neutrals": [
-                    {"hex": "#05060A", "confidence": 0.50, "source": "default"},
-                    {"hex": "#F4F5F7", "confidence": 0.50, "source": "default"}
+                    {"hex": "#0F172A", "confidence": 0.35, "source": "default_dark"},
+                    {"hex": "#F8FAFC", "confidence": 0.35, "source": "default_light"}
                 ],
-                "colors": ["#1558C9", "#D4FF24", "#05060A", "#F4F5F7"],
-                "brand_colors": ["#1558C9", "#D4FF24"],
-                "extraction_method": "default_fallback"
+                "colors": ["#2563EB", "#64748B", "#38BDF8", "#0F172A", "#F8FAFC"],
+                "brand_colors": ["#2563EB"],
+                "extraction_method": "universal_fallback"
             }
 
         # Cluster similar colors (distance threshold <= 36.0)
@@ -612,22 +682,39 @@ class BrandColorExtractor:
                         "source": ", ".join(brand_clusters[1]["source_list"][:2])
                     }
                 else:
-                    secondary = {"hex": "#D4FF24", "confidence": 0.60, "source": "accent_complement"}
+                    # Derive harmonious analogous companion from the user's primary color
+                    h, l, s = get_hsl(primary["hex"])
+                    r, g, b = colorsys.hls_to_rgb((h + 0.08) % 1.0, max(0.25, min(0.75, l)), max(0.40, s))
+                    derived_hex = rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
+                    secondary = {"hex": derived_hex, "confidence": 0.60, "source": "analogous_derived"}
 
             if not accent:
-                # Use secondary or high-contrast complement
-                accent = {"hex": secondary["hex"] if secondary else "#D4FF24", "confidence": 0.65, "source": "accent_default"}
+                # Derive vibrant accent or complement from user's primary color
+                h, l, s = get_hsl(primary["hex"])
+                r, g, b = colorsys.hls_to_rgb((h + 0.50) % 1.0, max(0.35, min(0.70, l)), max(0.60, s))
+                derived_accent = rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
+                accent = {"hex": derived_accent, "confidence": 0.65, "source": "complement_derived"}
 
         else:
             # All detected colors were neutral (e.g. minimalist black/white/grey website)
-            primary_neutral = neutral_clusters[0] if neutral_clusters else {"hex": "#0D0F16", "confidence": 0.50, "source_list": ["default"]}
+            primary_neutral = neutral_clusters[0] if neutral_clusters else {"hex": "#09090B", "confidence": 0.60, "source_list": ["monochrome"]}
             primary = {
                 "hex": primary_neutral["hex"],
                 "confidence": primary_neutral["confidence"],
-                "source": ", ".join(primary_neutral.get("source_list", ["neutral"])[:2])
+                "source": ", ".join(primary_neutral.get("source_list", ["monochrome"])[:2])
             }
-            secondary = {"hex": "#1558C9", "confidence": 0.50, "source": "brandflux_blue"}
-            accent = {"hex": "#D4FF24", "confidence": 0.50, "source": "brandflux_lime"}
+            # Opposite contrast neutral
+            opp_neutral = None
+            for n in neutral_clusters[1:]:
+                if color_distance(n["hex"], primary["hex"]) >= 60.0:
+                    opp_neutral = n
+                    break
+            secondary_hex = opp_neutral["hex"] if opp_neutral else ("#FFFFFF" if primary["hex"] in ("#000000", "#09090B") else "#09090B")
+            secondary = {"hex": secondary_hex, "confidence": 0.60, "source": "monochrome_contrast"}
+
+            # Midtone accent
+            accent_hex = "#71717A" if primary["hex"] in ("#000000", "#09090B") else "#52525B"
+            accent = {"hex": accent_hex, "confidence": 0.60, "source": "monochrome_slate"}
 
         neutrals_out = [
             {"hex": c["hex"], "confidence": c["confidence"], "source": ", ".join(c["source_list"][:2])}
@@ -680,13 +767,13 @@ class BrandColorExtractor:
                 "4. Neutrals (background and body text colors).\n\n"
                 "Respond ONLY with valid JSON in this exact structure:\n"
                 "{\n"
-                '  "primary_hex": "#1558C9",\n'
+                '  "primary_hex": "#2563EB",\n'
                 '  "primary_confidence": 0.95,\n'
-                '  "secondary_hex": "#D4FF24",\n'
+                '  "secondary_hex": "#F59E0B",\n'
                 '  "secondary_confidence": 0.88,\n'
-                '  "accent_hex": "#00E5FF",\n'
+                '  "accent_hex": "#8B5CF6",\n'
                 '  "accent_confidence": 0.82,\n'
-                '  "neutral_background": "#05060A",\n'
+                '  "neutral_background": "#09090B",\n'
                 '  "neutral_text": "#F4F5F7"\n'
                 "}"
             )
@@ -710,11 +797,13 @@ class BrandColorExtractor:
 
             data = json.loads(text)
 
-            primary_hex = parse_css_color(data.get("primary_hex", "#1558C9")) or "#1558C9"
-            secondary_hex = parse_css_color(data.get("secondary_hex", "#D4FF24")) or "#D4FF24"
-            accent_hex = parse_css_color(data.get("accent_hex", secondary_hex)) or secondary_hex
-            neutral_bg = parse_css_color(data.get("neutral_background", "#05060A")) or "#05060A"
-            neutral_text = parse_css_color(data.get("neutral_text", "#F4F5F7")) or "#F4F5F7"
+            primary_hex = parse_css_color(data.get("primary_hex"))
+            if not primary_hex:
+                return None
+            secondary_hex = parse_css_color(data.get("secondary_hex"))
+            accent_hex = parse_css_color(data.get("accent_hex")) or secondary_hex
+            neutral_bg = parse_css_color(data.get("neutral_background")) or "#09090B"
+            neutral_text = parse_css_color(data.get("neutral_text")) or "#FFFFFF"
 
             return {
                 "primary": {

@@ -50,9 +50,17 @@ class GeminiService:
             self.model = None
 
     def ensure_configured(self):
-        """Lazy load or re-check credentials if not currently initialized."""
-        if not self.model or not self.api_key:
-            self.reload_credentials()
+        """Lazy load or re-check credentials if not currently initialized or if key updated."""
+        try:
+            from services.admin_service import get_ai_credentials
+            creds = get_ai_credentials()
+            db_key = creds.get("gemini_api_key") or os.getenv("GEMINI_API_KEY", "")
+            db_model = creds.get("gemini_model") or os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
+            if not self.model or self.api_key != db_key or self.model_name != db_model:
+                self.reload_credentials()
+        except Exception:
+            if not self.model or not self.api_key:
+                self.reload_credentials()
         return self.model is not None
 
     def decide_content_strategy(

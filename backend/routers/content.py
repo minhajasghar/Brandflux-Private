@@ -457,7 +457,7 @@ async def generate_images_endpoint(
             elif platform_key == 'facebook':
                 w, h = (1200, 630)
                 
-            # 3. Generate background visual via Google's Nano Banana 2.1 (Gemini API)
+            # 3. Generate picture strictly via Google's Nano Banana 2.1 (Gemini API)
             from services.nano_banana_generator import nano_banana_generator
             aspect_ratio, (w, h) = nano_banana_generator.normalize_aspect_ratio(platform_key)
             bg_url = await nano_banana_generator.generate_background(
@@ -469,25 +469,14 @@ async def generate_images_endpoint(
                 db=db
             )
 
-            # 4. Render Playwright HTML template with AI background & HTML text/logo overlay
-            final_bytes = await generator.create_branded_post_async(
-                brand_profile=brand_profile,
-                post_text=combined_overlay_text,
-                platform=platform_key,
-                cta=cta,
-                background_image_url=bg_url,
-                aspect_ratio=aspect_ratio
-            )
-            # 5. Upload to Cloudflare R2 / S3 CDN
-            filename = f"post_{platform_key}_{uuid.uuid4().hex[:10]}.png"
-            from services.storage import storage_service
-            public_url = storage_service.upload_image(final_bytes, filename)
-                
-            results[platform_key] = public_url
+            if bg_url:
+                results[platform_key] = bg_url
+            else:
+                raise Exception(nano_banana_generator.last_error_message or "Nano Banana 2.1 failed to generate picture")
             
         except Exception as plat_err:
-            print(f"Failed to generate for {platform_key}: {plat_err}")
-            results[platform_key] = f"http://localhost:8000/static/fallback.png"
+            logger.error(f"Failed to generate for {platform_key}: {plat_err}")
+            results[platform_key] = ""
             
     return {
         "success": True,

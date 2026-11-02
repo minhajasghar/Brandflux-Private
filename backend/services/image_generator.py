@@ -76,26 +76,14 @@ class ImageGenerator:
         brand_profile: dict = None
     ) -> bytes:
         """
-        Optional background scene generator using Pollinations AI.
+        Background image generator strictly powered by Google Nano Banana 2.1 (gemini-nano-banana-2.1).
         """
         try:
-            import random
-            seed = random.randint(10000, 99999)
-            clean_prompt = prompt.replace("\n", " ").strip()
-            encoded = urllib.parse.quote(f"{clean_prompt}, commercial quality, high resolution, 8k")
-            url = (
-                f"https://image.pollinations.ai/prompt/{encoded}"
-                f"?width={width}&height={height}&nologo=true&seed={seed}"
-            )
-
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                response = await client.get(url)
-                if response.status_code == 200 and len(response.content) > 5000:
-                    return response.content
-                raise Exception(f"Pollinations status {response.status_code}")
+            from services.nano_banana_generator import nano_banana_generator
+            aspect_ratio, _ = nano_banana_generator.normalize_aspect_ratio(platform)
+            return await nano_banana_generator._call_gemini_api(prompt, aspect_ratio)
         except Exception as e:
-            logger.warning(f"Background generation fallback: {e}")
-            # Generate solid dark background bytes fallback
+            logger.error(f"Nano Banana 2.1 picture generation error: {e}")
             return b""
 
     async def create_branded_post_async(

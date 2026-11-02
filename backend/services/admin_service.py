@@ -454,9 +454,8 @@ def get_masked_ai_credentials(db: Session) -> Dict[str, Any]:
             {"id": "models/gemini-2.5-pro", "name": "Gemini 2.5 Pro", "description": "Most powerful model for complex creative reasoning"}
         ],
         "recommended_image_models": [
-            {"id": "models/gemini-nano-banana-2.1", "name": "Nano Banana 2.1", "description": "High-fidelity native background generator (Recommended)"},
-            {"id": "gemini-nano-banana-2.1", "name": "gemini-nano-banana-2.1", "description": "Shorthand model identifier"},
-            {"id": "models/imagen-3.0-generate-002", "name": "Imagen 3.0", "description": "Google Deepmind Imagen 3 High-Quality"}
+            {"id": "models/gemini-nano-banana-2.1", "name": "Nano Banana 2.1", "description": "High-fidelity native image generator (Strict Model)"},
+            {"id": "gemini-nano-banana-2.1", "name": "gemini-nano-banana-2.1", "description": "Standard identifier"}
         ]
     }
 
@@ -585,14 +584,15 @@ def test_ai_credentials_live(
 
     # 1. Test Text Model via generateContent
     t0 = time.time()
+    headers = {"Content-Type": "application/json", "x-goog-api-key": raw_key}
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/{formatted_text_m}:generateContent?key={raw_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/{formatted_text_m}:generateContent"
         payload = {
             "contents": [{"parts": [{"text": "Reply with 'PONG' only."}]}],
             "generationConfig": {"maxOutputTokens": 10}
         }
         with httpx.Client(timeout=15.0) as client:
-            resp = client.post(url, json=payload)
+            resp = client.post(url, json=payload, headers=headers)
             latency = int((time.time() - t0) * 1000)
             result["text_model"]["latency_ms"] = latency
 
@@ -612,19 +612,18 @@ def test_ai_credentials_live(
     # 2. Test Image Model reachability
     t0_img = time.time()
     try:
-        url_img = f"https://generativelanguage.googleapis.com/v1beta/{formatted_img_m}?key={raw_key}"
+        url_img = f"https://generativelanguage.googleapis.com/v1beta/{formatted_img_m}"
         with httpx.Client(timeout=10.0) as client:
-            resp_img = client.get(url_img)
+            resp_img = client.get(url_img, headers=headers)
             latency_img = int((time.time() - t0_img) * 1000)
             result["image_model"]["latency_ms"] = latency_img
 
             if resp_img.status_code == 200:
                 result["image_model"]["status"] = "pass"
-            elif resp_img.status_code == 404:
-                # Some models like gemini-nano-banana-2.1 might only respond to generateContent
-                # Try a lightweight check or accept if 400 bad request (model exists, request bad)
-                test_url = f"https://generativelanguage.googleapis.com/v1beta/{formatted_img_m}:generateContent?key={raw_key}"
-                test_resp = client.post(test_url, json={"contents": [{"parts": [{"text": "test"}]}], "generationConfig": {"maxOutputTokens": 2}})
+            elif resp_img.status_code in (404, 400):
+                # Check generateContent endpoint reachability
+                test_url = f"https://generativelanguage.googleapis.com/v1beta/{formatted_img_m}:generateContent"
+                test_resp = client.post(test_url, json={"contents": [{"parts": [{"text": "test"}]}], "generationConfig": {"maxOutputTokens": 2}}, headers=headers)
                 if test_resp.status_code in (200, 400):
                     result["image_model"]["status"] = "pass"
                 else:

@@ -91,59 +91,22 @@ async def generate_image(
     db: Optional[Session] = None
 ) -> str:
     """
-    Generate a branded social media graphic using:
-    1. Google's Nano Banana 2.1 via Gemini API (model ID from env IMAGE_MODEL) for AI background visual.
-    2. Playwright HTML/CSS templates for crisp responsive typography, logo, and CTA overlay.
-    3. Graceful fallback to CSS ambient gradient/glow if AI generation fails or key unconfigured.
-    4. Save outputs to Cloudflare R2 and log per-generation cost/usage to database usage table.
+    Generate social media picture strictly using Google's Nano Banana 2.1 (gemini-nano-banana-2.1).
     """
-    try:
-        # 1. Get overlay text from Gemini
-        loop = asyncio.get_running_loop()
-        overlay = await loop.run_in_executor(
-            None,
-            gemini.generate_post_text_overlay,
-            caption,
-            platform
-        )
-        post_text = overlay.get("headline") or "Grow Your Business"
-        overlay_cta = overlay.get("cta") or cta or ""
-        
-        # 2. Resolve aspect ratio (1:1, 4:5, 9:16) and dimensions
-        aspect_ratio, (w, h) = nano_banana_generator.normalize_aspect_ratio(platform)
-        
-        # 3. Generate background visual via Google's Nano Banana 2.1 (Gemini API)
-        # Timeout, retry with backoff, and fallback to CSS ambient gradient are handled automatically.
-        bg_url = await nano_banana_generator.generate_background(
-            brand_profile=brand_profile,
-            daily_context=daily_context or {"topic": prompt, "focus": caption},
-            aspect_ratio=aspect_ratio,
-            user_id=user_id,
-            brand_id=brand_id,
-            db=db
-        )
-        
-        # 4. Render Playwright HTML/CSS template (headline, logo, and CTA in HTML overlay)
-        final_bytes = await image_gen.create_branded_post_async(
-            brand_profile=brand_profile,
-            post_text=post_text,
-            platform=platform,
-            cta=overlay_cta,
-            background_image_url=bg_url,
-            aspect_ratio=aspect_ratio
-        )
-        
-        # 5. Upload to Cloudflare R2 / S3 CDN
-        image_gen_platform = platform.replace("_post", "")
-        filename = f"post_{image_gen_platform}_{uuid.uuid4().hex[:10]}.png"
-        public_url = storage_service.upload_image(final_bytes, filename)
-        return public_url
-    except Exception as e:
-        logger.error(f"Error in generate_image for {platform}: {e}")
-        return f"http://localhost:8000/static/fallback_{platform}.png"
-    except Exception as e:
-        print(f"Error in generate_image for {platform}: {e}")
-        return f"http://localhost:8000/static/fallback_{platform}.png"
+    aspect_ratio, (w, h) = nano_banana_generator.normalize_aspect_ratio(platform)
+    bg_url = await nano_banana_generator.generate_background(
+        brand_profile=brand_profile,
+        daily_context=daily_context or {"topic": prompt, "focus": caption},
+        aspect_ratio=aspect_ratio,
+        user_id=user_id,
+        brand_id=brand_id,
+        db=db
+    )
+    if bg_url:
+        return bg_url
+    err = nano_banana_generator.last_error_message or f"Nano Banana 2.1 image generation failed for {platform}"
+    logger.error(err)
+    raise HTTPException(status_code=500, detail=err)
 
 @router.post("/questions")
 async def start_session(
@@ -587,7 +550,7 @@ async def generate_single_variant(
     t0_var = time.time()
 
     try:
-        # 1. Generate background via Nano Banana 2.1 incorporating references and style direction
+        # 1. Generate picture via Nano Banana 2.1 incorporating references and style direction
         t_bg = time.time()
         bg_url = await nano_banana_generator.generate_background(
             brand_profile=brand_profile,
@@ -600,28 +563,16 @@ async def generate_single_variant(
             variant_style=style_info["direction"],
             db=db
         )
-        logger.info(f"✓ [Variant {index}] Background generated in {time.time()-t_bg:.2f}s: {bg_url}")
+        logger.info(f"✓ [Variant {index}] Picture generated via Nano Banana 2.1 in {time.time()-t_bg:.2f}s: {bg_url}")
 
-        # 2. Render Playwright HTML/CSS template to crisp PNG bytes
-        t_pw = time.time()
-        final_bytes = await image_gen.create_branded_post_async(
-            brand_profile=brand_profile,
-            post_text=headline,
-            platform=platform,
-            cta=cta,
-            background_image_url=bg_url,
-            aspect_ratio=aspect_ratio
-        )
-        logger.info(f"✓ [Variant {index}] Playwright overlay rendered in {time.time()-t_pw:.2f}s ({len(final_bytes)} bytes)")
+        if not bg_url:
+            raise Exception(nano_banana_generator.last_error_message or "gemini-nano-banana-2.1 failed to generate image")
 
-        # 3. Upload variant PNG to storage with unguessable token
-        image_gen_platform = platform.replace("_post", "")
-        filename = f"variant_{index}_{image_gen_platform}_{uuid.uuid4().hex}.png"
-        public_url = storage_service.upload_image(final_bytes, filename)
-        variant_source = "ai" if bg_url else "fallback"
-        variant_error = None if bg_url else (nano_banana_generator.last_error_message or "AI background generation failed")
+        public_url = bg_url
+        variant_source = "ai"
+        variant_error = None
 
-        # 4. Save to session_variants with 7-day auto-expiry
+        # 2. Save to session_variants with 7-day auto-expiry
         expiry = datetime.utcnow() + timedelta(days=7)
         variant_record = SessionVariant(
             id=variant_id,
@@ -638,13 +589,13 @@ async def generate_single_variant(
             caption=caption,
             call_to_action=cta,
             is_selected=False,
-            source=variant_source,
+            source="ai",
             expires_at=expiry
         )
         db.add(variant_record)
         db.commit()
 
-        logger.info(f"✓ [Variant {index}] Complete in {time.time()-t0_var:.2f}s (source={variant_source})")
+        logger.info(f"✓ [Variant {index}] Complete in {time.time()-t0_var:.2f}s (source=ai)")
         return VariantResponseItem(
             id=variant_id,
             variant_index=index,
@@ -656,27 +607,14 @@ async def generate_single_variant(
             call_to_action=cta,
             is_selected=False,
             status="ready",
-            source=variant_source,
-            error=variant_error
+            source="ai",
+            error=None
         )
     except Exception as e:
         import traceback
         logger.error(f"❌ [Variant {index} Generation Failed after {time.time()-t0_var:.2f}s] ({style_info['label']}): {e}\n{traceback.format_exc()}")
-        # Produce a real branded fallback PNG to guarantee valid 200 image serving
-        try:
-            fallback_bytes = storage_service.generate_fallback_image(
-                brand_profile=brand_profile,
-                headline=headline,
-                platform=platform
-            )
-            image_gen_platform = platform.replace("_post", "")
-            filename = f"variant_{index}_{image_gen_platform}_{uuid.uuid4().hex}.png"
-            public_url = storage_service.upload_image(fallback_bytes, filename)
-            status_val = "ready"
-        except Exception as fb_err:
-            logger.error(f"Fallback generation error: {fb_err}")
-            public_url = f"{storage_service.get_public_base_url()}/api/media/posts/fallback_{platform}.png"
-            status_val = "fallback"
+        public_url = ""
+        status_val = "failed"
 
         expiry = datetime.utcnow() + timedelta(days=7)
         try:

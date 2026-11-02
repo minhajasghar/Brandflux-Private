@@ -47,20 +47,11 @@ class NanoBananaGenerator:
 
     @property
     def model_id(self) -> str:
-        if self._model_override is not None:
-            return self._model_override
-        try:
-            from services.admin_service import get_ai_credentials
-            creds = get_ai_credentials()
-            if creds.get("image_model"):
-                return creds["image_model"]
-        except Exception:
-            pass
-        return os.getenv("IMAGE_MODEL", IMAGE_MODEL or "gemini-nano-banana-2.1").strip()
+        return "models/gemini-nano-banana-2.1"
 
     @model_id.setter
     def model_id(self, val: str):
-        self._model_override = val
+        self._model_override = "models/gemini-nano-banana-2.1"
 
     @property
     def api_key(self) -> str:
@@ -176,8 +167,8 @@ class NanoBananaGenerator:
 
         ratio_desc = {
             "1:1": "square 1:1 framing with balanced central atmospheric composition",
-            "4:5": "vertical 4:5 portrait composition with elegant negative space",
-            "9:16": "tall 9:16 vertical composition with ample breathing room in the upper and center regions"
+            "4:5": "vertical 4:5 portrait composition with elegant perspective",
+            "9:16": "tall 9:16 vertical composition with breathing room"
         }.get(aspect_ratio, "1:1 composition")
 
         # Composition / Angle / Mood variation prompt
@@ -186,89 +177,58 @@ class NanoBananaGenerator:
         context_str = "; ".join(context_clues) if context_clues else f"Theme: {theme}"
 
         prompt = (
-            f"Commercial atmospheric hero background visual for a {industry} brand with {tone} aesthetic. "
-            f"Visual elements inspired by {context_str}. "
+            f"A stunning professional commercial photograph and visual masterpiece for {business_name}, "
+            f"a brand in the {industry} industry with a {tone} aesthetic. "
+            f"Subject & Focus: {theme}. Visual context: {context_str}. "
             f"{ref_section} "
-            f"Style direction: {variant_angle}. "
-            f"Lighting and ambient color accents harmoniously incorporating luminous cobalt blue ({primary_color}) "
-            f"and electric lime highlights ({secondary_color}) with deep charcoal studio atmosphere. "
-            f"Composition: {ratio_desc}, 8k resolution, clean architectural negative space, "
-            f"smooth subtle 3D textures, clean studio render. "
-            f"CRITICAL STRICT REQUIREMENT: Absolutely NO text, NO typography, NO words, NO letters, NO numbers, "
-            f"NO logos, NO icons, NO watermarks, NO badges, and NO slogans. "
-            f"This is strictly an empty background layer designed for HTML overlay."
+            f"Style & Composition: {variant_angle}, {ratio_desc}. "
+            f"Color palette: Harmoniously incorporating brand accents {primary_color} and {secondary_color}. "
+            f"Ultra-high definition, 8k resolution, photorealistic, cinematic commercial studio lighting, "
+            f"crisp details, depth of field, premium award-winning product and lifestyle presentation."
         )
         return prompt
 
     async def _call_gemini_api(self, prompt: str, aspect_ratio: str) -> bytes:
         """
-        Execute API call to Gemini with timeout and return raw PNG bytes.
-        Calls the generateContent endpoint with responseModalities=['IMAGE'],
-        and falls back to predict for Imagen models.
+        Execute API call exclusively to gemini-nano-banana-2.1 with timeout and return raw PNG bytes.
+        Calls the generateContent endpoint with responseModalities=['IMAGE'].
         """
         self.validate_api_key()
         api_key = self.get_api_key()
-        model_name = self.get_active_model()
-        clean_model = model_name.replace("models/", "")
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key
+        }
 
-        # 1. Primary: generateContent endpoint (standard for gemini-nano-banana and multimodal Gemini models)
-        content_url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
+        # Exclusively call gemini-nano-banana-2.1 generateContent
+        content_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent"
         content_payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"responseModalities": ["IMAGE"]}
         }
 
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            try:
-                res = await client.post(content_url, json=content_payload, headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        for part in parts:
-                            inline = part.get("inlineData", {})
-                            if inline.get("data"):
-                                return base64.b64decode(inline["data"])
-                elif res.status_code in (400, 402, 403, 429):
-                    err_text = res.text
-                    if any(kw in err_text.lower() for kw in ("billing", "quota", "resource_exhausted", "permission_denied", "payment")):
-                        raise GeminiBillingError(
-                            f"Gemini API image generation failed ({res.status_code}): Billing must be enabled on your "
-                            f"Google Cloud / AI Studio project for model '{model_name}'. Details: {err_text}"
-                        )
-                    logger.info(f"generateContent returned status {res.status_code}, falling through to predict endpoint")
-            except GeminiBillingError:
-                raise
-            except Exception as ex:
-                logger.warning(f"generateContent attempt encountered exception: {ex}")
-
-            # 2. Secondary fallback: predict endpoint (for Imagen-style endpoints)
-            predict_url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:predict?key={api_key}"
-            predict_payload = {
-                "instances": [{"prompt": prompt}],
-                "parameters": {
-                    "sampleCount": 1,
-                    "aspectRatio": aspect_ratio,
-                    "outputMimeType": "image/png"
-                }
-            }
-            pred_res = await client.post(predict_url, json=predict_payload, headers=headers)
-            if pred_res.status_code == 200:
-                data = pred_res.json()
-                predictions = data.get("predictions") or []
-                if predictions:
-                    first_pred = predictions[0]
-                    b64 = (
-                        first_pred.get("bytesBase64Encoded")
-                        or (first_pred.get("image", {}).get("imageBytes") if isinstance(first_pred, dict) else None)
-                        or (first_pred if isinstance(first_pred, str) else None)
+            res = await client.post(content_url, json=content_payload, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    for part in parts:
+                        inline = part.get("inlineData", {})
+                        if inline.get("data"):
+                            return base64.b64decode(inline["data"])
+                raise Exception("gemini-nano-banana-2.1 returned 200 OK but no image was found in response.")
+            elif res.status_code in (400, 402, 403, 429):
+                err_text = res.text
+                if any(kw in err_text.lower() for kw in ("billing", "quota", "resource_exhausted", "permission_denied", "payment")):
+                    raise GeminiBillingError(
+                        f"Gemini API image generation failed ({res.status_code}): Billing must be enabled on your "
+                        f"Google Cloud / AI Studio project for model 'gemini-nano-banana-2.1'. Details: {err_text}"
                     )
-                    if b64:
-                        return base64.b64decode(b64)
-
-            raise Exception(f"Gemini API image generation failed. generateContent: {res.status_code if 'res' in locals() else 'error'}, predict: {pred_res.status_code}: {pred_res.text}")
+                raise Exception(f"gemini-nano-banana-2.1 error ({res.status_code}): {err_text}")
+            else:
+                raise Exception(f"gemini-nano-banana-2.1 returned HTTP {res.status_code}: {res.text}")
 
     async def generate_background_with_retry(
         self,

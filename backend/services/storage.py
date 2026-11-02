@@ -171,8 +171,7 @@ class StorageService:
         platform: str = "instagram_post"
     ) -> bytes:
         """
-        Generate a high-resolution, branded fallback PNG on-the-fly when AI generation
-        or Playwright rendering experiences transient failure. Ensures 100% 200 OK image delivery.
+        Clean minimal placeholder PNG without hardcoded text or fake UI overlays.
         """
         width, height = (1080, 1080)
         if platform in ("instagram_story", "story"):
@@ -180,44 +179,7 @@ class StorageService:
         elif platform in ("linkedin_post", "facebook_post"):
             width, height = (1200, 630)
 
-        img = Image.new("RGB", (width, height), color=(13, 15, 22)) # Dark design token #0D0F16
-        draw = ImageDraw.Draw(img)
-
-        # Primary brand color
-        brand_name = (brand_profile.get("business_name") if brand_profile else None) or "Brandflux"
-        primary_color = (brand_profile.get("primary_color") if brand_profile else None) or "#1558C9"
-        secondary_color = (brand_profile.get("secondary_color") if brand_profile else None) or "#D4FF24"
-
-        # Background decorative accent glow
-        try:
-            # Draw top accent bar
-            draw.rectangle([(0, 0), (width, 16)], fill=primary_color)
-            # Subtle corner geometry
-            draw.ellipse([(-100, -100), (400, 400)], fill=(21, 88, 201, 30))
-            draw.rectangle([(60, height - 120), (width - 60, height - 116)], fill=(28, 32, 48))
-        except Exception:
-            pass
-
-        # Text rendering
-        clean_headline = (headline or "Creative Focus for Today").strip()
-        if len(clean_headline) > 80:
-            clean_headline = clean_headline[:77] + "..."
-
-        # Brand header
-        draw.text((80, 80), brand_name.upper(), fill=secondary_color)
-        draw.text((80, 110), "AI SOCIAL CREATIVE", fill=(138, 147, 165))
-
-        # Main Headline
-        draw.text((80, height // 2 - 80), clean_headline, fill=(245, 247, 250))
-
-        # CTA bar
-        draw.rounded_rectangle(
-            [(80, height - 220), (380, height - 160)],
-            radius=12,
-            fill=primary_color
-        )
-        draw.text((110, height - 200), "DISCOVER MORE  ->", fill=(255, 255, 255))
-
+        img = Image.new("RGB", (width, height), color=(13, 15, 22))
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
         buf.seek(0)

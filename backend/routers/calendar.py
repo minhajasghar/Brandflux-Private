@@ -47,52 +47,7 @@ def get_scheduled_posts(
         query = query.filter(ScheduledPost.status == status)
 
     posts = query.order_by(ScheduledPost.scheduled_at.asc()).all()
-
-    # If user has no scheduled posts yet, seed a few helpful starters
-    if not posts and not start_date and not end_date:
-        now = datetime.utcnow()
-        sample_posts = [
-            ScheduledPost(
-                id=str(uuid.uuid4()),
-                brand_id=brand.id,
-                platform="instagram_post",
-                caption=f"🚀 3 strategic shifts driving growth for {brand.business_name} this quarter. Consistency creates compounding authority.",
-                scheduled_at=now + timedelta(days=1, hours=2),
-                status="Scheduled",
-                media_url="http://localhost:8000/static/post_instagram_post_a75c8cafef.png"
-            ),
-            ScheduledPost(
-                id=str(uuid.uuid4()),
-                brand_id=brand.id,
-                platform="linkedin",
-                caption="Why modern brands are replacing chaotic manual posting schedules with autonomous AI brand engines. A breakdown for founders:",
-                scheduled_at=now + timedelta(days=2, hours=4),
-                status="Draft",
-                media_url="http://localhost:8000/static/post_linkedin_669f40e81b.png"
-            ),
-            ScheduledPost(
-                id=str(uuid.uuid4()),
-                brand_id=brand.id,
-                platform="instagram_story",
-                caption="Quick daily poll: Which platform drives your highest-intent leads right now?",
-                scheduled_at=now + timedelta(days=3, hours=1),
-                status="Publishing",
-                media_url="http://localhost:8000/static/post_instagram_story_2dffddf3c6.png"
-            ),
-            ScheduledPost(
-                id=str(uuid.uuid4()),
-                brand_id=brand.id,
-                platform="facebook",
-                caption="Behind the scenes at our studio: fine-tuning brand assets and color palettes.",
-                scheduled_at=now - timedelta(days=1, hours=3),
-                status="Published",
-                media_url="http://localhost:8000/static/post_facebook_a75c8cafef.png"
-            )
-        ]
-        for sp in sample_posts:
-            db.add(sp)
-        db.commit()
-        posts = query.order_by(ScheduledPost.scheduled_at.asc()).all()
+    return posts
 
     return posts
 

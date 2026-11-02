@@ -81,6 +81,12 @@ export default function SessionPage() {
   const [imageLoadError, setImageLoadError] = useState(false)
   const [cardImageErrors, setCardImageErrors] = useState<Record<string, boolean>>({})
   const [activePlatformTab, setActivePlatformTab] = useState('instagram_post')
+  const [platformCopies, setPlatformCopies] = useState<Record<string, {
+    caption: string
+    hashtags: string[]
+    best_time?: string
+    call_to_action?: string
+  }>>({})
 
   // Helper to ensure public, stable media resolution
   const resolveMediaUrl = (url?: string | null): string => {
@@ -273,8 +279,40 @@ export default function SessionPage() {
           setCreditsRemaining(res.credits_remaining)
           setPlanName(res.plan)
           setMaxVariantsAllowed(res.max_variants_allowed)
-          setCaptionText(res.caption)
-          setHashtagsList(res.hashtags || [])
+
+          // Multi-channel copy state initialization
+          const rawPosts = res.platform_posts || {}
+          const initialCopies: Record<string, any> = {
+            instagram_post: {
+              caption: rawPosts.instagram_post?.caption || res.caption || '',
+              hashtags: rawPosts.instagram_post?.hashtags || res.hashtags || [],
+              best_time: rawPosts.instagram_post?.best_time || res.posting_time_suggestion || 'Today 7:00 PM',
+              call_to_action: rawPosts.instagram_post?.call_to_action || res.call_to_action
+            },
+            linkedin_post: {
+              caption: rawPosts.linkedin_post?.caption || res.caption || '',
+              hashtags: rawPosts.linkedin_post?.hashtags || (res.hashtags || []).slice(0, 5),
+              best_time: rawPosts.linkedin_post?.best_time || 'Tuesday 9:00 AM',
+              call_to_action: rawPosts.linkedin_post?.call_to_action || 'Share your thoughts below'
+            },
+            facebook_post: {
+              caption: rawPosts.facebook_post?.caption || res.caption || '',
+              hashtags: rawPosts.facebook_post?.hashtags || (res.hashtags || []).slice(0, 3),
+              best_time: rawPosts.facebook_post?.best_time || 'Today 1:00 PM',
+              call_to_action: rawPosts.facebook_post?.call_to_action || 'Comment below!'
+            },
+            twitter_post: {
+              caption: rawPosts.twitter_post?.caption || (res.caption ? res.caption.slice(0, 240) : ''),
+              hashtags: rawPosts.twitter_post?.hashtags || (res.hashtags || []).slice(0, 2),
+              best_time: rawPosts.twitter_post?.best_time || 'Today 12:00 PM',
+              call_to_action: rawPosts.twitter_post?.call_to_action || 'RT if you agree'
+            }
+          }
+
+          setPlatformCopies(initialCopies)
+          setActivePlatformTab('instagram_post')
+          setCaptionText(initialCopies.instagram_post.caption)
+          setHashtagsList(initialCopies.instagram_post.hashtags)
 
           // Set default selected variant
           const initialSelected = res.variants?.find(v => v.is_selected) || res.variants?.[0]
@@ -324,7 +362,8 @@ export default function SessionPage() {
         variant_id: variant.id,
         session_id: variantSessionData.session_id,
         adjusted_caption: captionText,
-        adjusted_hashtags: hashtagsList
+        adjusted_hashtags: hashtagsList,
+        target_platform: activePlatformTab
       })
       toast.success('Saved as active selected post for download & calendar!')
     } catch (err: any) {
@@ -332,6 +371,55 @@ export default function SessionPage() {
     } finally {
       setSavingSelection(false)
     }
+  }
+
+  // ─── Multi-Platform Tabs Switching ──────────────────────────────────────────
+  const switchPlatformTab = (platformKey: string) => {
+    // Save current active copy into state before switching
+    setPlatformCopies(prev => ({
+      ...prev,
+      [activePlatformTab]: {
+        ...(prev[activePlatformTab] || {}),
+        caption: captionText,
+        hashtags: hashtagsList
+      }
+    }))
+
+    setActivePlatformTab(platformKey)
+
+    const target = platformCopies[platformKey]
+    if (target) {
+      setCaptionText(target.caption || '')
+      setHashtagsList(target.hashtags || [])
+    }
+  }
+
+  const handleCaptionChange = (val: string) => {
+    setCaptionText(val)
+    setPlatformCopies(prev => ({
+      ...prev,
+      [activePlatformTab]: {
+        ...(prev[activePlatformTab] || {}),
+        caption: val
+      }
+    }))
+  }
+
+  const handleProceedToCalendar = async () => {
+    if (variantSessionData && selectedVariantId) {
+      try {
+        await selectSessionVariant({
+          variant_id: selectedVariantId,
+          session_id: variantSessionData.session_id,
+          adjusted_caption: captionText,
+          adjusted_hashtags: hashtagsList,
+          target_platform: activePlatformTab
+        })
+      } catch (e) {
+        console.error('Error committing selection before calendar:', e)
+      }
+    }
+    router.push('/calendar')
   }
 
   // ─── Regenerate Single Variant / More Like This ────────────────────────────
@@ -977,10 +1065,91 @@ export default function SessionPage() {
 
                 {/* Right: Shared copy & schedule */}
                 <div className="space-y-5">
+                  {/* Multi-Platform Channel Tabs */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold uppercase tracking-wider text-muted">
+                        Social Platform Copy
+                      </label>
+                      <span className="text-[11px] font-bold text-accent bg-accent/10 border border-accent/20 px-2.5 py-0.5 rounded-full">
+                        Generated for all 4 channels
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-1.5 rounded-2xl bg-surface-secondary border border-border">
+                      <button
+                        type="button"
+                        onClick={() => switchPlatformTab('instagram_post')}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-black transition-all ${
+                          activePlatformTab === 'instagram_post'
+                            ? 'bg-accent text-black shadow-md shadow-accent/20'
+                            : 'text-muted hover:text-text hover:bg-surface/60'
+                        }`}
+                      >
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+                          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                          <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+                        </svg>
+                        <span>Instagram</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => switchPlatformTab('linkedin_post')}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-black transition-all ${
+                          activePlatformTab === 'linkedin_post'
+                            ? 'bg-accent text-black shadow-md shadow-accent/20'
+                            : 'text-muted hover:text-text hover:bg-surface/60'
+                        }`}
+                      >
+                        <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                          <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.779-1.75-1.75s.784-1.75 1.75-1.75 1.75.779 1.75 1.75-.784 1.75-1.75 1.75zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+                        </svg>
+                        <span>LinkedIn</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => switchPlatformTab('facebook_post')}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-black transition-all ${
+                          activePlatformTab === 'facebook_post'
+                            ? 'bg-accent text-black shadow-md shadow-accent/20'
+                            : 'text-muted hover:text-text hover:bg-surface/60'
+                        }`}
+                      >
+                        <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                          <path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z" />
+                        </svg>
+                        <span>Facebook</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => switchPlatformTab('twitter_post')}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-black transition-all ${
+                          activePlatformTab === 'twitter_post'
+                            ? 'bg-accent text-black shadow-md shadow-accent/20'
+                            : 'text-muted hover:text-text hover:bg-surface/60'
+                        }`}
+                      >
+                        <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                        </svg>
+                        <span>Twitter / X</span>
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <label className="text-xs font-bold uppercase tracking-wider text-muted">Caption</label>
+                        <label className="text-xs font-bold uppercase tracking-wider text-muted">
+                          {activePlatformTab === 'instagram_post' && 'Instagram Caption'}
+                          {activePlatformTab === 'linkedin_post' && 'LinkedIn Professional Post'}
+                          {activePlatformTab === 'facebook_post' && 'Facebook Community Post'}
+                          {activePlatformTab === 'twitter_post' && 'Twitter / X Tweet'}
+                        </label>
                         {variantSessionData.caption_source === 'fallback' && (
                           <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                             <AlertTriangle className="h-3 w-3" /> Fallback Copy
@@ -991,7 +1160,7 @@ export default function SessionPage() {
                     </div>
                     <textarea
                       value={captionText}
-                      onChange={(e) => setCaptionText(e.target.value)}
+                      onChange={(e) => handleCaptionChange(e.target.value)}
                       rows={5}
                       className="w-full bg-surface-secondary border border-border rounded-2xl p-4 text-sm leading-relaxed text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition"
                     />
@@ -1012,9 +1181,11 @@ export default function SessionPage() {
                   {/* Schedule recommendation */}
                   <div className="p-4 rounded-2xl bg-surface-secondary border border-border flex items-center justify-between">
                     <div>
-                      <p className="text-[11px] font-bold text-muted uppercase">Recommended Posting Time</p>
+                      <p className="text-[11px] font-bold text-muted uppercase">
+                        Recommended Posting Time ({activePlatformTab.replace('_post', '').toUpperCase()})
+                      </p>
                       <p className="text-base font-extrabold text-text mt-0.5">
-                        {variantSessionData.posting_time_suggestion || 'Today 7:00 PM'}
+                        {platformCopies[activePlatformTab]?.best_time || variantSessionData.posting_time_suggestion || 'Today 7:00 PM'}
                       </p>
                     </div>
                     <span className="px-3 py-1 rounded-full bg-accent/15 text-accent border border-accent/30 text-xs font-bold">
@@ -1025,7 +1196,7 @@ export default function SessionPage() {
                   <div className="pt-2">
                     <button
                       type="button"
-                      onClick={() => router.push('/calendar')}
+                      onClick={handleProceedToCalendar}
                       className="w-full py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-accent-glow"
                     >
                       <span>Proceed to Calendar &amp; Schedule</span>

@@ -175,8 +175,9 @@ Generate JSON strictly matching this structure:
   "session_theme": "Theme of the post",
   "instagram_post": {{ "caption": "...", "hashtags": [], "best_time": "...", "best_day": "...", "call_to_action": "..." }},
   "instagram_story": {{ "text": "...", "cta": "...", "poll_question": "..." }},
-  "linkedin_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "..." }},
-  "facebook_post": {{ "caption": "...", "hashtags": [] }},
+  "linkedin_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
+  "facebook_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
+  "twitter_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
   "guidance": {{ "tip_of_day": "...", "this_week_suggestion": "...", "best_performing_type": "..." }}
 }}"""
 
@@ -242,7 +243,21 @@ Generate JSON strictly matching this structure:
             )
             data["facebook_post"] = {
                 "caption": facebook_caption,
-                "hashtags": [h for h in base_hashtags if h][:3]
+                "hashtags": [h for h in base_hashtags if h][:3],
+                "best_day": "Today",
+                "best_time": "1:00 PM",
+                "call_to_action": "Let us know your thoughts in the comments!"
+            }
+
+        # --- twitter_post fallback ---
+        if not data.get("twitter_post"):
+            twitter_caption = base_caption[:240] if base_caption else "Fresh updates from our team. Stay tuned!"
+            data["twitter_post"] = {
+                "caption": twitter_caption,
+                "hashtags": [h for h in base_hashtags if h][:2],
+                "best_day": "Today",
+                "best_time": "12:00 PM",
+                "call_to_action": "RT & share if you agree!"
             }
 
         # --- instagram_post fallback (shouldn't happen but guard anyway) ---

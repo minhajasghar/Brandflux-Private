@@ -942,6 +942,38 @@ async def generate_session_variants(
         gen_status = "partial"
         gen_error = content_data.get("_error") or "AI copywriting failed; emergency branded copy used."
 
+    # Multi-platform structured copy for all channels
+    platform_posts = {
+        "instagram_post": {
+            "platform_name": "Instagram",
+            "caption": content_data.get("instagram_post", {}).get("caption") or caption,
+            "hashtags": content_data.get("instagram_post", {}).get("hashtags") or hashtags,
+            "call_to_action": content_data.get("instagram_post", {}).get("call_to_action") or overlay_cta,
+            "best_time": f"{content_data.get('instagram_post', {}).get('best_day', 'Today')} {content_data.get('instagram_post', {}).get('best_time', '7:00 PM')}".strip()
+        },
+        "linkedin_post": {
+            "platform_name": "LinkedIn",
+            "caption": content_data.get("linkedin_post", {}).get("caption") or caption,
+            "hashtags": content_data.get("linkedin_post", {}).get("hashtags") or [h for h in hashtags[:5]],
+            "call_to_action": content_data.get("linkedin_post", {}).get("call_to_action") or "Share your thoughts below",
+            "best_time": f"{content_data.get('linkedin_post', {}).get('best_day', 'Tuesday')} {content_data.get('linkedin_post', {}).get('best_time', '9:00 AM')}".strip()
+        },
+        "facebook_post": {
+            "platform_name": "Facebook",
+            "caption": content_data.get("facebook_post", {}).get("caption") or caption,
+            "hashtags": content_data.get("facebook_post", {}).get("hashtags") or [h for h in hashtags[:3]],
+            "call_to_action": content_data.get("facebook_post", {}).get("call_to_action") or "Comment below!",
+            "best_time": f"{content_data.get('facebook_post', {}).get('best_day', 'Today')} {content_data.get('facebook_post', {}).get('best_time', '1:00 PM')}".strip()
+        },
+        "twitter_post": {
+            "platform_name": "Twitter / X",
+            "caption": content_data.get("twitter_post", {}).get("caption") or (caption[:240] if caption else ""),
+            "hashtags": content_data.get("twitter_post", {}).get("hashtags") or [h for h in hashtags[:2]],
+            "call_to_action": content_data.get("twitter_post", {}).get("call_to_action") or "RT if you agree",
+            "best_time": f"{content_data.get('twitter_post', {}).get('best_day', 'Today')} {content_data.get('twitter_post', {}).get('best_time', '12:00 PM')}".strip()
+        }
+    }
+
     return MultiVariantSessionResponse(
         session_id=session.id,
         session_theme=content_data.get("session_theme", "Daily Content"),
@@ -956,7 +988,8 @@ async def generate_session_variants(
         max_variants_allowed=max_allowed,
         guidance=content_data.get("guidance") or {},
         generation_status=gen_status,
-        generation_error=gen_error
+        generation_error=gen_error,
+        platform_posts=platform_posts
     )
 
 
@@ -997,6 +1030,7 @@ def select_session_variant(
 
     final_caption = req.adjusted_caption or variant.caption or ""
     final_hashtags = req.adjusted_hashtags if req.adjusted_hashtags is not None else variant.hashtags
+    selected_platform = req.target_platform or variant.platform or "instagram_post"
 
     # Create permanent ContentIdea & GeneratedPost
     idea = ContentIdea(
@@ -1015,7 +1049,7 @@ def select_session_variant(
         idea_id=idea.id,
         user_id=user.id,
         brand_id=variant.brand_id,
-        platform=variant.platform,
+        platform=selected_platform,
         caption=final_caption,
         hashtags=final_hashtags,
         call_to_action=variant.call_to_action,

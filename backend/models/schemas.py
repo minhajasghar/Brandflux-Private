@@ -264,6 +264,7 @@ class SelectVariantRequest(BaseModel):
     session_id: str
     adjusted_caption: Optional[str] = None
     adjusted_hashtags: Optional[List[str]] = None
+    target_platform: Optional[str] = None
 
 class RegenerateVariantRequest(BaseModel):
     session_id: str
@@ -302,6 +303,7 @@ class MultiVariantSessionResponse(BaseModel):
     guidance: Optional[Dict[str, Any]] = None
     generation_status: str = "success"  # "success" | "partial" | "failed"
     generation_error: Optional[str] = None
+    platform_posts: Optional[Dict[str, Any]] = None
 
 class DailySessionResponse(BaseModel):
     id: str

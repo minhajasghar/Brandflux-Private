@@ -140,4 +140,11 @@ export interface MultiVariantSessionResult {
   guidance?: any
   generation_status?: 'success' | 'partial' | 'failed' | 'fallback'
   generation_error?: string
+  platform_posts?: Record<string, {
+    platform_name?: string
+    caption: string
+    hashtags: string[]
+    call_to_action?: string
+    best_time?: string
+  }>
 }

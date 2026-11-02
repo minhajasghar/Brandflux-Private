@@ -513,6 +513,7 @@ export async function selectSessionVariant(payload: {
   session_id: string
   adjusted_caption?: string
   adjusted_hashtags?: string[]
+  target_platform?: string
 }) {
   const response = await api.post('/sessions/select-variant', payload)
   return response.data

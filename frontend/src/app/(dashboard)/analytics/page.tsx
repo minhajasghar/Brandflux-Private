@@ -211,14 +211,14 @@ export default function AnalyticsPage() {
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
               <span className="text-xs font-semibold tracking-wider uppercase text-primary-light">
-                Continuous Performance Intelligence
+                Performance Intelligence
               </span>
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-text mt-0.5">
-              Brand Analytics & Feedback Loop
+              Analytics
             </h1>
             <p className="text-xs text-muted">
-              Daily telemetry from connected channels feeds directly into future AI generation prompts.
+              Track real-time multi-platform performance and discover how engagement insights automatically optimize your next AI-generated content.
             </p>
           </div>
 
@@ -278,9 +278,13 @@ export default function AnalyticsPage() {
               <span className="text-2xl lg:text-3xl font-extrabold text-text tracking-tight">
                 {kpis.total_impressions.toLocaleString()}
               </span>
-              <span className="text-xs font-semibold text-accent inline-flex items-center">
-                <ArrowUpRight className="h-3 w-3" /> +18.4%
-              </span>
+              {kpis.total_impressions > 0 ? (
+                <span className="text-xs font-semibold text-accent inline-flex items-center">
+                  <ArrowUpRight className="h-3 w-3" /> +18.4%
+                </span>
+              ) : (
+                <span className="text-xs text-muted font-medium">Collecting initial data...</span>
+              )}
             </div>
             <p className="text-[11px] text-muted mt-1">Cross-platform views</p>
           </div>
@@ -299,9 +303,13 @@ export default function AnalyticsPage() {
               <span className="text-2xl lg:text-3xl font-extrabold text-text tracking-tight">
                 {kpis.total_reach.toLocaleString()}
               </span>
-              <span className="text-xs font-semibold text-accent inline-flex items-center">
-                <ArrowUpRight className="h-3 w-3" /> +24.1%
-              </span>
+              {kpis.total_reach > 0 ? (
+                <span className="text-xs font-semibold text-accent inline-flex items-center">
+                  <ArrowUpRight className="h-3 w-3" /> +24.1%
+                </span>
+              ) : (
+                <span className="text-xs text-muted font-medium">Collecting initial data...</span>
+              )}
             </div>
             <p className="text-[11px] text-muted mt-1">Unique accounts touched</p>
           </div>
@@ -320,9 +328,13 @@ export default function AnalyticsPage() {
               <span className="text-2xl lg:text-3xl font-extrabold text-accent tracking-tight">
                 {kpis.avg_engagement_rate}%
               </span>
-              <span className="text-xs font-semibold text-primary-light inline-flex items-center">
-                benchmark 3.2%
-              </span>
+              {kpis.total_posts > 0 && kpis.avg_engagement_rate > 0 ? (
+                <span className="text-xs font-semibold text-primary-light inline-flex items-center">
+                  benchmark 3.2%
+                </span>
+              ) : (
+                <span className="text-xs text-muted font-medium">Awaiting post interactions</span>
+              )}
             </div>
             <p className="text-[11px] text-muted mt-1">Likes + comments / reach</p>
           </div>
@@ -344,7 +356,9 @@ export default function AnalyticsPage() {
               <span className="text-xs text-muted">active in {days}d</span>
             </div>
             <p className="text-[11px] text-muted mt-1">
-              {kpis.total_likes} likes • {kpis.total_comments} comments
+              {kpis.total_posts > 0 
+                ? `${kpis.total_likes} likes • ${kpis.total_comments} comments` 
+                : 'No published posts yet in this period'}
             </p>
           </div>
         </div>
@@ -359,8 +373,8 @@ export default function AnalyticsPage() {
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-accent/10 border border-accent/30 text-[11px] font-bold text-accent uppercase tracking-wider">
-                Model Continuous Feedback
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-accent/10 border border-accent/30 text-[11px] font-bold text-accent uppercase tracking-wider">
+                Content Performance Insights
               </div>
               <h2 className="text-xl font-bold text-text mt-1">
                 Executive Synthesis: What Worked vs. What Didn&apos;t

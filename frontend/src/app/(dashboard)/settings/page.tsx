@@ -53,6 +53,17 @@ import {
 
 type TabType = 'brand-kit' | 'autopilot' | 'connected' | 'account' | 'billing'
 
+const isDarkHex = (color: string): boolean => {
+  if (!color || !color.startsWith('#') || color.length < 4) return true
+  const c = color.replace('#', '')
+  const full = c.length === 3 ? c.split('').map(x => x + x).join('') : c
+  const r = parseInt(full.substring(0, 2), 16) || 0
+  const g = parseInt(full.substring(2, 4), 16) || 0
+  const b = parseInt(full.substring(4, 6), 16) || 0
+  const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return luma < 128
+}
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('brand-kit')
   const [loading, setLoading] = useState(true)
@@ -401,15 +412,29 @@ export default function SettingsPage() {
   }
 
   // ─── Color Palette Handlers ──────────────────────────────────────────────
+  const colorSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const handleColorChange = (index: number, newColor: string) => {
     const updated = [...brandKit.colors]
     updated[index] = newColor
-    setBrandKit(prev => ({
-      ...prev,
+    const updatedKit = {
+      ...brandKit,
       colors: updated,
-      primary_color: index === 0 ? newColor : prev.primary_color,
-      secondary_color: index === 1 ? newColor : prev.secondary_color
-    }))
+      primary_color: index === 0 ? newColor : brandKit.primary_color,
+      secondary_color: index === 1 ? newColor : brandKit.secondary_color
+    }
+    setBrandKit(updatedKit)
+
+    // Debounced auto-save with clear feedback
+    if (colorSaveTimerRef.current) {
+      clearTimeout(colorSaveTimerRef.current)
+    }
+    if (newColor.length === 7 && newColor.startsWith('#')) {
+      colorSaveTimerRef.current = setTimeout(() => {
+        handleSaveBrandKit(updatedKit, true)
+        toast.success(`Color ${newColor.toUpperCase()} saved to brand kit`, { id: 'palette-save' })
+      }, 700)
+    }
   }
 
   const handleAddColor = () => {
@@ -418,10 +443,14 @@ export default function SettingsPage() {
       return
     }
     const defaultNewColor = '#4C8DFF'
-    setBrandKit(prev => ({
-      ...prev,
-      colors: [...prev.colors, defaultNewColor]
-    }))
+    const updatedColors = [...brandKit.colors, defaultNewColor]
+    const updatedKit = {
+      ...brandKit,
+      colors: updatedColors
+    }
+    setBrandKit(updatedKit)
+    handleSaveBrandKit(updatedKit, true)
+    toast.success('Color added & saved to brand kit', { id: 'palette-save' })
   }
 
   const handleRemoveColor = (index: number) => {
@@ -429,13 +458,16 @@ export default function SettingsPage() {
       toast.error('Must maintain at least 1 primary brand color')
       return
     }
-    const updated = brandKit.colors.filter((_, i) => i !== index)
-    setBrandKit(prev => ({
-      ...prev,
-      colors: updated,
-      primary_color: updated[0] || '#1558C9',
-      secondary_color: updated[1] || '#D4FF24'
-    }))
+    const updatedColors = brandKit.colors.filter((_, i) => i !== index)
+    const updatedKit = {
+      ...brandKit,
+      colors: updatedColors,
+      primary_color: updatedColors[0] || '#1558C9',
+      secondary_color: updatedColors[1] || '#D4FF24'
+    }
+    setBrandKit(updatedKit)
+    handleSaveBrandKit(updatedKit, true)
+    toast.success('Color removed & palette updated', { id: 'palette-save' })
   }
 
   // ─── Tag Handlers (Keywords & Themes) ────────────────────────────────────
@@ -550,28 +582,31 @@ export default function SettingsPage() {
   }
 
   // ─── Save Brand Kit ──────────────────────────────────────────────────────
-  const handleSaveBrandKit = async () => {
+  const handleSaveBrandKit = async (overrideKit?: typeof brandKit, silent: boolean = false) => {
     try {
       setSaving(true)
+      const kitToSave = (overrideKit && typeof overrideKit === 'object' && 'business_name' in overrideKit) ? overrideKit : brandKit
       await updateBrandKit({
-        business_name: brandKit.business_name,
-        tagline: brandKit.tagline,
-        industry: brandKit.industry,
-        business_type: brandKit.business_type,
-        target_audience: brandKit.target_audience,
-        brand_tone: brandKit.brand_tone,
-        brand_personality: brandKit.brand_personality,
-        brand_voice: brandKit.brand_voice,
-        colors: brandKit.colors,
-        primary_color: brandKit.primary_color,
-        secondary_color: brandKit.secondary_color,
-        brand_keywords: brandKit.brand_keywords,
-        content_themes: brandKit.content_themes,
-        products_services: brandKit.products_services,
-        logo_url: brandKit.logo_url,
-        clean_logo_url: brandKit.clean_logo_url
+        business_name: kitToSave.business_name,
+        tagline: kitToSave.tagline,
+        industry: kitToSave.industry,
+        business_type: kitToSave.business_type,
+        target_audience: kitToSave.target_audience,
+        brand_tone: kitToSave.brand_tone,
+        brand_personality: kitToSave.brand_personality,
+        brand_voice: kitToSave.brand_voice,
+        colors: kitToSave.colors,
+        primary_color: kitToSave.primary_color,
+        secondary_color: kitToSave.secondary_color,
+        brand_keywords: kitToSave.brand_keywords,
+        content_themes: kitToSave.content_themes,
+        products_services: kitToSave.products_services,
+        logo_url: kitToSave.logo_url,
+        clean_logo_url: kitToSave.clean_logo_url
       })
-      toast.success('Brand Kit saved! Generation prompts will prioritize this kit.')
+      if (!silent) {
+        toast.success('Brand Kit saved! Generation prompts will prioritize this kit.')
+      }
     } catch (err: any) {
       console.error('Failed to save brand kit', err)
       toast.error(err.response?.data?.detail || 'Failed to save brand kit')
@@ -586,7 +621,7 @@ export default function SettingsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
         <div>
           <h1 className="text-3xl font-extrabold text-text tracking-tight flex items-center gap-2.5">
-            Settings &amp; Brand Studio
+            Brand Studio Settings
           </h1>
           <p className="text-sm text-muted mt-1">
             Manage your saved Brand Kit, team accounts, social connections, and subscription.
@@ -596,7 +631,7 @@ export default function SettingsPage() {
         {/* Global Save Button for Brand Kit */}
         {activeTab === 'brand-kit' && (
           <button
-            onClick={handleSaveBrandKit}
+            onClick={() => handleSaveBrandKit()}
             disabled={saving || loading}
             className="px-5 py-2.5 bg-accent hover:bg-accent-hover text-black font-extrabold text-sm rounded-xl transition duration-200 shadow-accent-glow flex items-center gap-2 active:scale-95 disabled:opacity-50 self-start sm:self-auto"
           >
@@ -751,7 +786,13 @@ export default function SettingsPage() {
 
                       {/* Color Preview & Native Picker */}
                       <div className="flex items-center gap-3">
-                        <div className="relative h-10 w-10 rounded-lg overflow-hidden border border-border shrink-0 shadow-inner">
+                        <div 
+                          className={`relative h-10 w-10 rounded-lg overflow-hidden shrink-0 shadow-inner transition ${
+                            isDarkHex(hex) 
+                              ? 'border border-white/30 ring-1 ring-white/15' 
+                              : 'border border-black/25 ring-1 ring-black/10'
+                          }`}
+                        >
                           <input
                             type="color"
                             value={hex.startsWith('#') && hex.length === 7 ? hex : '#1558C9'}
@@ -759,7 +800,7 @@ export default function SettingsPage() {
                             className="absolute -inset-2 w-14 h-14 cursor-pointer opacity-0"
                           />
                           <div 
-                            className="w-full h-full"
+                            className="w-full h-full border border-white/10"
                             style={{ backgroundColor: hex }}
                           />
                         </div>
@@ -767,7 +808,7 @@ export default function SettingsPage() {
                           type="text"
                           value={hex}
                           onChange={(e) => handleColorChange(idx, e.target.value)}
-                          className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-border text-xs font-mono font-bold text-text focus:outline-none focus:border-primary uppercase"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-white/15 text-xs font-mono font-bold text-slate-100 placeholder:text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent uppercase shadow-sm"
                           maxLength={7}
                         />
                       </div>
@@ -1031,7 +1072,7 @@ export default function SettingsPage() {
                 {/* Bottom Action */}
                 <div className="pt-4 border-t border-border flex justify-end">
                   <button
-                    onClick={handleSaveBrandKit}
+                    onClick={() => handleSaveBrandKit()}
                     disabled={saving}
                     className="px-6 py-2.5 bg-accent hover:bg-accent-hover text-black font-extrabold text-xs sm:text-sm rounded-xl transition duration-200 shadow-accent-glow flex items-center gap-2 disabled:opacity-50"
                   >
@@ -1752,6 +1793,32 @@ export default function SettingsPage() {
             </motion.div>
           )}
         </AnimatePresence>
+      )}
+
+      {/* ── Persistently Visible Save Action for Brand Kit ── */}
+      {activeTab === 'brand-kit' && (
+        <div className="fixed bottom-6 right-6 z-40 flex items-center gap-3 p-2.5 bg-surface/95 border border-border/80 backdrop-blur-xl rounded-2xl shadow-2xl">
+          <span className="hidden sm:inline text-xs text-muted font-medium pl-2">
+            Brand Kit edits
+          </span>
+          <button
+            onClick={() => handleSaveBrandKit()}
+            disabled={saving || loading}
+            className="px-5 py-2.5 bg-accent hover:bg-accent-hover text-black font-extrabold text-xs sm:text-sm rounded-xl transition duration-200 shadow-accent-glow flex items-center gap-2 active:scale-95 disabled:opacity-50"
+          >
+            {saving ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin text-black" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 text-black" />
+                <span>Save Brand Kit</span>
+              </>
+            )}
+          </button>
+        </div>
       )}
     </div>
   )

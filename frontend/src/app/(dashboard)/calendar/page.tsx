@@ -500,7 +500,7 @@ export default function CalendarPage() {
         <div>
           <h1 className="text-3xl font-extrabold text-text tracking-tight flex items-center gap-2.5">
             <CalendarIcon className="h-7 w-7 text-primary-light" />
-            Content Calendar &amp; Schedule
+            Content Calendar
           </h1>
           <p className="text-sm text-muted mt-1">
             Drag and drop posts to reschedule, manage platform publishing, and review status.
@@ -551,24 +551,8 @@ export default function CalendarPage() {
           </h2>
         </div>
 
-        {/* View Switcher (Month / Week) & Legend */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Status Badges Legend */}
-          <div className="flex items-center gap-2.5 mr-2 text-[11px] font-bold text-muted flex-wrap">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-muted" /> Draft
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-primary-light" /> Scheduled
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" /> Published
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-red-400" /> Failed
-            </span>
-          </div>
-
+        {/* View Switcher (Month / Week) */}
+        <div className="flex items-center gap-3">
           {/* Month / Week View Toggle (Desktop only) */}
           <div className="hidden md:flex items-center gap-1 bg-surface-secondary border border-border rounded-xl p-1">
             <button
@@ -670,59 +654,72 @@ export default function CalendarPage() {
                       </button>
                     </div>
 
-                    {/* Post Chips */}
-                    <div className="mt-1.5 space-y-1.5 flex-1 overflow-hidden">
-                      {cellPosts.slice(0, 3).map(post => {
-                        const statusCfg = STATUS_CONFIG[post.status] || STATUS_CONFIG.Draft
-                        const platformCfg = PLATFORMS.find(p => p.id === post.platform) || PLATFORMS[0]
-
-                        return (
-                          <div
-                            key={post.id}
-                            draggable="true"
-                            onDragStart={e => handleDragStart(post, e)}
-                            onClick={() => handleOpenEditDrawer(post)}
-                            className={`w-full p-1.5 rounded-xl bg-surface hover:bg-surface-hover border ${statusCfg.cardBorder} transition cursor-grab active:cursor-grabbing shadow-sm flex flex-col gap-1 text-left`}
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="flex items-center gap-1 text-[11px] font-bold text-text truncate">
-                                <GripVertical className="h-3 w-3 text-muted/60 shrink-0" />
-                                <span>{platformCfg.icon}</span>
-                                <span className="truncate">{platformCfg.label}</span>
-                              </span>
-
-                              <span
-                                className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[9px] font-extrabold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border} shrink-0`}
-                              >
-                                <span className={`h-1.5 w-1.5 rounded-full ${statusCfg.dot}`} />
-                                <span>{statusCfg.label}</span>
-                              </span>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-1 text-[10px] text-muted">
-                              <p className="truncate font-medium flex-1">
-                                {post.caption || 'No caption text'}
-                              </p>
-                              {post.media_url && (
-                                <ImageIcon className="h-3 w-3 text-primary-light shrink-0" />
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-
-                      {cellPosts.length > 3 && (
-                        <div
-                          onClick={() => {
-                            setSelectedMobileDate(cell.dateStr)
-                            handleOpenCreateDrawer(cell.dateStr)
-                          }}
-                          className="text-center text-[10px] font-extrabold text-primary-light hover:underline cursor-pointer py-0.5"
-                        >
-                          +{cellPosts.length - 3} more posts
+                    {/* Post Chips or Subtle Hover Action for Empty Cells */}
+                    {cellPosts.length === 0 ? (
+                      <div
+                        onClick={() => handleOpenCreateDrawer(cell.dateStr)}
+                        className="mt-1 flex-1 flex flex-col items-center justify-center p-2 rounded-xl border border-dashed border-transparent group-hover:border-border-light/60 group-hover:bg-surface/50 transition cursor-pointer"
+                        title={`Click to schedule a post on ${cell.dateStr}`}
+                      >
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[11px] font-semibold text-muted group-hover:text-accent transition">
+                          <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
+                          <span>Schedule</span>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 space-y-1.5 flex-1 overflow-hidden">
+                        {cellPosts.slice(0, 3).map(post => {
+                          const statusCfg = STATUS_CONFIG[post.status] || STATUS_CONFIG.Draft
+                          const platformCfg = PLATFORMS.find(p => p.id === post.platform) || PLATFORMS[0]
+
+                          return (
+                            <div
+                              key={post.id}
+                              draggable="true"
+                              onDragStart={e => handleDragStart(post, e)}
+                              onClick={() => handleOpenEditDrawer(post)}
+                              className={`w-full p-1.5 rounded-xl bg-surface hover:bg-surface-hover border ${statusCfg.cardBorder} transition cursor-grab active:cursor-grabbing shadow-sm flex flex-col gap-1 text-left`}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="flex items-center gap-1 text-[11px] font-bold text-text truncate">
+                                  <GripVertical className="h-3 w-3 text-muted/60 shrink-0" />
+                                  <span>{platformCfg.icon}</span>
+                                  <span className="truncate">{platformCfg.label}</span>
+                                </span>
+
+                                <span
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[9px] font-extrabold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border} shrink-0`}
+                                >
+                                  <span className={`h-1.5 w-1.5 rounded-full ${statusCfg.dot}`} />
+                                  <span>{statusCfg.label}</span>
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-1 text-[10px] text-muted">
+                                <p className="truncate font-medium flex-1">
+                                  {post.caption || 'No caption text'}
+                                </p>
+                                {post.media_url && (
+                                  <ImageIcon className="h-3 w-3 text-primary-light shrink-0" />
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+
+                        {cellPosts.length > 3 && (
+                          <div
+                            onClick={() => {
+                              setSelectedMobileDate(cell.dateStr)
+                              handleOpenCreateDrawer(cell.dateStr)
+                            }}
+                            className="text-center text-[10px] font-extrabold text-primary-light hover:underline cursor-pointer py-0.5"
+                          >
+                            +{cellPosts.length - 3} more posts
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -785,9 +782,13 @@ export default function CalendarPage() {
                     </div>
 
                     {dayPosts.length === 0 ? (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center p-3 text-muted/50 border border-dashed border-border/40 rounded-xl">
-                        <CalendarIcon className="h-5 w-5 mb-1" />
-                        <span className="text-[10px]">Drop to schedule</span>
+                      <div 
+                        onClick={() => handleOpenCreateDrawer(day.dateStr)}
+                        className="flex-1 flex flex-col items-center justify-center text-center p-3 text-muted/60 hover:text-accent hover:border-accent/40 border border-dashed border-border/40 hover:bg-surface/60 rounded-xl transition cursor-pointer group"
+                        title={`Click to schedule a post on ${day.dateStr}`}
+                      >
+                        <Plus className="h-5 w-5 mb-1 text-muted group-hover:text-accent transition stroke-[2.5]" />
+                        <span className="text-[10px] font-bold group-hover:text-accent transition">Schedule post</span>
                       </div>
                     ) : (
                       dayPosts.map(post => {
@@ -849,6 +850,28 @@ export default function CalendarPage() {
             </div>
           </div>
         )}
+
+        {/* ── Dedicated Status Legend Section ── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border mt-4 text-xs">
+          <div className="flex items-center gap-2 text-muted font-medium">
+            <span className="font-bold text-text">Status Legend:</span>
+            <span>Color indicators for post publishing lifecycle</span>
+          </div>
+          <div className="flex items-center gap-4 text-[11px] font-bold text-muted flex-wrap">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-muted" /> Draft
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-primary-light" /> Scheduled
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" /> Published
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-red-400" /> Failed
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* ═════════════════════════════════════════════════════════════ */}

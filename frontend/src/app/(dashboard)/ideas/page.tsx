@@ -5,9 +5,6 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Globe, 
-  Users, 
-  Layout, 
-  Share2, 
   History, 
   Clock, 
   ExternalLink,
@@ -227,21 +224,109 @@ export default function IdeasPage() {
   }
 
   const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case 'instagram':
-      case 'instagram_post':
-        return <Share2 className="h-4 w-4 text-accent" />
-      case 'instagram_story':
-        return <Share2 className="h-4 w-4 text-accent" />
-      case 'linkedin':
-      case 'linkedin_post':
-        return <Users className="h-4 w-4 text-primary" />
-      case 'facebook':
-      case 'facebook_post':
-        return <Layout className="h-4 w-4 text-primary" />
-      default:
-        return <Globe className="h-4 w-4 text-muted" />
+    const p = platform.toLowerCase()
+    if (p.includes('instagram')) {
+      return (
+        <svg className="h-3.5 w-3.5 text-[#FF75A0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+        </svg>
+      )
     }
+    if (p.includes('linkedin')) {
+      return (
+        <svg className="h-3.5 w-3.5 text-[#4CB5F9] fill-current" viewBox="0 0 24 24">
+          <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45a1.64 1.64 0 1 0 0 3.28 1.64 1.64 0 0 0 0-3.28z"/>
+        </svg>
+      )
+    }
+    if (p.includes('facebook')) {
+      return (
+        <svg className="h-3.5 w-3.5 text-[#70AEFF] fill-current" viewBox="0 0 24 24">
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+        </svg>
+      )
+    }
+    if (p.includes('twitter') || p.includes('x')) {
+      return (
+        <svg className="h-3.5 w-3.5 text-text fill-current" viewBox="0 0 24 24">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+        </svg>
+      )
+    }
+    return <Globe className="h-3.5 w-3.5 text-muted" />
+  }
+
+  const renderPlatformBadge = (platform: string) => {
+    const p = platform.toLowerCase()
+    if (p.includes('instagram')) {
+      return (
+        <span
+          key={platform}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E1306C]/10 border border-[#E1306C]/30 text-[#FF75A0] text-[10px] font-extrabold tracking-wide shadow-sm"
+          title="Instagram Post / Story"
+        >
+          <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+          </svg>
+          <span>Instagram</span>
+        </span>
+      )
+    }
+    if (p.includes('linkedin')) {
+      return (
+        <span
+          key={platform}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0077B5]/10 border border-[#0077B5]/30 text-[#4CB5F9] text-[10px] font-extrabold tracking-wide shadow-sm"
+          title="LinkedIn Post"
+        >
+          <svg className="h-3 w-3 shrink-0 fill-current" viewBox="0 0 24 24">
+            <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45a1.64 1.64 0 1 0 0 3.28 1.64 1.64 0 0 0 0-3.28z"/>
+          </svg>
+          <span>LinkedIn</span>
+        </span>
+      )
+    }
+    if (p.includes('facebook')) {
+      return (
+        <span
+          key={platform}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1877F2]/10 border border-[#1877F2]/30 text-[#70AEFF] text-[10px] font-extrabold tracking-wide shadow-sm"
+          title="Facebook Post"
+        >
+          <svg className="h-3 w-3 shrink-0 fill-current" viewBox="0 0 24 24">
+            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+          </svg>
+          <span>Facebook</span>
+        </span>
+      )
+    }
+    if (p.includes('twitter') || p.includes('x')) {
+      return (
+        <span
+          key={platform}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/20 text-text text-[10px] font-extrabold tracking-wide shadow-sm"
+          title="Twitter / X"
+        >
+          <svg className="h-3 w-3 shrink-0 fill-current" viewBox="0 0 24 24">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+          </svg>
+          <span>Twitter / X</span>
+        </span>
+      )
+    }
+    return (
+      <span
+        key={platform}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary border border-border text-muted text-[10px] font-extrabold tracking-wide shadow-sm"
+      >
+        <Globe className="h-3 w-3 shrink-0 text-muted" />
+        <span>{getPlatformLabel(platform)}</span>
+      </span>
+    )
   }
 
   const getPlatformLabel = (platform: string) => {
@@ -256,12 +341,8 @@ export default function IdeasPage() {
       {/* ─── PAGE HEADER ─── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-secondary border border-border text-[11px] font-bold uppercase tracking-wider text-accent">
-            <History className="h-3.5 w-3.5" />
-            Archive Lounge
-          </div>
           <h1 className="text-3xl font-extrabold text-text tracking-tight">Content History</h1>
-          <p className="text-muted text-sm font-medium">All your generated social media assets & custom saved templates</p>
+          <p className="text-muted text-sm font-medium">All your generated social media assets &amp; custom saved templates</p>
         </div>
 
         {/* Tab Selector */}
@@ -382,16 +463,8 @@ export default function IdeasPage() {
                         <span>{formatDateLabel(item.session_date || item.created_at)}</span>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
-                        {item.platforms_generated?.map(p => (
-                          <div
-                            key={p}
-                            className="h-7 w-7 rounded-lg bg-surface-secondary border border-border flex items-center justify-center"
-                            title={getPlatformLabel(p)}
-                          >
-                            {getPlatformIcon(p)}
-                          </div>
-                        ))}
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {item.platforms_generated?.map(p => renderPlatformBadge(p))}
                       </div>
                     </div>
 

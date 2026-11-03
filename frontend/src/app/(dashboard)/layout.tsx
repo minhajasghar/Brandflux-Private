@@ -110,10 +110,10 @@ export default function DashboardLayout({
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
     { icon: Sparkles, label: 'Create Content', href: '/session' },
-    { icon: Lightbulb, label: 'My Ideas', href: '/ideas' },
-    { icon: Calendar, label: 'Calendar', href: '/calendar' },
+    { icon: Lightbulb, label: 'Content History', href: '/ideas' },
+    { icon: Calendar, label: 'Content Calendar', href: '/calendar' },
     { icon: BarChart3, label: 'Analytics', href: '/analytics' },
-    { icon: Settings, label: 'Settings', href: '/settings' },
+    { icon: Settings, label: 'Brand Studio Settings', href: '/settings' },
   ]
 
   if (isOnboarding) return <>{children}</>

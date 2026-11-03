@@ -11,7 +11,7 @@ export default function BottomNav() {
     { name: 'Home', path: '/dashboard', icon: Home },
     { name: 'Create', path: '/session', icon: Sparkles },
     { name: 'Calendar', path: '/calendar', icon: Calendar },
-    { name: 'Ideas', path: '/ideas', icon: Lightbulb },
+    { name: 'History', path: '/ideas', icon: Lightbulb },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
     { name: 'Settings', path: '/settings', icon: Settings },
   ]

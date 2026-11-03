@@ -23,6 +23,7 @@ import { toast } from 'react-hot-toast'
 import CopyButton from '@/components/ui/CopyButton'
 import Skeleton from '@/components/ui/Skeleton'
 import EmptyState from '@/components/ui/EmptyState'
+import { resolveMediaUrl } from '@/lib/media'
 
 interface HistoryItem {
   id: string
@@ -31,6 +32,7 @@ interface HistoryItem {
   instagram_caption: string
   linkedin_caption: string
   platforms_generated: string[]
+  image_url?: string | null
   created_at: string
 }
 
@@ -393,6 +395,20 @@ export default function IdeasPage() {
                       </div>
                     </div>
 
+                    {/* Creative Visual Thumbnail (if image saved in DB) */}
+                    {item.image_url ? (
+                      <div className="relative rounded-2xl overflow-hidden aspect-video bg-black/40 border border-border group/img">
+                        <img 
+                          src={resolveMediaUrl(item.image_url)} 
+                          alt={item.session_theme} 
+                          className="w-full h-full object-cover transition duration-300 group-hover/img:scale-105"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none'
+                          }}
+                        />
+                      </div>
+                    ) : null}
+
                     {/* Theme / Description */}
                     <div className="space-y-1">
                       <h3 className="text-lg font-bold text-text leading-snug tracking-tight group-hover:text-accent transition-colors">
@@ -588,6 +604,7 @@ export default function IdeasPage() {
                       { id: 'instagram_post', label: 'Instagram Post', check: sessionDetail.instagram_post },
                       { id: 'linkedin_post', label: 'LinkedIn', check: sessionDetail.linkedin_post },
                       { id: 'facebook_post', label: 'Facebook', check: sessionDetail.facebook_post },
+                      { id: 'twitter_post', label: 'Twitter / X', check: sessionDetail.twitter_post },
                       { id: 'instagram_story', label: 'Story', check: sessionDetail.instagram_story }
                     ].map(tab => {
                       if (!tab.check) return null
@@ -606,6 +623,28 @@ export default function IdeasPage() {
                       )
                     })}
                   </div>
+
+                  {/* Creative Asset Visual Banner */}
+                  {(sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url) && (
+                    <div className="relative rounded-2xl overflow-hidden aspect-video bg-black/60 border border-border mt-5 group">
+                      <img 
+                        src={resolveMediaUrl(sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url)} 
+                        alt={sessionDetail.session_theme} 
+                        className="w-full h-full object-contain" 
+                      />
+                      <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
+                        <a
+                          href={resolveMediaUrl(sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-black text-white font-bold text-xs flex items-center gap-1.5 backdrop-blur-md border border-border shadow-lg transition"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span>View Full Image</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Drawer Tab Content */}
                   <div className="flex-1 py-6 space-y-6">
@@ -673,6 +712,28 @@ export default function IdeasPage() {
                         <div className="bg-surface-secondary border border-border p-5 rounded-2xl text-sm text-text leading-relaxed whitespace-pre-wrap">
                           {sessionDetail.facebook_post.caption}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Render Twitter Post */}
+                    {activeDetailTab === 'twitter_post' && sessionDetail.twitter_post && (
+                      <div className="space-y-5">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-muted">Twitter / X Post</h4>
+                          <CopyButton text={sessionDetail.twitter_post.caption} label="Tweet" />
+                        </div>
+                        <div className="bg-surface-secondary border border-border p-5 rounded-2xl text-sm text-text leading-relaxed whitespace-pre-wrap">
+                          {sessionDetail.twitter_post.caption}
+                        </div>
+                        {sessionDetail.twitter_post.hashtags && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {sessionDetail.twitter_post.hashtags.map((tag: string) => (
+                              <span key={tag} className="text-xs font-bold text-accent bg-surface-secondary border border-border px-3 py-1 rounded-full">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 

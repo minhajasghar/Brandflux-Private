@@ -4,7 +4,7 @@ from datetime import date
 from typing import List, Optional
 
 from database import get_db
-from models.models import Brand, ContentIdea, GeneratedPost, SmartQuestion, UserAnswer, User
+from models.models import Brand, ContentIdea, GeneratedPost, SmartQuestion, UserAnswer, User, SessionVariant
 from models.schemas import (
     ContentGenerateRequest, GeneratedPostResponse,
     ContentBatchResponse
@@ -220,8 +220,11 @@ async def get_content_history(
         instagram_caption = ""
         linkedin_caption = ""
         platforms = []
+        image_url = None
         
         for post in idea.generated_posts:
+            if not image_url and (post.post_image_url or post.story_image_url or post.banner_image_url):
+                image_url = post.post_image_url or post.story_image_url or post.banner_image_url
             if "instagram_post" in post.platform:
                 instagram_caption = post.caption[:100] if post.caption else ""
                 platforms.append("instagram")
@@ -232,6 +235,18 @@ async def get_content_history(
                 platforms.append("facebook")
             elif "story" in post.platform:
                 platforms.append("instagram_story")
+            elif "twitter" in post.platform:
+                platforms.append("twitter")
+
+        # Fallback to selected variant for this brand if not set on post directly
+        if not image_url:
+            variant = db.query(SessionVariant).filter(
+                SessionVariant.user_id == user.id,
+                SessionVariant.brand_id == idea.brand_id,
+                SessionVariant.is_selected == True
+            ).order_by(SessionVariant.created_at.desc()).first()
+            if variant and variant.image_url:
+                image_url = variant.image_url
                 
         items.append({
             "id": idea.id,
@@ -240,6 +255,7 @@ async def get_content_history(
             "instagram_caption": instagram_caption,
             "linkedin_caption": linkedin_caption,
             "platforms_generated": list(set(platforms)),
+            "image_url": image_url,
             "created_at": idea.created_at.isoformat() if idea.created_at else ""
         })
         
@@ -265,13 +281,31 @@ async def get_content_history_detail(
     
     if not idea:
         raise HTTPException(status_code=404, detail="Content history session not found")
+
+    # Find primary image URL for this session
+    primary_image_url = None
+    for post in idea.generated_posts:
+        if not primary_image_url and (post.post_image_url or post.story_image_url or post.banner_image_url):
+            primary_image_url = post.post_image_url or post.story_image_url or post.banner_image_url
+            break
+
+    if not primary_image_url:
+        variant = db.query(SessionVariant).filter(
+            SessionVariant.user_id == user.id,
+            SessionVariant.brand_id == idea.brand_id,
+            SessionVariant.is_selected == True
+        ).order_by(SessionVariant.created_at.desc()).first()
+        if variant and variant.image_url:
+            primary_image_url = variant.image_url
         
     content = {
         "session_theme": idea.idea_title,
+        "image_url": primary_image_url,
         "instagram_post": None,
         "instagram_story": None,
         "linkedin_post": None,
         "facebook_post": None,
+        "twitter_post": None,
         "guidance": {
             "tip_of_day": idea.idea_description,
             "this_week_suggestion": "Optimal content calendar suggestion loaded.",
@@ -280,10 +314,12 @@ async def get_content_history_detail(
     }
     
     for post in idea.generated_posts:
+        img_url = post.post_image_url or post.story_image_url or post.banner_image_url or primary_image_url
         platform_data = {
             "caption": post.caption,
             "hashtags": post.hashtags or [],
-            "call_to_action": post.call_to_action
+            "call_to_action": post.call_to_action,
+            "image_url": img_url
         }
         if post.posting_time_suggestion:
             parts = post.posting_time_suggestion.split()
@@ -296,14 +332,22 @@ async def get_content_history_detail(
             content["instagram_story"] = {
                 "text": post.caption,
                 "cta": post.call_to_action,
-                "poll_question": "Swipe up to access!"
+                "poll_question": "Swipe up to access!",
+                "image_url": post.story_image_url or img_url
             }
         elif post.platform == "linkedin_post":
             content["linkedin_post"] = platform_data
         elif post.platform == "facebook_post":
             content["facebook_post"] = {
                 "caption": post.caption,
-                "hashtags": post.hashtags or []
+                "hashtags": post.hashtags or [],
+                "image_url": img_url
+            }
+        elif post.platform == "twitter_post":
+            content["twitter_post"] = {
+                "caption": post.caption,
+                "hashtags": post.hashtags or [],
+                "image_url": img_url
             }
             
     return content

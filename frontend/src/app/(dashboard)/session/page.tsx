@@ -371,7 +371,8 @@ export default function SessionPage() {
         session_id: variantSessionData.session_id,
         adjusted_caption: captionText,
         adjusted_hashtags: hashtagsList,
-        target_platform: activePlatformTab
+        target_platform: activePlatformTab,
+        platform_copies: platformCopies
       })
       toast.success('Saved as active selected post for download & calendar!')
     } catch (err: any) {
@@ -421,7 +422,8 @@ export default function SessionPage() {
           session_id: variantSessionData.session_id,
           adjusted_caption: captionText,
           adjusted_hashtags: hashtagsList,
-          target_platform: activePlatformTab
+          target_platform: activePlatformTab,
+          platform_copies: platformCopies
         })
       } catch (e) {
         console.error('Error committing selection before calendar:', e)

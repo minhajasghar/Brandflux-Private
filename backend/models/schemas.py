@@ -265,6 +265,7 @@ class SelectVariantRequest(BaseModel):
     adjusted_caption: Optional[str] = None
     adjusted_hashtags: Optional[List[str]] = None
     target_platform: Optional[str] = None
+    platform_copies: Optional[Dict[str, Any]] = None
 
 class RegenerateVariantRequest(BaseModel):
     session_id: str

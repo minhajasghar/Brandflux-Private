@@ -996,6 +996,28 @@ def select_session_variant(
     )
     db.add(post)
 
+    # Persist all additional platform copies to GeneratedPost history with the generated image
+    if req.platform_copies and isinstance(req.platform_copies, dict):
+        for plat, copy_data in req.platform_copies.items():
+            if plat != selected_platform and isinstance(copy_data, dict):
+                plat_caption = copy_data.get("caption") or ""
+                plat_hashtags = copy_data.get("hashtags") or []
+                plat_cta = copy_data.get("call_to_action") or variant.call_to_action
+                plat_time = copy_data.get("best_time")
+                other_post = GeneratedPost(
+                    idea_id=idea.id,
+                    user_id=user.id,
+                    brand_id=variant.brand_id,
+                    platform=plat,
+                    caption=plat_caption,
+                    hashtags=plat_hashtags,
+                    call_to_action=plat_cta,
+                    posting_time_suggestion=plat_time,
+                    post_image_url=variant.image_url,
+                    status="draft"
+                )
+                db.add(other_post)
+
     # Verify image reachability in storage before deducting credit!
     filename = os.path.basename(variant.image_url.split("?")[0]) if variant.image_url else ""
     if not storage_service.verify_image_reachable(filename):

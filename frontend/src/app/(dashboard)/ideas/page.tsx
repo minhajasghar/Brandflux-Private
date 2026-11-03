@@ -119,6 +119,13 @@ export default function IdeasPage() {
 
   useEffect(() => {
     fetchHistory(true)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const targetId = params.get('id')
+      if (targetId) {
+        openDetailDrawer(targetId)
+      }
+    }
   }, [])
 
   // Switch tabs

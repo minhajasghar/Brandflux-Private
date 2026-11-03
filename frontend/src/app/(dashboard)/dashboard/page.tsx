@@ -242,45 +242,45 @@ export default function DashboardPage() {
       </AnimatePresence>
 
       {/* ─── SECTION 1: BRAND STATUS BAR ─── */}
-      <section className="bg-surface border border-border rounded-3xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex flex-wrap items-center gap-5">
+      <section className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-5">
           {/* Logo or Globe */}
-          <div className="h-14 w-14 rounded-2xl bg-surface-secondary border border-border flex items-center justify-center flex-shrink-0">
+          <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-surface-secondary border border-border flex items-center justify-center flex-shrink-0">
             {brand?.logo_url ? (
               <img 
                 src={brand.logo_url} 
-                className="h-10 w-10 object-contain rounded-lg" 
+                className="h-9 w-9 sm:h-10 sm:w-10 object-contain rounded-lg" 
                 alt="Brand Logo" 
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = 'none'
                 }}
               />
             ) : (
-              <Globe className="h-6 w-6 text-muted" />
+              <Globe className="h-5 w-5 sm:h-6 sm:w-6 text-muted" />
             )}
           </div>
           
-          <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-extrabold tracking-tight text-text">{brand?.business_name || 'My Brand'}</h2>
-              <span className="px-2.5 py-0.5 rounded-md bg-surface-secondary border border-border text-[10px] font-bold text-muted uppercase tracking-wider">
+          <div className="space-y-1 min-w-0">
+            <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-text truncate max-w-[200px] sm:max-w-none">{brand?.business_name || 'My Brand'}</h2>
+              <span className="px-2 sm:px-2.5 py-0.5 rounded-md bg-surface-secondary border border-border text-[9px] sm:text-[10px] font-bold text-muted uppercase tracking-wider">
                 {brand?.business_type || 'Business'}
               </span>
             </div>
             
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+            <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 text-xs text-muted">
               <a 
                 href={brand?.website_url || '#'} 
                 target="_blank" 
                 rel="noreferrer" 
-                className="hover:underline flex items-center gap-1.5 text-accent"
+                className="hover:underline flex items-center gap-1.5 text-accent truncate max-w-[180px] sm:max-w-none"
               >
-                <Globe className="h-3.5 w-3.5" />
-                {brand?.website_url || 'No URL scanned'}
+                <Globe className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{brand?.website_url || 'No URL scanned'}</span>
               </a>
               <span className="text-border hidden sm:inline">|</span>
               <div className="flex items-center gap-1.5 text-muted">
-                <Clock className="h-3.5 w-3.5" />
+                <Clock className="h-3.5 w-3.5 shrink-0" />
                 <span>
                   Last Scanned: {brand?.last_scanned_at ? formatGeneratedDate(brand.last_scanned_at) : 'Not scanned yet'}
                 </span>
@@ -290,7 +290,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Brand Colors & Rescan Button */}
-        <div className="flex items-center justify-between md:justify-end gap-6 border-t border-border md:border-t-0 pt-4 md:pt-0">
+        <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 sm:gap-6 border-t border-border md:border-t-0 pt-4 md:pt-0 w-full md:w-auto">
           <div className="space-y-1.5">
             <p className="text-[10px] font-bold text-muted uppercase tracking-wider text-left md:text-right">Brand Colors</p>
             <div className="flex gap-1.5">
@@ -298,7 +298,7 @@ export default function DashboardPage() {
                 brand.colors.slice(0, 5).map((color: string, i: number) => (
                   <div 
                     key={i} 
-                    className="h-6 w-6 rounded-full border border-border hover:scale-110 transition-transform cursor-pointer"
+                    className="h-5 w-5 sm:h-6 sm:w-6 rounded-full border border-border hover:scale-110 transition-transform cursor-pointer"
                     style={{ backgroundColor: color }}
                     title={color}
                   />
@@ -307,7 +307,7 @@ export default function DashboardPage() {
                 ['#1558C9', '#D4FF24', '#0D0F16', '#10B981', '#EF4444'].map((color: string, i: number) => (
                   <div 
                     key={i} 
-                    className="h-6 w-6 rounded-full border border-border"
+                    className="h-5 w-5 sm:h-6 sm:w-6 rounded-full border border-border"
                     style={{ backgroundColor: color }}
                   />
                 ))
@@ -318,7 +318,7 @@ export default function DashboardPage() {
           <button
             onClick={handleRescanWebsite}
             disabled={isRescanning}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border font-bold text-xs text-text transition-all active:scale-[0.98] disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border font-bold text-xs text-text transition-all active:scale-[0.98] disabled:opacity-50 min-h-[40px]"
           >
             {isRescanning ? (
               <>
@@ -339,21 +339,21 @@ export default function DashboardPage() {
       <section>
         {isSessionCompletedToday ? (
           /* SESSION COMPLETED */
-          <div className="bg-surface border border-border rounded-3xl p-8 text-center md:text-left flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
+          <div className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-center md:text-left flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6 shadow-sm">
             <div className="space-y-2">
-              <div className="flex flex-col md:flex-row items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-success-muted border border-success/30 flex items-center justify-center">
+              <div className="flex flex-col md:flex-row items-center gap-2.5 sm:gap-3">
+                <div className="h-9 w-9 rounded-full bg-success-muted border border-success/30 flex items-center justify-center shrink-0">
                   <CheckCircle2 className="h-5 w-5 text-success" />
                 </div>
-                <h3 className="text-2xl font-extrabold text-text tracking-tight">Today&apos;s Content is Ready</h3>
+                <h3 className="text-xl sm:text-2xl font-extrabold text-text tracking-tight">Today&apos;s Content is Ready</h3>
               </div>
-              <p className="text-muted text-sm max-w-xl">
+              <p className="text-muted text-xs sm:text-sm max-w-xl">
                 You completed your daily check-in for {getCurrentFormattedDate()}. Your custom captions, hashtags, and branded graphics are ready to review.
               </p>
             </div>
             <button
               onClick={() => router.push('/session')}
-              className="px-6 py-3.5 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-[0.98] min-h-[44px]"
             >
               View Generated Content
               <ArrowRight className="h-4 w-4" />
@@ -361,22 +361,22 @@ export default function DashboardPage() {
           </div>
         ) : (
           /* CREATION PROMPT CARD */
-          <div className="bg-surface border border-border rounded-3xl p-8 text-center md:text-left flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-secondary border border-border text-[11px] font-bold uppercase tracking-wider text-accent select-none">
+          <div className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-center md:text-left flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6 shadow-sm">
+            <div className="space-y-2.5 sm:space-y-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-secondary border border-border text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-accent select-none">
                 <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
                 Today&apos;s Opportunity
               </div>
               
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-text tracking-tight">Ready to create today&apos;s content?</h3>
-              <p className="text-muted text-sm max-w-lg leading-relaxed font-medium">
+              <h3 className="text-xl sm:text-3xl font-extrabold text-text tracking-tight">Ready to create today&apos;s content?</h3>
+              <p className="text-muted text-xs sm:text-sm max-w-lg leading-relaxed font-medium">
                 Answer three quick context questions to craft high-converting, tailored posts for Instagram, LinkedIn, and Facebook for <span className="text-text font-bold">{getCurrentFormattedDate()}</span>.
               </p>
             </div>
             
             <button
               onClick={() => router.push('/session')}
-              className="px-8 py-4 rounded-xl bg-accent hover:bg-accent-hover text-black font-extrabold text-base transition-all flex items-center justify-center gap-2 shadow-accent-glow active:scale-[0.98] whitespace-nowrap self-center md:self-auto"
+              className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl bg-accent hover:bg-accent-hover text-black font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2 shadow-accent-glow active:scale-[0.98] whitespace-nowrap min-h-[48px]"
             >
               Start Today&apos;s Session
               <ArrowRight className="h-4 w-4" />
@@ -386,42 +386,42 @@ export default function DashboardPage() {
       </section>
 
       {/* ─── SECTION 3: STATS ROW ─── */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
         {/* Stat Card 1 */}
-        <div className="bg-surface border border-border rounded-2xl p-5 hover:border-border-light transition-colors">
-          <div className="h-8 w-8 rounded-xl bg-surface-secondary border border-border flex items-center justify-center text-accent mb-4">
-            <FileText className="h-4 w-4" />
+        <div className="bg-surface border border-border rounded-2xl p-4 sm:p-5 hover:border-border-light transition-colors">
+          <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-xl bg-surface-secondary border border-border flex items-center justify-center text-accent mb-3 sm:mb-4">
+            <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </div>
-          <p className="text-[10px] font-bold text-muted uppercase tracking-wider">Created This Month</p>
-          <p className="text-3xl font-extrabold text-text tracking-tight mt-1">
+          <p className="text-[9px] sm:text-[10px] font-bold text-muted uppercase tracking-wider">Created This Month</p>
+          <p className="text-2xl sm:text-3xl font-extrabold text-text tracking-tight mt-1">
             {stats?.posts_created_this_month || 0}
           </p>
-          <span className="text-[11px] font-medium text-muted">posts generated</span>
+          <span className="text-[10px] sm:text-[11px] font-medium text-muted">posts generated</span>
         </div>
 
         {/* Stat Card 2 */}
-        <div className="bg-surface border border-border rounded-2xl p-5 hover:border-border-light transition-colors">
-          <div className="h-8 w-8 rounded-xl bg-surface-secondary border border-border flex items-center justify-center text-accent mb-4">
-            <Activity className="h-4 w-4" />
+        <div className="bg-surface border border-border rounded-2xl p-4 sm:p-5 hover:border-border-light transition-colors">
+          <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-xl bg-surface-secondary border border-border flex items-center justify-center text-accent mb-3 sm:mb-4">
+            <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </div>
-          <p className="text-[10px] font-bold text-muted uppercase tracking-wider">Sessions Completed</p>
-          <p className="text-3xl font-extrabold text-text tracking-tight mt-1">
+          <p className="text-[9px] sm:text-[10px] font-bold text-muted uppercase tracking-wider">Sessions Completed</p>
+          <p className="text-2xl sm:text-3xl font-extrabold text-text tracking-tight mt-1">
             {stats?.sessions_completed_this_week || 0}
           </p>
-          <span className="text-[11px] font-medium text-muted">this week</span>
+          <span className="text-[10px] sm:text-[11px] font-medium text-muted">this week</span>
         </div>
 
         {/* Stat Card 3 */}
-        <div className="bg-surface border border-border rounded-2xl p-5 hover:border-border-light transition-colors">
-          <div className="h-8 w-8 rounded-xl bg-surface-secondary border border-border flex items-center justify-center text-accent mb-4">
-            <Layers className="h-4 w-4" />
+        <div className="bg-surface border border-border rounded-2xl p-4 sm:p-5 hover:border-border-light transition-colors">
+          <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-xl bg-surface-secondary border border-border flex items-center justify-center text-accent mb-3 sm:mb-4">
+            <Layers className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </div>
-          <p className="text-[10px] font-bold text-muted uppercase tracking-wider">Top Platform</p>
-          <p className="text-xl font-extrabold text-text truncate tracking-tight mt-2.5 mb-1" title={stats?.most_used_platform}>
+          <p className="text-[9px] sm:text-[10px] font-bold text-muted uppercase tracking-wider">Top Platform</p>
+          <p className="text-lg sm:text-xl font-extrabold text-text truncate tracking-tight mt-2 mb-1" title={stats?.most_used_platform}>
             {stats?.most_used_platform || 'Instagram'}
           </p>
-          <span className="text-[11px] font-medium text-muted">active channel</span>
+          <span className="text-[10px] sm:text-[11px] font-medium text-muted">active channel</span>
         </div>
 
         {/* Stat Card 4 - Streak Widget */}
@@ -432,16 +432,16 @@ export default function DashboardPage() {
       </section>
 
       {/* ─── SECTION 4: RECENT CONTENT ─── */}
-      <section className="bg-surface border border-border rounded-3xl p-6 shadow-sm space-y-5">
+      <section className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-4 sm:space-y-5">
         <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <h3 className="text-lg font-extrabold tracking-tight text-text">Recent Content</h3>
-            <p className="text-xs text-muted font-medium">Your last 5 generated social posts across all channels</p>
+          <div className="space-y-0.5 min-w-0 pr-2">
+            <h3 className="text-base sm:text-lg font-extrabold tracking-tight text-text truncate">Recent Content</h3>
+            <p className="text-[11px] sm:text-xs text-muted font-medium truncate">Your last 5 generated social posts across all channels</p>
           </div>
           
           <button 
             onClick={() => router.push('/session')} 
-            className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
+            className="text-xs font-bold text-accent hover:underline flex items-center gap-1 shrink-0"
           >
             Create More
             <ArrowRight className="h-3 w-3" />
@@ -461,26 +461,26 @@ export default function DashboardPage() {
             {recentPosts.map((post) => (
               <div 
                 key={post.id} 
-                className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0 group"
+                className="flex items-center justify-between gap-3 sm:gap-4 py-3.5 sm:py-4 first:pt-0 last:pb-0 group"
               >
-                <div className="flex items-center gap-4 min-w-0 flex-1">
-                  <div className="h-10 w-10 rounded-xl bg-surface-secondary border border-border flex items-center justify-center flex-shrink-0">
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                  <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-surface-secondary border border-border flex items-center justify-center flex-shrink-0">
                     {getPlatformIcon(post.platform)}
                   </div>
                   
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center gap-2.5">
-                      <p className="text-sm font-bold text-text truncate">
+                  <div className="min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs sm:text-sm font-bold text-text truncate">
                         {getPlatformLabel(post.platform)}
                       </p>
                       <span className="hidden sm:inline-block h-1 w-1 rounded-full bg-border" />
-                      <span className="text-[11px] text-muted flex items-center gap-1">
+                      <span className="hidden sm:flex text-[11px] text-muted items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {formatGeneratedDate(post.created_at)}
                       </span>
                     </div>
                     
-                    <p className="text-xs text-muted truncate pr-4 font-normal">
+                    <p className="text-[11px] sm:text-xs text-muted truncate pr-2 font-normal">
                       {post.caption ? post.caption.replace(/<[^>]*>/g, '') : 'No caption content generated'}
                     </p>
                   </div>
@@ -488,7 +488,7 @@ export default function DashboardPage() {
 
                 <button
                   onClick={() => router.push('/session')}
-                  className="px-3.5 py-1.5 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border font-bold text-xs text-text transition-all active:scale-[0.98]"
+                  className="px-3 sm:px-3.5 py-1.5 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border font-bold text-xs text-text transition-all active:scale-[0.98] shrink-0 min-h-[36px]"
                 >
                   View
                 </button>

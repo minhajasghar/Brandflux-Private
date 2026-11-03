@@ -95,9 +95,9 @@ export default function SignupPage() {
   const selectHasValue = !!formData.business_type
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col justify-center py-12 px-6 lg:px-8">
+    <div className="min-h-screen bg-bg flex flex-col justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-surface py-10 px-8 sm:px-10 shadow-2xl rounded-3xl border border-border">
+        <div className="bg-surface py-8 sm:py-10 px-5 sm:px-10 shadow-2xl rounded-2xl sm:rounded-3xl border border-border">
           <div className="text-center mb-8">
             <Link href="/" className="inline-flex items-center gap-2.5 mb-3 group">
               <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center font-bold text-white shadow-glow group-hover:scale-105 transition-transform">

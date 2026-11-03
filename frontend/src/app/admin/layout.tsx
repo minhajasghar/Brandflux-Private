@@ -209,35 +209,35 @@ export default function AdminLayout({
       {/* ─── MAIN ADMIN CONTENT CONTAINER ─── */}
       <div className="flex-1 md:ml-64 min-h-screen flex flex-col">
         {/* Dedicated Admin Sticky Header */}
-        <header className="h-16 border-b border-border flex items-center justify-between px-6 md:px-8 sticky top-0 bg-bg/90 backdrop-blur-md z-30">
-          <div className="flex items-center gap-4">
+        <header className="h-16 border-b border-border flex items-center justify-between px-3.5 sm:px-6 md:px-8 sticky top-0 bg-bg/90 backdrop-blur-md z-30">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="md:hidden p-2 rounded-xl bg-surface border border-border hover:bg-surface-secondary transition"
+              className="md:hidden p-2 rounded-xl bg-surface border border-border hover:bg-surface-secondary transition shrink-0"
               aria-label="Open admin menu"
             >
               <Menu className="h-5 w-5 text-text" />
             </button>
             
             <div className="flex items-center gap-2.5">
-              <span className="px-3 py-1 rounded-full bg-danger/15 border border-danger/30 text-danger text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5">
+              <span className="px-2.5 sm:px-3 py-1 rounded-full bg-danger/15 border border-danger/30 text-danger text-[10px] sm:text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                 <ShieldAlert className="h-3.5 w-3.5" />
                 <span>Admin Environment</span>
               </span>
-              <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-bold text-muted bg-surface px-3 py-1 rounded-full border border-border">
+              <span className="hidden lg:inline-flex items-center gap-1.5 text-[11px] font-bold text-muted bg-surface px-3 py-1 rounded-full border border-border">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span>Security Enforced</span>
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <span className="hidden md:inline-block text-xs font-bold text-muted truncate max-w-[200px]" title={adminEmail}>
               {adminEmail}
             </span>
             <button
               onClick={handleLogout}
-              className="px-3 py-1.5 rounded-xl bg-surface-secondary hover:bg-danger/15 hover:text-danger border border-border text-xs font-bold text-muted transition flex items-center gap-1.5"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-surface-secondary hover:bg-danger/15 hover:text-danger border border-border text-xs font-bold text-muted transition flex items-center gap-1.5 min-h-[36px]"
             >
               <LogOut className="h-3.5 w-3.5" />
               <span>Sign Out</span>
@@ -246,7 +246,7 @@ export default function AdminLayout({
         </header>
 
         {/* Admin Content Slot */}
-        <main className="flex-1 p-6 md:p-8">
+        <main className="flex-1 p-3.5 sm:p-6 md:p-8 max-w-[1600px] w-full mx-auto">
           {children}
         </main>
       </div>

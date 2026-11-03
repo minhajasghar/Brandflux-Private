@@ -222,16 +222,16 @@ export default function AnalyticsPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             {/* Time range selector */}
             <div className="inline-flex rounded-xl bg-surface border border-border p-1">
               {[7, 14, 30, 90].map((d) => (
                 <button
                   key={d}
                   onClick={() => setDays(d)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  className={`px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
                     days === d
-                      ? 'bg-primary text-white shadow-sm'
+                      ? 'bg-primary text-white shadow-sm font-bold'
                       : 'text-muted hover:text-text'
                   }`}
                 >
@@ -244,10 +244,11 @@ export default function AnalyticsPage() {
             <button
               onClick={handleSyncMetrics}
               disabled={syncing}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-white transition-all shadow-sm border border-primary-light/20 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-white transition-all shadow-sm border border-primary-light/20 disabled:opacity-50 min-h-[36px]"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Pulling Daily Metrics...' : 'Sync Metrics Now'}
+              <span className="hidden sm:inline">{syncing ? 'Pulling Daily Metrics...' : 'Sync Metrics Now'}</span>
+              <span className="sm:hidden">{syncing ? 'Syncing...' : 'Sync'}</span>
             </button>
           </div>
         </div>
@@ -260,9 +261,9 @@ export default function AnalyticsPage() {
         )}
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-6 sm:space-y-8">
         {/* ── KPI Cards ───────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {/* Total Impressions */}
           <div className="bg-surface border border-border rounded-2xl p-5 relative overflow-hidden group hover:border-primary/50 transition-all">
             <div className="flex items-center justify-between">

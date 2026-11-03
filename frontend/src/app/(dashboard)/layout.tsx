@@ -206,11 +206,11 @@ export default function DashboardLayout({
       {/* ─── MAIN CONTENT ─── */}
       <div className="flex-1 md:ml-64 min-h-screen flex flex-col">
         {/* Sticky Header */}
-        <header className="h-16 border-b border-border flex items-center justify-between px-6 md:px-8 sticky top-0 bg-bg/85 backdrop-blur-md z-30">
-          <div className="flex items-center gap-4">
+        <header className="h-16 border-b border-border flex items-center justify-between px-3.5 sm:px-6 md:px-8 sticky top-0 bg-bg/85 backdrop-blur-md z-30">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="md:hidden p-2 rounded-xl bg-surface border border-border hover:bg-surface-secondary transition"
+              className="md:hidden p-2 rounded-xl bg-surface border border-border hover:bg-surface-secondary transition shrink-0"
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5 text-text" />
@@ -219,14 +219,14 @@ export default function DashboardLayout({
             {/* Top-Bar Brand Switcher */}
             <BrandSwitcher />
 
-            <div className="hidden lg:flex items-center gap-2 text-[11px] font-bold text-muted uppercase tracking-wider bg-surface px-3 py-1.5 rounded-full border border-border">
+            <div className="hidden xl:flex items-center gap-2 text-[11px] font-bold text-muted uppercase tracking-wider bg-surface px-3 py-1.5 rounded-full border border-border">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
               Live Brand Sync Active
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
-            <div className="px-3 py-1 rounded-full bg-surface-secondary border border-border text-xs font-bold text-text flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="px-2.5 sm:px-3 py-1 rounded-full bg-surface-secondary border border-border text-[11px] sm:text-xs font-bold text-text flex items-center gap-1.5 sm:gap-2">
               <span className="text-accent">●</span>
               <span>{userPlan}</span>
             </div>
@@ -234,7 +234,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Main Slot page */}
-        <main className="flex-1 p-6 md:p-8 pb-24 md:pb-8">
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pb-24 md:pb-8 max-w-[1600px] w-full mx-auto">
           {children}
         </main>
       </div>

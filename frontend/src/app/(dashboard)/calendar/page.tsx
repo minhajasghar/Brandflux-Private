@@ -1041,16 +1041,16 @@ export default function CalendarPage() {
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
 
-            <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
+            <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10">
               <motion.div
                 initial={{ x: '100%' }}
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="w-screen max-w-md bg-surface border-l border-border flex flex-col justify-between shadow-2xl relative z-10"
+                className="w-screen max-w-full sm:max-w-md bg-surface border-l border-border flex flex-col justify-between shadow-2xl relative z-10"
               >
                 {/* Drawer Header */}
-                <div className="p-6 border-b border-border flex items-center justify-between">
+                <div className="p-4 sm:p-6 border-b border-border flex items-center justify-between">
                   <div>
                     <h2 className="text-lg font-extrabold text-text tracking-tight flex items-center gap-2">
                       <CalendarIcon className="h-5 w-5 text-primary-light" />
@@ -1072,7 +1072,7 @@ export default function CalendarPage() {
                 </div>
 
                 {/* Drawer Body Form */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
                   {/* Platform Selection */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-muted uppercase tracking-wider">

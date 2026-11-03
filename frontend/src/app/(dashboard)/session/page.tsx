@@ -654,7 +654,7 @@ export default function SessionPage() {
               {referenceImages.length > 0 && (
                 <div className="space-y-3">
                   <p className="text-xs font-bold uppercase tracking-wider text-muted">Configure Image Modes:</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                     {referenceImages.map((item, idx) => (
                       <div 
                         key={item.id} 
@@ -851,31 +851,31 @@ export default function SessionPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => executeVariantGeneration()}
                   disabled={isGenerating}
-                  className="flex items-center gap-2 bg-surface-secondary border border-border hover:border-primary px-4 py-2.5 rounded-xl font-bold text-xs text-text transition"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-surface-secondary border border-border hover:border-primary px-3 sm:px-4 py-2.5 rounded-xl font-bold text-xs text-text transition min-h-[40px]"
                 >
                   <RotateCcw className="h-3.5 w-3.5 text-accent" />
-                  Regenerate All
+                  <span>Regenerate All</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPhase(1)}
-                  className="flex items-center gap-2 bg-surface border border-border px-4 py-2.5 rounded-xl hover:bg-surface-secondary font-bold text-xs text-text transition"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-surface border border-border px-3 sm:px-4 py-2.5 rounded-xl hover:bg-surface-secondary font-bold text-xs text-text transition min-h-[40px]"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
-                  New Session
+                  <span>New Session</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => router.push('/calendar')}
-                  className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-black px-4 py-2.5 rounded-xl font-extrabold text-xs transition shadow-accent-glow"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-black px-4 py-2.5 rounded-xl font-extrabold text-xs transition shadow-accent-glow min-h-[40px]"
                 >
                   <Calendar className="h-3.5 w-3.5" />
-                  View Calendar
+                  <span>View Calendar</span>
                 </button>
               </div>
             </div>
@@ -1021,14 +1021,14 @@ export default function SessionPage() {
             </div>
 
             {/* ─── SELECTED VARIANT DETAILS & ADJUSTABLE COPY ───────────────── */}
-            <div className="bg-surface border border-border rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
                 <div>
-                  <h3 className="text-xl font-extrabold text-text flex items-center gap-2">
-                    <CheckCircle className="h-5 w-5 text-accent" />
+                  <h3 className="text-lg sm:text-xl font-extrabold text-text flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-accent shrink-0" />
                     <span>Selected Post Preview &amp; Copy</span>
                   </h3>
-                  <p className="text-xs text-muted">
+                  <p className="text-xs text-muted mt-0.5">
                     This variant is queued for your history and calendar. You can review or tweak the copy before saving.
                   </p>
                 </div>
@@ -1037,7 +1037,7 @@ export default function SessionPage() {
                   <button
                     type="button"
                     onClick={handleDownloadSelected}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-secondary border border-border hover:bg-surface-hover font-bold text-xs text-text transition"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-surface-secondary border border-border hover:bg-surface-hover font-bold text-xs text-text transition min-h-[40px]"
                   >
                     <Download className="h-4 w-4" />
                     Download PNG
@@ -1045,7 +1045,7 @@ export default function SessionPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
                 {/* Left: Graphic display */}
                 <div className="space-y-3">
                   <div className="relative rounded-2xl overflow-hidden aspect-square border-2 border-accent bg-surface-secondary">
@@ -1084,11 +1084,11 @@ export default function SessionPage() {
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-1.5 rounded-2xl bg-surface-secondary border border-border">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 p-1.5 rounded-2xl bg-surface-secondary border border-border">
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('instagram_post')}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-black transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
                           activePlatformTab === 'instagram_post'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'
@@ -1105,7 +1105,7 @@ export default function SessionPage() {
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('linkedin_post')}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-black transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
                           activePlatformTab === 'linkedin_post'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'
@@ -1120,7 +1120,7 @@ export default function SessionPage() {
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('facebook_post')}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-black transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
                           activePlatformTab === 'facebook_post'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'
@@ -1135,7 +1135,7 @@ export default function SessionPage() {
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('twitter_post')}
-                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-black transition-all ${
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
                           activePlatformTab === 'twitter_post'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'

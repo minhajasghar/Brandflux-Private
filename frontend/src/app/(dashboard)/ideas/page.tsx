@@ -341,9 +341,9 @@ export default function IdeasPage() {
 
           {/* ─── HISTORY ITEMS GRID ─── */}
           {loadingHistory ? (
-            <div className="grid sm:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="bg-surface border border-border p-6 rounded-3xl space-y-4">
+                <div key={i} className="bg-surface border border-border p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-4">
                   <div className="flex justify-between items-center">
                     <Skeleton width="30%" height="20px" rounded="md" />
                     <Skeleton width="20%" height="20px" rounded="md" />
@@ -366,11 +366,11 @@ export default function IdeasPage() {
               }}
             />
           ) : (
-            <div className="grid sm:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               {filteredHistory.map(item => (
                 <motion.div
                   key={item.id}
-                  className="bg-surface border border-border p-6 rounded-3xl flex flex-col justify-between hover:border-border-light transition-all group shadow-sm"
+                  className="bg-surface border border-border p-4 sm:p-6 rounded-2xl sm:rounded-3xl flex flex-col justify-between hover:border-border-light transition-all group shadow-sm"
                 >
                   <div className="space-y-4">
                     {/* Card Top: Date & Platform Badges */}
@@ -555,7 +555,7 @@ export default function IdeasPage() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-full max-w-2xl bg-surface border-l border-border z-50 flex flex-col justify-between shadow-2xl p-6 md:p-8"
+              className="fixed top-0 right-0 bottom-0 w-full max-w-full sm:max-w-2xl bg-surface border-l border-border z-50 flex flex-col justify-between shadow-2xl p-4 sm:p-6 md:p-8"
             >
               {loadingDetail ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3">

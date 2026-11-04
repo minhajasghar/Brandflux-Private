@@ -204,14 +204,14 @@ export default function SessionPage() {
       progressTimersRef.current.push(timer)
     })
 
-    // Fail-safe timeout: after 55 seconds, alert the user rather than leaving them hanging indefinitely
+    // Fail-safe timeout: after 110 seconds, alert the user rather than leaving them hanging indefinitely
     const timeoutTimer = setTimeout(() => {
       if (phase === 2) {
         toast.error('Generation took longer than expected. Please try again or simplify inputs.')
         setPhase(1)
         setIsGenerating(false)
       }
-    }, 55000)
+    }, 110000)
     progressTimersRef.current.push(timeoutTimer)
   }
 

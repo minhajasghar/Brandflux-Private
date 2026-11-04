@@ -13,7 +13,7 @@ const getInitialBaseUrl = () => {
 
 const api = axios.create({
   baseURL: getInitialBaseUrl(),
-  timeout: 30000, // 30-second timeout to avoid infinite loading
+  timeout: 60000, // 60-second default base timeout
   headers: {
     'Content-Type': 'application/json',
   },
@@ -549,7 +549,9 @@ export async function generateSessionVariants(payload: {
   variant_count?: number
   target_platform?: string
 }) {
-  const response = await api.post('/sessions/generate-variants', payload)
+  const response = await api.post('/sessions/generate-variants', payload, {
+    timeout: 120000 // 120s timeout for multi-variant generation
+  })
   return response.data
 }
 
@@ -574,7 +576,9 @@ export async function regenerateSingleVariant(payload: {
   target_platform?: string
   selected_platforms?: string[]
 }) {
-  const response = await api.post('/sessions/regenerate-variant', payload)
+  const response = await api.post('/sessions/regenerate-variant', payload, {
+    timeout: 90000 // 90s timeout for single variant regeneration
+  })
   return response.data
 }
 

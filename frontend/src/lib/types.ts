@@ -148,3 +148,29 @@ export interface MultiVariantSessionResult {
     best_time?: string
   }>
 }
+
+export interface PlatformCopyItem {
+  id: string
+  platform: 'instagram' | 'linkedin' | 'facebook' | 'twitter' | 'tiktok' | string
+  caption: string
+  hashtags?: string[]
+  image_url?: string | null
+  aspect_ratio?: string
+  status: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed' | string
+  scheduled_at?: string | null
+  error?: string | null
+}
+
+export interface ParentPostItem {
+  id: string
+  title: string
+  session_theme?: string
+  caption: string
+  created_at: string
+  session_date?: string
+  image_url?: string | null
+  platforms_generated: string[]
+  platform_statuses?: Record<string, string>
+  copies?: PlatformCopyItem[]
+  copies_count?: number
+}

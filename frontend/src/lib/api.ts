@@ -4,7 +4,8 @@ const getInitialBaseUrl = () => {
   if (typeof window !== 'undefined' && window.location.hostname) {
     const host = window.location.hostname
     if (host !== 'localhost' && host !== '127.0.0.1') {
-      return `http://${host}:8000`
+      // Use Next.js internal proxy rewrite to bypass Windows firewall on port 8000 for LAN clients
+      return '/api/py'
     }
   }
   return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -12,6 +13,7 @@ const getInitialBaseUrl = () => {
 
 const api = axios.create({
   baseURL: getInitialBaseUrl(),
+  timeout: 30000, // 30-second timeout to avoid infinite loading
   headers: {
     'Content-Type': 'application/json',
   },
@@ -21,7 +23,7 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      config.baseURL = `http://${window.location.hostname}:8000`
+      config.baseURL = '/api/py'
     }
     const token = localStorage.getItem('brandflux_token') || sessionStorage.getItem('brandflux_token')
     if (token) {
@@ -35,13 +37,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => {
     if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      const currentHost = window.location.hostname
       const rewriteHost = (data: any): any => {
         if (!data) return data
         if (typeof data === 'string') {
           return data
-            .replace(/http:\/\/localhost:8000/g, `http://${currentHost}:8000`)
-            .replace(/http:\/\/127\.0\.0\.1:8000/g, `http://${currentHost}:8000`)
+            .replace(/http:\/\/localhost:8000/g, '/api/py')
+            .replace(/http:\/\/127\.0\.0\.1:8000/g, '/api/py')
         }
         if (Array.isArray(data)) {
           return data.map(rewriteHost)

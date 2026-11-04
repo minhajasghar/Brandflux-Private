@@ -14,8 +14,10 @@ import {
   Save,
   Clock,
   Image as ImageIcon,
-  GripVertical
+  GripVertical,
+  ExternalLink
 } from 'lucide-react'
+import Link from 'next/link'
 import {
   getScheduledPosts,
   createScheduledPost,
@@ -35,6 +37,8 @@ interface ScheduledPost {
   external_post_id: string | null
   error: string | null
   created_at: string
+  post_id?: string | null
+  platform_copy_id?: string | null
 }
 
 const PLATFORMS = [
@@ -43,7 +47,21 @@ const PLATFORMS = [
   { id: 'linkedin', label: 'LinkedIn', icon: '💼', color: '#0A66C2' },
   { id: 'facebook', label: 'Facebook', icon: '📘', color: '#1877F2' },
   { id: 'twitter', label: 'X / Twitter', icon: '🐦', color: '#1DA1F2' },
+  { id: 'tiktok', label: 'TikTok', icon: '🎵', color: '#25F4EE' },
 ]
+
+const getPlatformConfig = (platform: string) => {
+  const norm = (platform || '').toLowerCase().trim()
+  return (
+    PLATFORMS.find(
+      p =>
+        p.id === norm ||
+        (norm === 'instagram' && p.id === 'instagram_post') ||
+        (norm === 'x' && p.id === 'twitter') ||
+        (norm === 'twitter' && p.id === 'twitter')
+    ) || PLATFORMS[0]
+  )
+}
 
 // Status styling strictly following Brandflux dark design system tokens:
 // Draft: grey, Scheduled: cobalt (#1558C9 / #4C8DFF), Published: green (#10B981), Failed: red (#EF4444)
@@ -670,7 +688,7 @@ export default function CalendarPage() {
                       <div className="mt-1.5 space-y-1.5 flex-1 overflow-hidden">
                         {cellPosts.slice(0, 3).map(post => {
                           const statusCfg = STATUS_CONFIG[post.status] || STATUS_CONFIG.Draft
-                          const platformCfg = PLATFORMS.find(p => p.id === post.platform) || PLATFORMS[0]
+                          const platformCfg = getPlatformConfig(post.platform)
 
                           return (
                             <div
@@ -793,7 +811,7 @@ export default function CalendarPage() {
                     ) : (
                       dayPosts.map(post => {
                         const statusCfg = STATUS_CONFIG[post.status] || STATUS_CONFIG.Draft
-                        const platformCfg = PLATFORMS.find(p => p.id === post.platform) || PLATFORMS[0]
+                        const platformCfg = getPlatformConfig(post.platform)
                         const timeStr = new Date(post.scheduled_at).toLocaleTimeString(undefined, {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -991,7 +1009,7 @@ export default function CalendarPage() {
             <div className="space-y-2.5">
               {selectedDatePosts.map(post => {
                 const statusCfg = STATUS_CONFIG[post.status] || STATUS_CONFIG.Draft
-                const platformCfg = PLATFORMS.find(p => p.id === post.platform) || PLATFORMS[0]
+                const platformCfg = getPlatformConfig(post.platform)
                 const timeStr = new Date(post.scheduled_at).toLocaleTimeString(undefined, {
                   hour: '2-digit',
                   minute: '2-digit',
@@ -1096,6 +1114,34 @@ export default function CalendarPage() {
 
                 {/* Drawer Body Form */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+                  {/* Linked Parent Post Banner (if created via multi-platform session) */}
+                  {selectedPost?.post_id && (
+                    <div className="p-3.5 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-text">Multi-Platform Post</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-primary/20 text-primary-light font-bold">
+                            Linked
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted truncate mt-0.5">
+                          View all channel copies &amp; sync status
+                        </p>
+                      </div>
+                      <Link
+                        href={`/ideas?id=${selectedPost.post_id}&platform=${
+                          selectedPost.platform === 'instagram_post' || selectedPost.platform === 'instagram_story'
+                            ? 'instagram'
+                            : selectedPost.platform
+                        }`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition shrink-0 shadow-sm"
+                      >
+                        <span>Open Post</span>
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                  )}
+
                   {/* Platform Selection */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-muted uppercase tracking-wider">

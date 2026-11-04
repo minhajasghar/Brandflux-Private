@@ -28,6 +28,26 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
+def get_meta_credentials():
+    from dotenv import load_dotenv
+    env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if os.path.exists(env_file):
+        load_dotenv(env_file, override=True)
+    app_id = os.getenv("META_APP_ID", "").strip()
+    app_secret = os.getenv("META_APP_SECRET", "").strip()
+    redirect_uri = os.getenv("META_REDIRECT_URI", "http://localhost:8000/oauth/meta/callback").strip()
+    return app_id, app_secret, redirect_uri
+
+def get_linkedin_credentials():
+    from dotenv import load_dotenv
+    env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if os.path.exists(env_file):
+        load_dotenv(env_file, override=True)
+    client_id = os.getenv("LINKEDIN_CLIENT_ID", "").strip()
+    client_secret = os.getenv("LINKEDIN_CLIENT_SECRET", "").strip()
+    redirect_uri = os.getenv("LINKEDIN_REDIRECT_URI", "http://localhost:8000/oauth/linkedin/callback").strip()
+    return client_id, client_secret, redirect_uri
+
 FRONTEND_SETTINGS_URL = os.getenv("FRONTEND_URL", "http://localhost:3000") + "/settings?tab=connected"
 
 
@@ -63,39 +83,48 @@ def get_authorization_url(
     state = f"{user.id}:{plat}:{uuid.uuid4().hex[:8]}"
 
     if plat in ("meta", "instagram", "facebook"):
-        if not META_APP_ID:
-            raise HTTPException(status_code=400, detail="META_APP_ID is not configured in backend environment")
+        meta_id, meta_secret, meta_redirect = get_meta_credentials()
+        if not meta_id:
+            raise HTTPException(status_code=400, detail="META_APP_ID is not configured in backend/.env")
+        if not meta_secret:
+            raise HTTPException(status_code=400, detail="META_APP_SECRET is not configured in backend/.env. Please copy your App Secret from the Meta Developer dashboard and add it to backend/.env.")
         
         scopes = [
+            "public_profile",
             "pages_show_list",
             "pages_read_engagement",
             "pages_manage_posts",
             "instagram_basic",
-            "instagram_content_publish"
+            "instagram_content_publish",
+            "business_management"
         ]
         params = {
-            "client_id": META_APP_ID,
-            "redirect_uri": META_REDIRECT_URI,
+            "client_id": meta_id,
+            "redirect_uri": meta_redirect,
             "scope": ",".join(scopes),
             "response_type": "code",
-            "state": state
+            "state": state,
+            "auth_type": "rerequest"
         }
         auth_url = f"https://www.facebook.com/v19.0/dialog/oauth?{urlencode(params)}"
-        return {"authorization_url": auth_url, "state": state}
+        return {"authorization_url": auth_url, "auth_url": auth_url, "state": state}
 
     elif plat == "linkedin":
-        if not LINKEDIN_CLIENT_ID:
-            raise HTTPException(status_code=400, detail="LINKEDIN_CLIENT_ID is not configured in backend environment")
+        li_client_id, li_client_secret, li_redirect = get_linkedin_credentials()
+        if not li_client_id:
+            raise HTTPException(status_code=400, detail="LINKEDIN_CLIENT_ID is not configured in backend/.env. Please create a LinkedIn Developer App and add its credentials to backend/.env.")
+        if not li_client_secret:
+            raise HTTPException(status_code=400, detail="LINKEDIN_CLIENT_SECRET is not configured in backend/.env.")
         
         params = {
             "response_type": "code",
-            "client_id": LINKEDIN_CLIENT_ID,
-            "redirect_uri": LINKEDIN_REDIRECT_URI,
+            "client_id": li_client_id,
+            "redirect_uri": li_redirect,
             "state": state,
             "scope": "openid profile email w_member_social"
         }
         auth_url = f"https://www.linkedin.com/oauth/v2/authorization?{urlencode(params)}"
-        return {"authorization_url": auth_url, "state": state}
+        return {"authorization_url": auth_url, "auth_url": auth_url, "state": state}
 
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
@@ -122,20 +151,31 @@ async def meta_oauth_callback(
     if not brand:
         return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=brand_not_found")
 
+    meta_id, meta_secret, meta_redirect = get_meta_credentials()
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Step 1: Exchange code for short-lived token
         token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
         token_res = await client.get(
             token_url,
             params={
-                "client_id": META_APP_ID,
-                "client_secret": META_APP_SECRET,
-                "redirect_uri": META_REDIRECT_URI,
+                "client_id": meta_id,
+                "client_secret": meta_secret,
+                "redirect_uri": meta_redirect,
                 "code": code
             }
         )
         token_data = token_res.json()
         short_token = token_data.get("access_token")
+        
+        debug_log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "oauth_debug.log")
+        with open(debug_log_path, "a", encoding="utf-8") as f:
+            f.write(f"\n--- OAUTH CALLBACK {datetime.utcnow().isoformat()} ---\n")
+            f.write(f"token_status: {token_res.status_code}\n")
+            f.write(f"token_data has token: {bool(short_token)}\n")
+            if not short_token:
+                f.write(f"token_error: {token_data}\n")
+
         if not short_token:
             logger.error(f"Meta token exchange error: {token_data}")
             return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=token_exchange_failed")
@@ -145,8 +185,8 @@ async def meta_oauth_callback(
             token_url,
             params={
                 "grant_type": "fb_exchange_token",
-                "client_id": META_APP_ID,
-                "client_secret": META_APP_SECRET,
+                "client_id": meta_id,
+                "client_secret": meta_secret,
                 "fb_exchange_token": short_token
             }
         )
@@ -164,7 +204,50 @@ async def meta_oauth_callback(
                 "fields": "id,name,access_token,instagram_business_account{id,username,profile_picture_url}"
             }
         )
-        pages_data = pages_res.json().get("data", [])
+        pages_json = pages_res.json()
+        pages_data = pages_json.get("data", [])
+
+        # Fallback for pages owned by a Meta Business Portfolio: check businesses the user has access to
+        if not pages_data:
+            biz_res = await client.get(
+                "https://graph.facebook.com/v19.0/me/businesses",
+                params={"access_token": long_token, "fields": "id,name"}
+            )
+            biz_list = biz_res.json().get("data", [])
+            with open(debug_log_path, "a", encoding="utf-8") as f:
+                f.write(f"fallback_businesses: {biz_list}\n")
+            for b in biz_list:
+                b_id = b.get("id")
+                for p_type in ["owned_pages", "client_pages"]:
+                    bp_res = await client.get(
+                        f"https://graph.facebook.com/v19.0/{b_id}/{p_type}",
+                        params={
+                            "access_token": long_token,
+                            "fields": "id,name,access_token,instagram_business_account{id,username,profile_picture_url}"
+                        }
+                    )
+                    bp_json = bp_res.json()
+                    bp_data = bp_json.get("data", [])
+                    with open(debug_log_path, "a", encoding="utf-8") as f:
+                        f.write(f"business {b_id} {p_type}: {bp_json}\n")
+                    pages_data.extend(bp_data)
+
+        # Debug: check user permissions and debug_token info
+        perm_res = await client.get(
+            "https://graph.facebook.com/v19.0/me/permissions",
+            params={"access_token": long_token}
+        )
+        debug_token_res = await client.get(
+            "https://graph.facebook.com/v19.0/debug_token",
+            params={"input_token": long_token, "access_token": f"{meta_id}|{meta_secret}"}
+        )
+
+        with open(debug_log_path, "a", encoding="utf-8") as f:
+            f.write(f"pages_status: {pages_res.status_code}\n")
+            f.write(f"pages_json: {pages_json}\n")
+            f.write(f"permissions: {perm_res.json()}\n")
+            f.write(f"debug_token: {debug_token_res.json()}\n")
+            f.write(f"found {len(pages_data)} pages\n")
 
         # Store connected accounts
         for page in pages_data:
@@ -247,15 +330,16 @@ async def linkedin_oauth_callback(
     if not brand:
         return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=brand_not_found")
 
+    li_client_id, li_client_secret, li_redirect = get_linkedin_credentials()
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Step 1: Exchange code for access token
         token_url = "https://www.linkedin.com/oauth/v2/accessToken"
         data = {
             "grant_type": "authorization_code",
             "code": code,
-            "client_id": LINKEDIN_CLIENT_ID,
-            "client_secret": LINKEDIN_CLIENT_SECRET,
-            "redirect_uri": LINKEDIN_REDIRECT_URI
+            "client_id": li_client_id,
+            "client_secret": li_client_secret,
+            "redirect_uri": li_redirect
         }
         res = await client.post(token_url, data=data)
         token_info = res.json()

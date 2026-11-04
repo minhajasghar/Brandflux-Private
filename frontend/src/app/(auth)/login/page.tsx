@@ -24,17 +24,17 @@ export default function LoginPage() {
 
     try {
       const data = await login(formData, rememberMe)
-      if (data.role === 'admin') {
-        router.push('/admin')
-      } else if (data.onboarding_complete) {
-        router.push('/dashboard')
-      } else {
-        router.push('/onboarding')
-      }
+      const target = data.role === 'admin' 
+        ? '/admin' 
+        : data.onboarding_complete 
+        ? '/dashboard' 
+        : '/onboarding'
+      window.location.href = target
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Invalid email or password'
+      const msg = err.code === 'ECONNABORTED'
+        ? 'Connection timed out. Please check that the server is reachable.'
+        : err.response?.data?.detail || err.message || 'Invalid email or password'
       setError(msg)
-    } finally {
       setIsLoading(false)
     }
   }

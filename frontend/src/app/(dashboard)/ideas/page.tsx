@@ -26,9 +26,14 @@ interface HistoryItem {
   id: string
   session_date: string
   session_theme: string
-  instagram_caption: string
-  linkedin_caption: string
+  title?: string
+  caption?: string
+  instagram_caption?: string
+  linkedin_caption?: string
   platforms_generated: string[]
+  platform_statuses?: Record<string, string>
+  copies?: any[]
+  copies_count?: number
   image_url?: string | null
   created_at: string
 }
@@ -41,6 +46,19 @@ interface SavedTemplate {
   caption: string
   hashtags: string[]
   created_at: string
+}
+
+const safeHashtags = (raw: any): string[] => {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.filter(Boolean)
+  if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw)
+      if (Array.isArray(p)) return p.filter(Boolean)
+    } catch {}
+    return raw.split(/\s+/).filter(Boolean)
+  }
+  return []
 }
 
 export default function IdeasPage() {
@@ -57,8 +75,11 @@ export default function IdeasPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   
   // Filters State
-  const [platformFilter, setPlatformFilter] = useState<'all' | 'instagram' | 'linkedin' | 'facebook'>('all')
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'instagram' | 'linkedin' | 'facebook' | 'twitter' | 'tiktok'>('all')
   const [dateFilter, setDateFilter] = useState<'all' | 'week' | 'month'>('all')
+  const [isPublishing, setIsPublishing] = useState<string | null>(null)
+  const [schedulingCopyId, setSchedulingCopyId] = useState<string | null>(null)
+  const [scheduledDateTime, setScheduledDateTime] = useState<string>('')
 
   // Templates State
   const [templates, setTemplates] = useState<SavedTemplate[]>([])
@@ -122,8 +143,9 @@ export default function IdeasPage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
       const targetId = params.get('id')
+      const targetPlatform = params.get('platform')
       if (targetId) {
-        openDetailDrawer(targetId)
+        openDetailDrawer(targetId, targetPlatform)
       }
     }
   }, [])
@@ -141,9 +163,11 @@ export default function IdeasPage() {
     return historyItems.filter(item => {
       // Platform filter
       if (platformFilter !== 'all') {
-        const matchesPlatform = item.platforms_generated?.some(p => 
-          p.toLowerCase().includes(platformFilter)
-        )
+        const matchesPlatform = item.platforms_generated?.some(p => {
+          const lp = p.toLowerCase()
+          if (platformFilter === 'twitter') return lp.includes('twitter') || lp === 'x'
+          return lp.includes(platformFilter)
+        })
         if (!matchesPlatform) return false
       }
 
@@ -167,17 +191,29 @@ export default function IdeasPage() {
   }
 
   // Open full session detail drawer
-  const openDetailDrawer = async (sessionId: string) => {
+  const openDetailDrawer = async (sessionId: string, initialPlatform?: string | null) => {
     setSelectedSessionId(sessionId)
     setLoadingDetail(true)
     try {
       const res = await api.get(`/content/history/${sessionId}`)
       if (res.data) {
         setSessionDetail(res.data)
-        if (res.data.instagram_post) setActiveDetailTab('instagram_post')
-        else if (res.data.linkedin_post) setActiveDetailTab('linkedin_post')
-        else if (res.data.facebook_post) setActiveDetailTab('facebook_post')
-        else if (res.data.instagram_story) setActiveDetailTab('instagram_story')
+        if (initialPlatform) {
+          const norm = initialPlatform.toLowerCase()
+          if (norm.includes('tiktok') && res.data.tiktok) setActiveDetailTab('tiktok')
+          else if ((norm.includes('twitter') || norm.includes('x')) && res.data.twitter_post) setActiveDetailTab('twitter_post')
+          else if (norm.includes('linkedin') && res.data.linkedin_post) setActiveDetailTab('linkedin_post')
+          else if (norm.includes('facebook') && res.data.facebook_post) setActiveDetailTab('facebook_post')
+          else if (norm.includes('story') && res.data.instagram_story) setActiveDetailTab('instagram_story')
+          else if (res.data.instagram_post) setActiveDetailTab('instagram_post')
+        } else {
+          if (res.data.instagram_post) setActiveDetailTab('instagram_post')
+          else if (res.data.linkedin_post) setActiveDetailTab('linkedin_post')
+          else if (res.data.facebook_post) setActiveDetailTab('facebook_post')
+          else if (res.data.twitter_post) setActiveDetailTab('twitter_post')
+          else if (res.data.tiktok) setActiveDetailTab('tiktok')
+          else if (res.data.instagram_story) setActiveDetailTab('instagram_story')
+        }
       }
     } catch (err) {
       console.error('Failed to fetch session detail:', err)
@@ -262,78 +298,109 @@ export default function IdeasPage() {
         </svg>
       )
     }
+    if (p.includes('tiktok')) {
+      return (
+        <svg className="h-3.5 w-3.5 text-[#25F4EE] fill-current" viewBox="0 0 24 24">
+          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.29 0 .58.04.85.12V9.41a6.33 6.33 0 0 0-.85-.06 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 8.78 5.86 6.34 6.34 0 0 0 3.9-5.86V9.17a8.28 8.28 0 0 0 4.84 1.55v-3.48a4.85 4.85 0 0 1-1.07-.55z"/>
+        </svg>
+      )
+    }
     return <Globe className="h-3.5 w-3.5 text-muted" />
   }
 
-  const renderPlatformBadge = (platform: string) => {
+  const renderPlatformChip = (platform: string, status: string = 'draft') => {
     const p = platform.toLowerCase()
+    const s = (status || 'draft').toLowerCase()
+
+    let statusBadgeBg = 'bg-zinc-800/60 text-zinc-300 border-zinc-700/60'
+    let dotColor = 'bg-zinc-400'
+    let statusLabel = 'Draft'
+
+    if (s === 'published') {
+      statusBadgeBg = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+      dotColor = 'bg-emerald-400'
+      statusLabel = 'Published'
+    } else if (s === 'scheduled') {
+      statusBadgeBg = 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+      dotColor = 'bg-blue-400'
+      statusLabel = 'Scheduled'
+    } else if (s === 'publishing') {
+      statusBadgeBg = 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+      dotColor = 'bg-amber-400 animate-pulse'
+      statusLabel = 'Publishing'
+    } else if (s === 'failed') {
+      statusBadgeBg = 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+      dotColor = 'bg-rose-400'
+      statusLabel = 'Failed'
+    }
+
+    let platformName = platform
+    let brandColorClass = 'text-zinc-300'
+    let icon = <Globe className="h-2.5 w-2.5" />
+
     if (p.includes('instagram')) {
-      return (
-        <span
-          key={platform}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E1306C]/10 border border-[#E1306C]/30 text-[#FF75A0] text-[10px] font-extrabold tracking-wide shadow-sm"
-          title="Instagram Post / Story"
-        >
-          <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-          </svg>
-          <span>Instagram</span>
-        </span>
+      platformName = 'Instagram'
+      brandColorClass = 'text-[#FF75A0]'
+      icon = (
+        <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+        </svg>
+      )
+    } else if (p.includes('linkedin')) {
+      platformName = 'LinkedIn'
+      brandColorClass = 'text-[#4CB5F9]'
+      icon = (
+        <svg className="h-2.5 w-2.5 shrink-0 fill-current" viewBox="0 0 24 24">
+          <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45a1.64 1.64 0 1 0 0 3.28 1.64 1.64 0 0 0 0-3.28z"/>
+        </svg>
+      )
+    } else if (p.includes('facebook')) {
+      platformName = 'Facebook'
+      brandColorClass = 'text-[#70AEFF]'
+      icon = (
+        <svg className="h-2.5 w-2.5 shrink-0 fill-current" viewBox="0 0 24 24">
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+        </svg>
+      )
+    } else if (p.includes('twitter') || p.includes('x')) {
+      platformName = 'X / Twitter'
+      brandColorClass = 'text-white'
+      icon = (
+        <svg className="h-2.5 w-2.5 shrink-0 fill-current" viewBox="0 0 24 24">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+        </svg>
+      )
+    } else if (p.includes('tiktok')) {
+      platformName = 'TikTok'
+      brandColorClass = 'text-[#25F4EE]'
+      icon = (
+        <svg className="h-2.5 w-2.5 shrink-0 fill-current" viewBox="0 0 24 24">
+          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.29 0 .58.04.85.12V9.41a6.33 6.33 0 0 0-.85-.06 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 8.78 5.86 6.34 6.34 0 0 0 3.9-5.86V9.17a8.28 8.28 0 0 0 4.84 1.55v-3.48a4.85 4.85 0 0 1-1.07-.55z"/>
+        </svg>
       )
     }
-    if (p.includes('linkedin')) {
-      return (
-        <span
-          key={platform}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0077B5]/10 border border-[#0077B5]/30 text-[#4CB5F9] text-[10px] font-extrabold tracking-wide shadow-sm"
-          title="LinkedIn Post"
-        >
-          <svg className="h-3 w-3 shrink-0 fill-current" viewBox="0 0 24 24">
-            <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45a1.64 1.64 0 1 0 0 3.28 1.64 1.64 0 0 0 0-3.28z"/>
-          </svg>
-          <span>LinkedIn</span>
-        </span>
-      )
-    }
-    if (p.includes('facebook')) {
-      return (
-        <span
-          key={platform}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1877F2]/10 border border-[#1877F2]/30 text-[#70AEFF] text-[10px] font-extrabold tracking-wide shadow-sm"
-          title="Facebook Post"
-        >
-          <svg className="h-3 w-3 shrink-0 fill-current" viewBox="0 0 24 24">
-            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-          </svg>
-          <span>Facebook</span>
-        </span>
-      )
-    }
-    if (p.includes('twitter') || p.includes('x')) {
-      return (
-        <span
-          key={platform}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/20 text-text text-[10px] font-extrabold tracking-wide shadow-sm"
-          title="Twitter / X"
-        >
-          <svg className="h-3 w-3 shrink-0 fill-current" viewBox="0 0 24 24">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-          </svg>
-          <span>Twitter / X</span>
-        </span>
-      )
-    }
+
     return (
       <span
         key={platform}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary border border-border text-muted text-[10px] font-extrabold tracking-wide shadow-sm"
+        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-bold ${statusBadgeBg}`}
+        title={`${platformName} • ${statusLabel}`}
       >
-        <Globe className="h-3 w-3 shrink-0 text-muted" />
-        <span>{getPlatformLabel(platform)}</span>
+        <span className={brandColorClass}>{icon}</span>
+        <span className="text-text">{platformName}</span>
+        <span className="opacity-40">•</span>
+        <span className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wider font-extrabold">
+          <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+          <span>{statusLabel}</span>
+        </span>
       </span>
     )
+  }
+
+  const renderPlatformBadge = (platform: string) => {
+    return renderPlatformChip(platform, 'draft')
   }
 
   const getPlatformLabel = (platform: string) => {
@@ -391,6 +458,8 @@ export default function IdeasPage() {
                 { id: 'instagram', label: 'Instagram' },
                 { id: 'linkedin', label: 'LinkedIn' },
                 { id: 'facebook', label: 'Facebook' },
+                { id: 'twitter', label: 'X / Twitter' },
+                { id: 'tiktok', label: 'TikTok' },
               ].map(opt => (
                 <button
                   key={opt.id}
@@ -685,6 +754,7 @@ export default function IdeasPage() {
                       { id: 'linkedin_post', label: 'LinkedIn', check: sessionDetail.linkedin_post },
                       { id: 'facebook_post', label: 'Facebook', check: sessionDetail.facebook_post },
                       { id: 'twitter_post', label: 'Twitter / X', check: sessionDetail.twitter_post },
+                      { id: 'tiktok', label: 'TikTok', check: sessionDetail.tiktok },
                       { id: 'instagram_story', label: 'Story', check: sessionDetail.instagram_story }
                     ].map(tab => {
                       if (!tab.check) return null
@@ -738,9 +808,9 @@ export default function IdeasPage() {
                         <div className="bg-surface-secondary border border-border p-5 rounded-2xl text-sm text-text leading-relaxed whitespace-pre-wrap">
                           {sessionDetail.instagram_post.caption}
                         </div>
-                        {sessionDetail.instagram_post.hashtags && (
+                        {safeHashtags(sessionDetail.instagram_post.hashtags).length > 0 && (
                           <div className="flex flex-wrap gap-1.5">
-                            {sessionDetail.instagram_post.hashtags.map((tag: string) => (
+                            {safeHashtags(sessionDetail.instagram_post.hashtags).map((tag: string) => (
                               <span key={tag} className="text-xs font-bold text-accent bg-surface-secondary border border-border px-3 py-1 rounded-full">
                                 {tag}
                               </span>
@@ -770,9 +840,9 @@ export default function IdeasPage() {
                         <div className="bg-surface-secondary border border-border p-5 rounded-2xl text-sm text-text leading-relaxed whitespace-pre-wrap">
                           {sessionDetail.linkedin_post.caption}
                         </div>
-                        {sessionDetail.linkedin_post.hashtags && (
+                        {safeHashtags(sessionDetail.linkedin_post.hashtags).length > 0 && (
                           <div className="flex flex-wrap gap-1.5">
-                            {sessionDetail.linkedin_post.hashtags.map((tag: string) => (
+                            {safeHashtags(sessionDetail.linkedin_post.hashtags).map((tag: string) => (
                               <span key={tag} className="text-xs font-bold text-accent bg-surface-secondary border border-border px-3 py-1 rounded-full">
                                 {tag}
                               </span>
@@ -805,15 +875,47 @@ export default function IdeasPage() {
                         <div className="bg-surface-secondary border border-border p-5 rounded-2xl text-sm text-text leading-relaxed whitespace-pre-wrap">
                           {sessionDetail.twitter_post.caption}
                         </div>
-                        {sessionDetail.twitter_post.hashtags && (
+                        {safeHashtags(sessionDetail.twitter_post.hashtags).length > 0 && (
                           <div className="flex flex-wrap gap-1.5">
-                            {sessionDetail.twitter_post.hashtags.map((tag: string) => (
+                            {safeHashtags(sessionDetail.twitter_post.hashtags).map((tag: string) => (
                               <span key={tag} className="text-xs font-bold text-accent bg-surface-secondary border border-border px-3 py-1 rounded-full">
                                 {tag}
                               </span>
                             ))}
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Render TikTok Post */}
+                    {activeDetailTab === 'tiktok' && sessionDetail.tiktok && (
+                      <div className="space-y-5">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-muted">TikTok Hook &amp; Caption</h4>
+                          <CopyButton text={sessionDetail.tiktok.caption} label="Caption" />
+                        </div>
+                        <div className="bg-surface-secondary border border-border p-5 rounded-2xl text-sm text-text leading-relaxed whitespace-pre-wrap">
+                          {sessionDetail.tiktok.caption}
+                        </div>
+                        {safeHashtags(sessionDetail.tiktok.hashtags).length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {safeHashtags(sessionDetail.tiktok.hashtags).map((tag: string) => (
+                              <span key={tag} className="text-xs font-bold text-accent bg-surface-secondary border border-border px-3 py-1 rounded-full">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-4 bg-surface-secondary border border-border p-4 rounded-2xl">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase text-muted">Aspect Ratio</p>
+                            <p className="text-sm font-bold text-text mt-0.5">9:16 Vertical Video</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase text-muted">Optimal Time</p>
+                            <p className="text-sm font-bold text-text mt-0.5">{sessionDetail.tiktok.best_time || '8:00 PM'}</p>
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -845,6 +947,120 @@ export default function IdeasPage() {
                       <p className="text-[10px] font-bold uppercase text-accent">Content Strategy Angle</p>
                       <p className="text-xs text-muted leading-relaxed">{sessionDetail.guidance?.tip_of_day || 'Align this post theme with your main products to elevate conversion ratios.'}</p>
                     </div>
+
+                    {/* Per-Platform Live Publishing & Scheduling Controls */}
+                    {(() => {
+                      const activeData = sessionDetail[activeDetailTab] || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === activeDetailTab.toLowerCase().replace('_post', ''));
+                      const copyId = activeData?.id || activeData?.copy_id;
+                      if (!copyId) return null;
+
+                      return (
+                        <div className="bg-surface-secondary border border-border p-4 rounded-2xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Platform Controls</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-accent/10 text-accent">
+                              {activeData.status || 'Draft'}
+                            </span>
+                          </div>
+
+                          {schedulingCopyId === copyId ? (
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-text">Select Date &amp; Time:</label>
+                              <input
+                                type="datetime-local"
+                                value={scheduledDateTime}
+                                onChange={(e) => setScheduledDateTime(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-xs text-text outline-none focus:border-accent"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!scheduledDateTime) return toast.error('Pick a date and time.');
+                                    try {
+                                      await api.post(`/content/copy/${copyId}/schedule`, { scheduled_at: new Date(scheduledDateTime).toISOString() });
+                                      toast.success('Scheduled successfully!');
+                                      setSchedulingCopyId(null);
+                                      const res = await api.get(`/content/history/${selectedSessionId}`);
+                                      setSessionDetail(res.data);
+                                      fetchHistory(true);
+                                    } catch (err: any) {
+                                      toast.error(err.response?.data?.detail || 'Schedule failed.');
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-accent text-black font-extrabold text-xs"
+                                >
+                                  Confirm Schedule
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSchedulingCopyId(null)}
+                                  className="px-3 py-1.5 rounded-lg bg-surface text-muted text-xs font-bold"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-3 gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setIsPublishing(copyId);
+                                  try {
+                                    await api.post(`/content/copy/${copyId}/publish`);
+                                    toast.success('Published successfully!');
+                                    const res = await api.get(`/content/history/${selectedSessionId}`);
+                                    setSessionDetail(res.data);
+                                    fetchHistory(true);
+                                  } catch (err: any) {
+                                    toast.error(err.response?.data?.detail || 'Publish failed.');
+                                  } finally {
+                                    setIsPublishing(null);
+                                  }
+                                }}
+                                disabled={isPublishing === copyId}
+                                className="py-2 px-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-extrabold flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                              >
+                                {isPublishing === copyId ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                                <span>Publish Now</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSchedulingCopyId(copyId);
+                                  const d = new Date();
+                                  d.setHours(d.getHours() + 2);
+                                  setScheduledDateTime(d.toISOString().slice(0, 16));
+                                }}
+                                className="py-2 px-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-xs font-extrabold flex items-center justify-center gap-1.5 transition"
+                              >
+                                <span>Schedule</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await api.post(`/content/copy/${copyId}/retry`);
+                                    toast.success('Status reset to draft.');
+                                    const res = await api.get(`/content/history/${selectedSessionId}`);
+                                    setSessionDetail(res.data);
+                                    fetchHistory(true);
+                                  } catch (err: any) {
+                                    toast.error(err.response?.data?.detail || 'Retry failed.');
+                                  }
+                                }}
+                                className="py-2 px-2.5 rounded-xl bg-surface hover:bg-surface-secondary text-zinc-300 border border-border text-xs font-extrabold flex items-center justify-center gap-1.5 transition"
+                              >
+                                <span>Retry / Reset</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Drawer Footer actions */}

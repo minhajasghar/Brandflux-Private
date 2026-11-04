@@ -77,6 +77,8 @@ def create_scheduled_post(
     post = ScheduledPost(
         id=str(uuid.uuid4()),
         brand_id=brand.id,
+        post_id=req.post_id,
+        platform_copy_id=req.platform_copy_id,
         platform=req.platform,
         caption=req.caption,
         media_url=req.media_url,

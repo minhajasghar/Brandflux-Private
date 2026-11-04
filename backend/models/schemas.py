@@ -374,6 +374,8 @@ class ScheduledPostCreate(BaseModel):
     media_url: Optional[str] = None
     scheduled_at: datetime
     status: Optional[str] = "Draft"
+    post_id: Optional[str] = None
+    platform_copy_id: Optional[str] = None
 
 class ScheduledPostUpdate(BaseModel):
     platform: Optional[str] = None
@@ -381,10 +383,14 @@ class ScheduledPostUpdate(BaseModel):
     media_url: Optional[str] = None
     scheduled_at: Optional[datetime] = None
     status: Optional[str] = None
+    post_id: Optional[str] = None
+    platform_copy_id: Optional[str] = None
 
 class ScheduledPostResponse(BaseModel):
     id: str
     brand_id: str
+    post_id: Optional[str] = None
+    platform_copy_id: Optional[str] = None
     platform: str
     caption: Optional[str] = None
     media_url: Optional[str] = None

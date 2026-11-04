@@ -314,6 +314,12 @@ export default function SessionPage() {
               hashtags: rawPosts.twitter_post?.hashtags || (res.hashtags || []).slice(0, 2),
               best_time: rawPosts.twitter_post?.best_time || 'Today 12:00 PM',
               call_to_action: rawPosts.twitter_post?.call_to_action || 'RT if you agree'
+            },
+            tiktok: {
+              caption: rawPosts.tiktok?.caption || (res.caption ? `${res.caption.split('\n')[0]} 👀 Drop your thoughts below! 👇` : ''),
+              hashtags: rawPosts.tiktok?.hashtags || ['#fyp', '#trending', '#viral', ...(res.hashtags || []).slice(0, 2)],
+              best_time: rawPosts.tiktok?.best_time || 'Today 8:00 PM',
+              call_to_action: rawPosts.tiktok?.call_to_action || 'Follow for daily tips'
             }
           }
 
@@ -1082,11 +1088,11 @@ export default function SessionPage() {
                         Social Platform Copy
                       </label>
                       <span className="text-[11px] font-bold text-accent bg-accent/10 border border-accent/20 px-2.5 py-0.5 rounded-full">
-                        Generated for all 4 channels
+                        Generated for all 5 channels
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 p-1.5 rounded-2xl bg-surface-secondary border border-border">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-2 p-1.5 rounded-2xl bg-surface-secondary border border-border">
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('instagram_post')}
@@ -1147,6 +1153,21 @@ export default function SessionPage() {
                           <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                         </svg>
                         <span>Twitter / X</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => switchPlatformTab('tiktok')}
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
+                          activePlatformTab === 'tiktok'
+                            ? 'bg-accent text-black shadow-md shadow-accent/20'
+                            : 'text-muted hover:text-text hover:bg-surface/60'
+                        }`}
+                      >
+                        <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.29 0 .58.04.85.12V9.41a6.33 6.33 0 0 0-.85-.06 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 8.78 5.86 6.34 6.34 0 0 0 3.9-5.86V9.17a8.28 8.28 0 0 0 4.84 1.55v-3.48a4.85 4.85 0 0 1-1.07-.55z"/>
+                        </svg>
+                        <span>TikTok</span>
                       </button>
                     </div>
                   </div>

@@ -186,6 +186,7 @@ Generate JSON strictly matching this structure:
   "linkedin_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
   "facebook_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
   "twitter_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
+  "tiktok": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
   "guidance": {{ "tip_of_day": "...", "this_week_suggestion": "...", "best_performing_type": "..." }}
 }}"""
 
@@ -266,6 +267,18 @@ Generate JSON strictly matching this structure:
                 "best_day": "Today",
                 "best_time": "12:00 PM",
                 "call_to_action": "RT & share if you agree!"
+            }
+
+        # --- tiktok fallback ---
+        if not data.get("tiktok"):
+            first_line = (base_caption.split('\n')[0] if base_caption else "Fresh brand perspectives").strip()
+            tiktok_caption = f"{first_line} 👀 Drop your thoughts below! 👇"
+            data["tiktok"] = {
+                "caption": tiktok_caption,
+                "hashtags": ["#fyp", "#trending", "#viral", "#growth"] + [h for h in base_hashtags if h][:2],
+                "best_day": "Today",
+                "best_time": "8:00 PM",
+                "call_to_action": "Follow for daily tips!"
             }
 
         # --- instagram_post fallback (shouldn't happen but guard anyway) ---

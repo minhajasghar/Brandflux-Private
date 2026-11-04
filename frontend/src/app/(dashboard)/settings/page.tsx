@@ -136,7 +136,8 @@ export default function SettingsPage() {
     try {
       setLoadingAccounts(true)
       const res = await getConnectedSocialAccounts()
-      setSocialAccounts(res.accounts || [])
+      const list = Array.isArray(res) ? res : (res?.accounts || [])
+      setSocialAccounts(list)
     } catch (err) {
       console.error('Failed to load social accounts', err)
     } finally {
@@ -386,8 +387,9 @@ export default function SettingsPage() {
     try {
       setConnectingPlatform(platform)
       const res = await getOAuthAuthorizeUrl(platform)
-      if (res.auth_url) {
-        window.location.href = res.auth_url
+      const targetUrl = res?.authorization_url || res?.auth_url
+      if (targetUrl) {
+        window.location.href = targetUrl
       } else {
         toast.error(`Could not initialize OAuth for ${platform}`)
       }

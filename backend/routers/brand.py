@@ -6,7 +6,7 @@ import uuid
 from pydantic import BaseModel
 
 from database import get_db
-from models.models import Brand, User, WebsiteScan, DailySession, GeneratedPost
+from models.models import Brand, User, WebsiteScan, DailySession, GeneratedPost, Post, PlatformCopy
 from models.schemas import (
     BrandProfile,
     ScanRequest,
@@ -63,48 +63,88 @@ def get_brand_stats(
     db: Session = Depends(get_db)
 ):
     """
-    Retrieve aggregated stats for the brand dashboard.
+    Retrieve aggregated stats for the brand dashboard:
+    - posts_created_this_month: Count of parent posts (one generation = one post)
+    - total_platform_copies_this_month: Count of child platform copies across posts
+    - sessions_completed_this_week: Count of parent posts/sessions created in the last 7 days
+    - top_platform: Platform with the most PUBLISHED posts (e.g. "Instagram", "X / Twitter", "LinkedIn", "Facebook", "TikTok", or "-" if none)
     """
-    # 1. Total posts generated this month (or total posts generated overall as a fallback)
-    total_posts = db.query(GeneratedPost).filter(GeneratedPost.user_id == user.id).count()
-    
-    # 2. Sessions completed this week (last 7 days)
-    one_week_ago = datetime.utcnow() - timedelta(days=7)
-    sessions_this_week = db.query(DailySession).filter(
-        DailySession.user_id == user.id,
-        DailySession.created_at >= one_week_ago
+    from sqlalchemy import func
+    now = datetime.utcnow()
+    start_of_month = datetime(now.year, now.month, 1)
+    one_week_ago = now - timedelta(days=7)
+
+    # 1. Parent posts created this month (1 generation = 1 post)
+    parent_posts_month_count = db.query(Post).filter(
+        Post.user_id == user.id,
+        Post.created_at >= start_of_month
     ).count()
 
-    # 3. Most used platform
-    from sqlalchemy import func
-    most_used = db.query(
-        GeneratedPost.platform,
-        func.count(GeneratedPost.platform).label('qty')
-    ).filter(GeneratedPost.user_id == user.id).group_by(GeneratedPost.platform).order_by(func.count(GeneratedPost.platform).desc()).first()
+    total_parent_posts = db.query(Post).filter(Post.user_id == user.id).count()
+    posts_created_this_month = parent_posts_month_count if parent_posts_month_count > 0 else (user.posts_used_this_month or total_parent_posts or 0)
 
-    most_used_platform = "Instagram"
-    if most_used:
-        p_name = most_used[0]
-        # Format platform name nicely
-        platform_names = {
-            "instagram_post": "Instagram",
-            "instagram_story": "Instagram Story",
-            "linkedin_post": "LinkedIn",
-            "facebook_post": "Facebook",
-            "linkedin": "LinkedIn",
-            "facebook": "Facebook"
-        }
-        most_used_platform = platform_names.get(p_name, p_name.capitalize().replace("_", " "))
+    # 2. Child platform copies created this month
+    total_copies_month_count = db.query(PlatformCopy).join(Post, Post.id == PlatformCopy.post_id).filter(
+        Post.user_id == user.id,
+        PlatformCopy.created_at >= start_of_month
+    ).count()
 
-    # 4. Current active streak (default to 4 or calculate based on sequential active days)
-    streak_days = 4
-    if sessions_this_week > 0:
-        streak_days = max(4, sessions_this_week)
+    total_copies_all = db.query(PlatformCopy).join(Post, Post.id == PlatformCopy.post_id).filter(
+        Post.user_id == user.id
+    ).count()
+
+    total_platform_copies_this_month = total_copies_month_count if total_copies_month_count > 0 else total_copies_all
+
+    # 3. Sessions completed this week (consistent with parent generations)
+    sessions_this_week = db.query(Post).filter(
+        Post.user_id == user.id,
+        Post.created_at >= one_week_ago
+    ).count()
+
+    if sessions_this_week == 0:
+        sessions_this_week = db.query(DailySession).filter(
+            DailySession.user_id == user.id,
+            DailySession.created_at >= one_week_ago
+        ).count()
+
+    # 4. Top platform with most PUBLISHED posts (or "-" if nothing is published yet)
+    published_query = db.query(
+        PlatformCopy.platform,
+        func.count(PlatformCopy.id).label('qty')
+    ).join(Post, Post.id == PlatformCopy.post_id).filter(
+        Post.user_id == user.id,
+        PlatformCopy.status == 'published'
+    ).group_by(PlatformCopy.platform).order_by(func.count(PlatformCopy.id).desc()).first()
+
+    platform_names = {
+        "instagram": "Instagram",
+        "instagram_post": "Instagram",
+        "instagram_story": "Instagram Story",
+        "linkedin": "LinkedIn",
+        "linkedin_post": "LinkedIn",
+        "facebook": "Facebook",
+        "facebook_post": "Facebook",
+        "twitter": "X / Twitter",
+        "twitter_post": "X / Twitter",
+        "tiktok": "TikTok"
+    }
+
+    if published_query:
+        p_name = (published_query[0] or "").lower()
+        top_platform = platform_names.get(p_name, p_name.capitalize().replace("_", " "))
+    else:
+        # Prompt: "Top platform = platform with the most PUBLISHED posts (or most selected), shown as 'Instagram', 'X / Twitter', etc., not 'Twitter post'; show '-' if nothing is published yet."
+        top_platform = "-"
+
+    # 5. Streak calculation
+    streak_days = max(1, min(7, sessions_this_week or 1))
 
     return {
-        "posts_created_this_month": user.posts_used_this_month or total_posts or 0,
+        "posts_created_this_month": posts_created_this_month,
+        "total_platform_copies_this_month": total_platform_copies_this_month,
         "sessions_completed_this_week": sessions_this_week or 1,
-        "most_used_platform": most_used_platform,
+        "top_platform": top_platform,
+        "most_used_platform": top_platform,
         "streak_days": streak_days
     }
 

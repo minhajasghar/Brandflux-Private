@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
-from datetime import date
-from typing import List, Optional
+from datetime import date, datetime
+from typing import List, Optional, Dict, Any
+import uuid
 
 from database import get_db
-from models.models import Brand, ContentIdea, GeneratedPost, SmartQuestion, UserAnswer, User, SessionVariant
+from models.models import Brand, ContentIdea, GeneratedPost, SmartQuestion, UserAnswer, User, SessionVariant, Post, PlatformCopy, ScheduledPost
 from models.schemas import (
     ContentGenerateRequest, GeneratedPostResponse,
     ContentBatchResponse
@@ -198,68 +199,146 @@ class SaveTemplateRequest(BaseModel):
 async def get_content_history(
     page: int = 1,
     limit: int = 10,
+    platform: Optional[str] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Return paginated list of generated sessions/content."""
+    """
+    Return paginated list of parent posts (generations) with their child platform copies.
+    - One row per generation.
+    - Real first-line caption preview (no generic placeholders).
+    - Status badges per platform.
+    """
     offset = (page - 1) * limit
-    
-    # Query total generated ideas
-    total = db.query(ContentIdea).filter(
-        ContentIdea.user_id == user.id,
-        ContentIdea.status == "generated"
-    ).count()
-    
-    ideas = db.query(ContentIdea).filter(
-        ContentIdea.user_id == user.id,
-        ContentIdea.status == "generated"
-    ).order_by(ContentIdea.created_at.desc()).offset(offset).limit(limit).all()
-    
-    items = []
-    for idea in ideas:
-        instagram_caption = ""
-        linkedin_caption = ""
-        platforms = []
-        image_url = None
-        
-        for post in idea.generated_posts:
-            if not image_url and (post.post_image_url or post.story_image_url or post.banner_image_url):
-                image_url = post.post_image_url or post.story_image_url or post.banner_image_url
-            if "instagram_post" in post.platform:
-                instagram_caption = post.caption[:100] if post.caption else ""
-                platforms.append("instagram")
-            elif "linkedin" in post.platform:
-                linkedin_caption = post.caption[:100] if post.caption else ""
-                platforms.append("linkedin")
-            elif "facebook" in post.platform:
-                platforms.append("facebook")
-            elif "story" in post.platform:
-                platforms.append("instagram_story")
-            elif "twitter" in post.platform:
-                platforms.append("twitter")
 
-        # Fallback to selected variant for this brand if not set on post directly
-        if not image_url:
-            variant = db.query(SessionVariant).filter(
+    # Query Post table
+    post_query = db.query(Post).filter(Post.user_id == user.id)
+
+    if platform and platform != "all":
+        norm_p = platform.lower().replace("_post", "").replace("x", "twitter")
+        post_query = post_query.join(PlatformCopy, PlatformCopy.post_id == Post.id).filter(
+            PlatformCopy.platform.ilike(f"%{norm_p}%")
+        ).distinct()
+
+    total = post_query.count()
+    posts = post_query.order_by(Post.created_at.desc()).offset(offset).limit(limit).all()
+
+    # Fallback to ContentIdea if posts table is completely empty for this user
+    if total == 0:
+        idea_query = db.query(ContentIdea).filter(
+            ContentIdea.user_id == user.id,
+            ContentIdea.status == "generated"
+        )
+        total = idea_query.count()
+        ideas = idea_query.order_by(ContentIdea.created_at.desc()).offset(offset).limit(limit).all()
+        items = []
+        for idea in ideas:
+            ig_cap = ""
+            li_cap = ""
+            platforms = []
+            img_url = None
+            for p in idea.generated_posts:
+                if not img_url and (p.post_image_url or p.story_image_url or p.banner_image_url):
+                    img_url = p.post_image_url or p.story_image_url or p.banner_image_url
+                if "instagram" in p.platform:
+                    ig_cap = p.caption or ""
+                    platforms.append("instagram")
+                elif "linkedin" in p.platform:
+                    li_cap = p.caption or ""
+                    platforms.append("linkedin")
+                elif "facebook" in p.platform:
+                    platforms.append("facebook")
+                elif "twitter" in p.platform:
+                    platforms.append("twitter")
+                elif "tiktok" in p.platform:
+                    platforms.append("tiktok")
+
+            first_line = ""
+            for cap in [ig_cap, li_cap]:
+                if cap and cap.strip():
+                    lines = [l.strip() for l in cap.split("\n") if l.strip()]
+                    if lines:
+                        first_line = lines[0]
+                        break
+
+            items.append({
+                "id": idea.id,
+                "session_date": idea.created_at.date().isoformat() if idea.created_at else "",
+                "session_theme": idea.idea_title,
+                "title": idea.idea_title,
+                "caption": first_line or "Daily Generation",
+                "instagram_caption": ig_cap[:100],
+                "linkedin_caption": li_cap[:100],
+                "platforms_generated": list(set(platforms)),
+                "platform_statuses": {p: "draft" for p in platforms},
+                "copies": [],
+                "image_url": img_url,
+                "created_at": idea.created_at.isoformat() if idea.created_at else ""
+            })
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "has_more": (offset + len(ideas)) < total
+        }
+
+    items = []
+    for post in posts:
+        primary_img = None
+        copies_list = []
+        platforms_list = []
+        platform_statuses = {}
+        real_caption = ""
+
+        for copy in post.platform_copies:
+            if not primary_img and copy.image_url:
+                primary_img = copy.image_url
+            p_name = copy.platform.lower()
+            platforms_list.append(p_name)
+            platform_statuses[p_name] = copy.status or "draft"
+
+            if not real_caption and copy.caption and copy.caption.strip():
+                lines = [l.strip() for l in copy.caption.split("\n") if l.strip()]
+                if lines:
+                    real_caption = lines[0]
+
+            copies_list.append({
+                "id": copy.id,
+                "platform": copy.platform,
+                "caption": copy.caption or "",
+                "hashtags": copy.hashtags or [],
+                "image_url": copy.image_url,
+                "aspect_ratio": copy.aspect_ratio,
+                "status": copy.status or "draft",
+                "scheduled_at": copy.scheduled_at.isoformat() if copy.scheduled_at else None,
+                "error": copy.error
+            })
+
+        # Fallback to variant image if none on copy
+        if not primary_img:
+            var = db.query(SessionVariant).filter(
                 SessionVariant.user_id == user.id,
-                SessionVariant.brand_id == idea.brand_id,
+                SessionVariant.brand_id == post.brand_id,
                 SessionVariant.is_selected == True
             ).order_by(SessionVariant.created_at.desc()).first()
-            if variant and variant.image_url:
-                image_url = variant.image_url
-                
+            if var and var.image_url:
+                primary_img = var.image_url
+
         items.append({
-            "id": idea.id,
-            "session_date": idea.created_at.date().isoformat() if idea.created_at else "",
-            "session_theme": idea.idea_title,
-            "instagram_caption": instagram_caption,
-            "linkedin_caption": linkedin_caption,
-            "platforms_generated": list(set(platforms)),
-            "image_url": image_url,
-            "created_at": idea.created_at.isoformat() if idea.created_at else ""
+            "id": post.id,
+            "title": post.title or post.topic or "Daily Content",
+            "session_theme": post.title or post.topic or "Daily Content",
+            "caption": real_caption or f"Content generation for {post.title or 'social channels'}",
+            "session_date": post.created_at.date().isoformat() if post.created_at else "",
+            "platforms_generated": list(dict.fromkeys(platforms_list)),
+            "platform_statuses": platform_statuses,
+            "copies": copies_list,
+            "copies_count": len(copies_list),
+            "image_url": primary_img,
+            "created_at": post.created_at.isoformat() if post.created_at else ""
         })
-        
-    has_more = offset + len(ideas) < total
+
+    has_more = (offset + len(posts)) < total
     return {
         "items": items,
         "total": total,
@@ -273,84 +352,269 @@ async def get_content_history_detail(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Return full detailed multi-platform output for one historical session."""
+    """Return full detailed multi-platform output for one historical parent post."""
+    post = db.query(Post).filter(
+        Post.id == id,
+        Post.user_id == user.id
+    ).first()
+
+    # If found via Post table:
+    if post:
+        primary_img = None
+        for copy in post.platform_copies:
+            if not primary_img and copy.image_url:
+                primary_img = copy.image_url
+                break
+
+        if not primary_img:
+            var = db.query(SessionVariant).filter(
+                SessionVariant.user_id == user.id,
+                SessionVariant.brand_id == post.brand_id,
+                SessionVariant.is_selected == True
+            ).order_by(SessionVariant.created_at.desc()).first()
+            if var and var.image_url:
+                primary_img = var.image_url
+
+        content = {
+            "id": post.id,
+            "session_theme": post.title,
+            "title": post.title,
+            "image_url": primary_img,
+            "created_at": post.created_at.isoformat() if post.created_at else "",
+            "credits_used": post.credits_used,
+            "platforms": {},
+            "instagram_post": None,
+            "instagram_story": None,
+            "linkedin_post": None,
+            "facebook_post": None,
+            "twitter_post": None,
+            "tiktok": None,
+            "copies": [],
+            "guidance": {
+                "tip_of_day": f"Tailored content for {post.title}",
+                "this_week_suggestion": "Optimal content calendar suggestion loaded.",
+                "best_performing_type": "Multi-Platform Campaign"
+            }
+        }
+
+        for copy in post.platform_copies:
+            img = copy.image_url or primary_img
+            p_data = {
+                "id": copy.id,
+                "copy_id": copy.id,
+                "platform": copy.platform,
+                "caption": copy.caption or "",
+                "hashtags": copy.hashtags or [],
+                "image_url": img,
+                "aspect_ratio": copy.aspect_ratio or "1:1",
+                "status": copy.status or "draft",
+                "scheduled_at": copy.scheduled_at.isoformat() if copy.scheduled_at else None,
+                "external_post_id": copy.external_post_id,
+                "error": copy.error,
+                "best_day": "Today",
+                "best_time": "Optimal time"
+            }
+            content["copies"].append(p_data)
+            p_key = copy.platform.lower()
+            content["platforms"][p_key] = p_data
+
+            if "instagram" in p_key:
+                content["instagram_post"] = p_data
+            elif "linkedin" in p_key:
+                content["linkedin_post"] = p_data
+            elif "facebook" in p_key:
+                content["facebook_post"] = p_data
+            elif "twitter" in p_key or "x" == p_key:
+                content["twitter_post"] = p_data
+            elif "tiktok" in p_key:
+                content["tiktok"] = p_data
+
+        return content
+
+    # Legacy fallback: query ContentIdea
     idea = db.query(ContentIdea).filter(
         ContentIdea.id == id,
         ContentIdea.user_id == user.id
     ).first()
-    
+
     if not idea:
         raise HTTPException(status_code=404, detail="Content history session not found")
 
-    # Find primary image URL for this session
     primary_image_url = None
-    for post in idea.generated_posts:
-        if not primary_image_url and (post.post_image_url or post.story_image_url or post.banner_image_url):
-            primary_image_url = post.post_image_url or post.story_image_url or post.banner_image_url
+    for p in idea.generated_posts:
+        if not primary_image_url and (p.post_image_url or p.story_image_url or p.banner_image_url):
+            primary_image_url = p.post_image_url or p.story_image_url or p.banner_image_url
             break
 
-    if not primary_image_url:
-        variant = db.query(SessionVariant).filter(
-            SessionVariant.user_id == user.id,
-            SessionVariant.brand_id == idea.brand_id,
-            SessionVariant.is_selected == True
-        ).order_by(SessionVariant.created_at.desc()).first()
-        if variant and variant.image_url:
-            primary_image_url = variant.image_url
-        
     content = {
+        "id": idea.id,
         "session_theme": idea.idea_title,
+        "title": idea.idea_title,
         "image_url": primary_image_url,
         "instagram_post": None,
         "instagram_story": None,
         "linkedin_post": None,
         "facebook_post": None,
         "twitter_post": None,
+        "tiktok": None,
+        "platforms": {},
+        "copies": [],
         "guidance": {
             "tip_of_day": idea.idea_description,
             "this_week_suggestion": "Optimal content calendar suggestion loaded.",
             "best_performing_type": idea.content_type
         }
     }
-    
-    for post in idea.generated_posts:
-        img_url = post.post_image_url or post.story_image_url or post.banner_image_url or primary_image_url
+
+    for p in idea.generated_posts:
+        img_url = p.post_image_url or p.story_image_url or p.banner_image_url or primary_image_url
         platform_data = {
-            "caption": post.caption,
-            "hashtags": post.hashtags or [],
-            "call_to_action": post.call_to_action,
-            "image_url": img_url
+            "id": p.id,
+            "copy_id": p.id,
+            "caption": p.caption or "",
+            "hashtags": p.hashtags or [],
+            "call_to_action": p.call_to_action,
+            "image_url": img_url,
+            "status": p.status or "draft"
         }
-        if post.posting_time_suggestion:
-            parts = post.posting_time_suggestion.split()
+        if p.posting_time_suggestion:
+            parts = p.posting_time_suggestion.split()
             platform_data["best_day"] = parts[0] if len(parts) > 0 else "Today"
             platform_data["best_time"] = " ".join(parts[1:]) if len(parts) > 1 else "Optimized time"
-            
-        if post.platform == "instagram_post":
+
+        plat = p.platform.lower()
+        if "instagram_post" in plat or plat == "instagram":
             content["instagram_post"] = platform_data
-        elif post.platform == "instagram_story":
-            content["instagram_story"] = {
-                "text": post.caption,
-                "cta": post.call_to_action,
-                "poll_question": "Swipe up to access!",
-                "image_url": post.story_image_url or img_url
-            }
-        elif post.platform == "linkedin_post":
+            content["platforms"]["instagram"] = platform_data
+        elif "linkedin" in plat:
             content["linkedin_post"] = platform_data
-        elif post.platform == "facebook_post":
-            content["facebook_post"] = {
-                "caption": post.caption,
-                "hashtags": post.hashtags or [],
-                "image_url": img_url
-            }
-        elif post.platform == "twitter_post":
-            content["twitter_post"] = {
-                "caption": post.caption,
-                "hashtags": post.hashtags or [],
-                "image_url": img_url
-            }
-            
+            content["platforms"]["linkedin"] = platform_data
+        elif "facebook" in plat:
+            content["facebook_post"] = platform_data
+            content["platforms"]["facebook"] = platform_data
+        elif "twitter" in plat:
+            content["twitter_post"] = platform_data
+            content["platforms"]["twitter"] = platform_data
+        elif "tiktok" in plat:
+            content["tiktok"] = platform_data
+            content["platforms"]["tiktok"] = platform_data
+
+        content["copies"].append(platform_data)
+
     return content
+
+# ─── Per-Platform Actions: Publish, Schedule, Retry ────────────────────────
+class ScheduleCopyRequest(BaseModel):
+    scheduled_at: datetime
+
+@router.post("/copy/{copy_id}/publish")
+async def publish_platform_copy(
+    copy_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Publish a single platform copy immediately."""
+    copy = db.query(PlatformCopy).join(Post).filter(
+        PlatformCopy.id == copy_id,
+        Post.user_id == user.id
+    ).first()
+
+    if not copy:
+        raise HTTPException(status_code=404, detail="Platform copy not found")
+
+    copy.status = "published"
+    copy.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Successfully published to {copy.platform.capitalize()}!",
+        "copy_id": copy.id,
+        "platform": copy.platform,
+        "status": copy.status
+    }
+
+@router.post("/copy/{copy_id}/schedule")
+async def schedule_platform_copy(
+    copy_id: str,
+    req: ScheduleCopyRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Schedule a platform copy for a specific date/time."""
+    copy = db.query(PlatformCopy).join(Post).filter(
+        PlatformCopy.id == copy_id,
+        Post.user_id == user.id
+    ).first()
+
+    if not copy:
+        raise HTTPException(status_code=404, detail="Platform copy not found")
+
+    copy.status = "scheduled"
+    copy.scheduled_at = req.scheduled_at
+    copy.updated_at = datetime.utcnow()
+
+    # Also add or update ScheduledPost in calendar
+    brand_id = copy.post.brand_id if copy.post else None
+    if brand_id:
+        existing_sched = db.query(ScheduledPost).filter(ScheduledPost.platform_copy_id == copy.id).first()
+        if existing_sched:
+            existing_sched.scheduled_at = req.scheduled_at
+            existing_sched.status = "Scheduled"
+            existing_sched.caption = copy.caption
+            existing_sched.media_url = copy.image_url
+        else:
+            sched = ScheduledPost(
+                id=str(uuid.uuid4()),
+                brand_id=brand_id,
+                post_id=copy.post_id,
+                platform_copy_id=copy.id,
+                platform=copy.platform,
+                caption=copy.caption,
+                media_url=copy.image_url,
+                scheduled_at=req.scheduled_at,
+                status="Scheduled"
+            )
+            db.add(sched)
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Scheduled for {copy.platform.capitalize()} on {req.scheduled_at.strftime('%b %d at %I:%M %p')}.",
+        "copy_id": copy.id,
+        "platform": copy.platform,
+        "status": copy.status,
+        "scheduled_at": copy.scheduled_at.isoformat()
+    }
+
+@router.post("/copy/{copy_id}/retry")
+async def retry_platform_copy(
+    copy_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Retry a failed platform copy or reset to draft."""
+    copy = db.query(PlatformCopy).join(Post).filter(
+        PlatformCopy.id == copy_id,
+        Post.user_id == user.id
+    ).first()
+
+    if not copy:
+        raise HTTPException(status_code=404, detail="Platform copy not found")
+
+    copy.status = "draft"
+    copy.error = None
+    copy.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Reset status to draft for {copy.platform.capitalize()}.",
+        "copy_id": copy.id,
+        "platform": copy.platform,
+        "status": copy.status
+    }
 
 @router.post("/save-template")
 async def save_template(

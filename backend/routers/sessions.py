@@ -11,7 +11,7 @@ import asyncio
 import logging
 
 from database import get_db
-from models.models import Brand, User, DailySession, WebsiteScan, ContentIdea, GeneratedPost, SessionVariant, Usage
+from models.models import Brand, User, DailySession, WebsiteScan, ContentIdea, GeneratedPost, SessionVariant, Usage, Post, PlatformCopy
 from models.schemas import (
     DailySessionResponse, SessionGenerationRequest, SelectVariantRequest,
     RegenerateVariantRequest, MultiVariantSessionResponse, VariantResponseItem
@@ -784,7 +784,10 @@ async def generate_session_variants(
         "linkedin": "linkedin_post",
         "linkedin_post": "linkedin_post",
         "facebook": "facebook_post",
-        "facebook_post": "facebook_post"
+        "facebook_post": "facebook_post",
+        "twitter": "twitter_post",
+        "twitter_post": "twitter_post",
+        "tiktok": "tiktok"
     }
     raw_platform = req.target_platform or "instagram_post"
     platform_key = platform_key_map.get(raw_platform.lower(), "instagram_post")
@@ -909,6 +912,13 @@ async def generate_session_variants(
             "hashtags": content_data.get("twitter_post", {}).get("hashtags") or [h for h in hashtags[:2]],
             "call_to_action": content_data.get("twitter_post", {}).get("call_to_action") or "RT if you agree",
             "best_time": f"{content_data.get('twitter_post', {}).get('best_day', 'Today')} {content_data.get('twitter_post', {}).get('best_time', '12:00 PM')}".strip()
+        },
+        "tiktok": {
+            "platform_name": "TikTok",
+            "caption": content_data.get("tiktok", {}).get("caption") or (caption[:150] if caption else ""),
+            "hashtags": content_data.get("tiktok", {}).get("hashtags") or ["#fyp", "#trending", "#innovation"],
+            "call_to_action": content_data.get("tiktok", {}).get("call_to_action") or "Follow for more daily tips",
+            "best_time": f"{content_data.get('tiktok', {}).get('best_day', 'Today')} {content_data.get('tiktok', {}).get('best_time', '8:00 PM')}".strip()
         }
     }
 
@@ -970,8 +980,77 @@ def select_session_variant(
     final_hashtags = req.adjusted_hashtags if req.adjusted_hashtags is not None else variant.hashtags
     selected_platform = req.target_platform or variant.platform or "instagram_post"
 
-    # Create permanent ContentIdea & GeneratedPost
+    def norm_platform_name(p: str) -> str:
+        pl = (p or "").lower().strip()
+        if "instagram" in pl:
+            return "instagram"
+        elif "linkedin" in pl:
+            return "linkedin"
+        elif "facebook" in pl:
+            return "facebook"
+        elif "twitter" in pl or "x" in pl:
+            return "twitter"
+        elif "tiktok" in pl:
+            return "tiktok"
+        return pl or "instagram"
+
+    # 1. Create Parent Post (Generation)
+    parent_post = Post(
+        id=str(uuid.uuid4()),
+        brand_id=variant.brand_id,
+        user_id=user.id,
+        title=variant.headline or "Daily Post",
+        topic=variant.headline or "Daily Post",
+        credits_used=1,
+        session_id=req.session_id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(parent_post)
+    db.flush()
+
+    # 2. Add Selected Platform Copy
+    norm_sel = norm_platform_name(selected_platform)
+    sel_copy = PlatformCopy(
+        id=str(uuid.uuid4()),
+        post_id=parent_post.id,
+        platform=norm_sel,
+        caption=final_caption,
+        hashtags=final_hashtags,
+        image_url=variant.image_url,
+        aspect_ratio="9:16" if norm_sel in ("tiktok", "story") else "1:1",
+        status="draft",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(sel_copy)
+
+    # 3. Add all other Platform Copies
+    handled_platforms = {norm_sel}
+    if req.platform_copies and isinstance(req.platform_copies, dict):
+        for plat, copy_data in req.platform_copies.items():
+            norm_p = norm_platform_name(plat)
+            if norm_p not in handled_platforms and isinstance(copy_data, dict):
+                handled_platforms.add(norm_p)
+                plat_caption = copy_data.get("caption") or final_caption
+                plat_hashtags = copy_data.get("hashtags") or final_hashtags
+                other_copy = PlatformCopy(
+                    id=str(uuid.uuid4()),
+                    post_id=parent_post.id,
+                    platform=norm_p,
+                    caption=plat_caption,
+                    hashtags=plat_hashtags,
+                    image_url=variant.image_url,
+                    aspect_ratio="9:16" if norm_p in ("tiktok", "story") else "1:1",
+                    status="draft",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(other_copy)
+
+    # Legacy ContentIdea & GeneratedPost for backwards compatibility
     idea = ContentIdea(
+        id=parent_post.id,
         user_id=user.id,
         brand_id=variant.brand_id,
         idea_title=variant.headline or "Daily Post",
@@ -1035,7 +1114,9 @@ def select_session_variant(
     return {
         "success": True,
         "message": "Variant selected and saved to your history and calendar queue.",
-        "post_id": post.id,
+        "post_id": parent_post.id,
+        "parent_post_id": parent_post.id,
+        "legacy_post_id": post.id,
         "selected_variant_id": variant.id,
         "image_url": variant.image_url,
         "caption": final_caption,

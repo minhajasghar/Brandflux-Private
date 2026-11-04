@@ -105,7 +105,7 @@ class NanoBananaGenerator:
             return "1:1", (1080, 1080)
         elif cleaned in ("4:5", "portrait", "feed_portrait", "linkedin", "linkedin_post", "facebook", "facebook_post"):
             return "4:5", (1080, 1350)
-        elif cleaned in ("9:16", "story", "instagram_story", "vertical", "reel"):
+        elif cleaned in ("9:16", "story", "instagram_story", "vertical", "reel", "tiktok", "tiktok_video"):
             return "9:16", (1080, 1920)
 
         # Default fallback

@@ -33,6 +33,7 @@ class User(Base):
     answers = relationship("UserAnswer", back_populates="user", cascade="all, delete-orphan")
     social_accounts = relationship("SocialAccount", back_populates="user", cascade="all, delete-orphan")
     usages = relationship("Usage", back_populates="user", cascade="all, delete-orphan")
+    posts = relationship("Post", back_populates="user", cascade="all, delete-orphan")
 
 # ═══════════════════════════════════════════════════════════
 # BRAND — Auto-populated from website scraping + AI analysis
@@ -100,6 +101,7 @@ class Brand(Base):
     autopilot_logs = relationship("AutopilotLog", back_populates="brand", cascade="all, delete-orphan")
     post_metrics = relationship("PostMetric", back_populates="brand", cascade="all, delete-orphan")
     usages = relationship("Usage", back_populates="brand", cascade="all, delete-orphan")
+    posts = relationship("Post", back_populates="brand", cascade="all, delete-orphan")
 
 # ═══════════════════════════════════════════════════════════
 # BRAND SCAN LOG — History of every website scan
@@ -222,6 +224,52 @@ class GeneratedPost(Base):
     brand = relationship("Brand", back_populates="generated_posts")
 
 # ═══════════════════════════════════════════════════════════
+# POST — Multi-Platform Parent Generation
+# ═══════════════════════════════════════════════════════════
+class Post(Base):
+    __tablename__ = "posts"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    title = Column(String(255), nullable=False)
+    topic = Column(String(255), nullable=True)
+    credits_used = Column(Integer, default=1, nullable=False)
+    session_id = Column(String(36), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    brand = relationship("Brand", back_populates="posts")
+    user = relationship("User", back_populates="posts")
+    platform_copies = relationship("PlatformCopy", back_populates="post", cascade="all, delete-orphan", order_by="PlatformCopy.created_at.asc()")
+    scheduled_posts = relationship("ScheduledPost", back_populates="parent_post")
+
+# ═══════════════════════════════════════════════════════════
+# PLATFORM COPY — Channel-specific Child Copy of a Generation
+# ═══════════════════════════════════════════════════════════
+class PlatformCopy(Base):
+    __tablename__ = "platform_copies"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    post_id = Column(String(36), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    platform = Column(String(50), nullable=False)  # instagram, linkedin, facebook, twitter, tiktok
+    caption = Column(Text, nullable=True)
+    hashtags = Column(JSON, nullable=True)
+    image_url = Column(Text, nullable=True)
+    aspect_ratio = Column(String(20), default="1:1")
+    status = Column(String(50), default="draft")  # draft, scheduled, publishing, published, failed
+    scheduled_at = Column(DateTime, nullable=True)
+    external_post_id = Column(String(255), nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    post = relationship("Post", back_populates="platform_copies")
+    scheduled_posts = relationship("ScheduledPost", back_populates="platform_copy")
+
+# ═══════════════════════════════════════════════════════════
 # CONTENT GUIDANCE — Weekly tips & posting strategy
 # ═══════════════════════════════════════════════════════════
 class ContentGuidance(Base):
@@ -308,8 +356,10 @@ class ScheduledPost(Base):
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
     brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    post_id = Column(String(36), ForeignKey("posts.id", ondelete="SET NULL"), nullable=True)
+    platform_copy_id = Column(String(36), ForeignKey("platform_copies.id", ondelete="SET NULL"), nullable=True)
     
-    platform = Column(String(50), nullable=False)  # instagram_post, instagram_story, linkedin, facebook, twitter
+    platform = Column(String(50), nullable=False)  # instagram, linkedin, facebook, twitter, tiktok
     caption = Column(Text, nullable=True)
     media_url = Column(Text, nullable=True)
     scheduled_at = Column(DateTime, nullable=False)
@@ -335,6 +385,8 @@ class ScheduledPost(Base):
     # Relationships
     brand = relationship("Brand", back_populates="scheduled_posts")
     metrics = relationship("PostMetric", back_populates="post", cascade="all, delete-orphan")
+    parent_post = relationship("Post", back_populates="scheduled_posts")
+    platform_copy = relationship("PlatformCopy", back_populates="scheduled_posts")
 
 # ═══════════════════════════════════════════════════════════
 # SOCIAL ACCOUNT — OAuth connections & encrypted credentials

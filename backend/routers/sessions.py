@@ -1048,6 +1048,25 @@ def select_session_variant(
                 )
                 db.add(other_copy)
 
+    # 4. If selected_platforms was specified, ensure all selected platforms exist in this one post
+    if req.selected_platforms and isinstance(req.selected_platforms, list):
+        for p in req.selected_platforms:
+            norm_p = norm_platform_name(p)
+            if norm_p not in handled_platforms:
+                handled_platforms.add(norm_p)
+                db.add(PlatformCopy(
+                    id=str(uuid.uuid4()),
+                    post_id=parent_post.id,
+                    platform=norm_p,
+                    caption=final_caption,
+                    hashtags=final_hashtags,
+                    image_url=variant.image_url,
+                    aspect_ratio="9:16" if norm_p in ("tiktok", "story") else "1:1",
+                    status="draft",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                ))
+
     # Legacy ContentIdea & GeneratedPost for backwards compatibility
     idea = ContentIdea(
         id=parent_post.id,

@@ -1,4 +1,6 @@
+import os
 import logging
+import time
 import httpx
 from typing import Optional, Dict, Any
 
@@ -9,6 +11,7 @@ from services.encryption import decrypt_token
 logger = logging.getLogger(__name__)
 
 LINKEDIN_API_BASE = "https://api.linkedin.com"
+LINKEDIN_VERSION = os.getenv("LINKEDIN_VERSION", "202610").strip()
 
 
 class LinkedInPublisher(PlatformPublisher):
@@ -21,12 +24,12 @@ class LinkedInPublisher(PlatformPublisher):
         author_id = account.account_id
         if author_id.startswith("urn:li:"):
             return author_id
-        # Detect if organization or personal person profile
         if account.metadata_json and account.metadata_json.get("is_organization"):
             return f"urn:li:organization:{author_id}"
         return f"urn:li:person:{author_id}"
 
     async def publish_text(self, text: str, account: SocialAccount) -> PublishResult:
+        start_time = time.time()
         token = self._get_token(account)
         author = self._get_author_urn(account)
 
@@ -34,7 +37,7 @@ class LinkedInPublisher(PlatformPublisher):
         headers = {
             "Authorization": f"Bearer {token}",
             "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": "202401",
+            "LinkedIn-Version": LINKEDIN_VERSION,
             "Content-Type": "application/json"
         }
         payload = {
@@ -49,32 +52,68 @@ class LinkedInPublisher(PlatformPublisher):
             "lifecycleState": "PUBLISHED",
             "isReshareDisabledByAuthor": False
         }
+        sanitized_payload = {"author": author, "text_length": len(text)}
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 res = await client.post(url, json=payload, headers=headers)
-                # LinkedIn returns 201 Created with post URN in x-restli-id or x-linkedin-id header
+                duration_ms = int((time.time() - start_time) * 1000)
+
                 if res.status_code in (200, 201):
-                    post_id = res.headers.get("x-restli-id") or res.headers.get("x-linkedin-id") or "li_post_success"
-                    return PublishResult(success=True, status="Published", external_post_id=post_id)
+                    post_id = res.headers.get("x-restli-id") or res.headers.get("x-linkedin-id")
+                    if not post_id:
+                        data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
+                        post_id = data.get("id")
+
+                    if post_id:
+                        permalink = f"https://www.linkedin.com/feed/update/{post_id}"
+                        return PublishResult(
+                            success=True,
+                            status="Published",
+                            external_post_id=post_id,
+                            permalink=permalink,
+                            http_status=res.status_code,
+                            duration_ms=duration_ms,
+                            sanitized_payload=sanitized_payload
+                        )
 
                 data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
                 err_msg = data.get("message", res.text)
-                return PublishResult(success=False, status="Failed", error=err_msg, raw_response=data)
+                err_code = str(data.get("status", res.status_code))
+                status = "needs_reconnect" if res.status_code in (401, 403) else "Failed"
+                return PublishResult(
+                    success=False,
+                    status=status,
+                    error=err_msg,
+                    error_code=err_code,
+                    http_status=res.status_code,
+                    duration_ms=duration_ms,
+                    sanitized_payload=sanitized_payload,
+                    raw_response=data
+                )
         except Exception as e:
             logger.error(f"LinkedIn publish_text error: {e}")
-            return PublishResult(success=False, status="Failed", error=str(e))
+            return PublishResult(
+                success=False,
+                status="Failed",
+                error=str(e),
+                error_code="NETWORK_ERROR",
+                duration_ms=int((time.time() - start_time) * 1000),
+                sanitized_payload=sanitized_payload
+            )
 
     async def publish_image(self, image_url: str, caption: str, account: SocialAccount) -> PublishResult:
+        start_time = time.time()
         token = self._get_token(account)
         author = self._get_author_urn(account)
 
         headers = {
             "Authorization": f"Bearer {token}",
             "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": "202401",
+            "LinkedIn-Version": LINKEDIN_VERSION,
             "Content-Type": "application/json"
         }
+        sanitized_payload = {"author": author, "image_url": image_url, "caption_length": len(caption or "")}
 
         async with httpx.AsyncClient(timeout=45.0) as client:
             try:
@@ -87,13 +126,12 @@ class LinkedInPublisher(PlatformPublisher):
                 }
                 init_res = await client.post(init_url, json=init_payload, headers=headers)
                 
-                # If image upload initialization is successful
                 if init_res.status_code == 200:
                     init_data = init_res.json().get("value", {})
                     upload_url = init_data.get("uploadUrl")
                     image_urn = init_data.get("image")
 
-                    # Download image bytes from public CDN and upload to LinkedIn storage
+                    # Download image bytes and upload to LinkedIn storage
                     img_download = await client.get(image_url)
                     if img_download.status_code == 200 and upload_url:
                         await client.put(upload_url, content=img_download.content, headers={"Authorization": f"Bearer {token}"})
@@ -117,16 +155,48 @@ class LinkedInPublisher(PlatformPublisher):
                             "lifecycleState": "PUBLISHED"
                         }
                         post_res = await client.post(f"{LINKEDIN_API_BASE}/rest/posts", json=post_payload, headers=headers)
+                        duration_ms = int((time.time() - start_time) * 1000)
+
                         if post_res.status_code in (200, 201):
                             post_id = post_res.headers.get("x-restli-id") or post_res.headers.get("x-linkedin-id") or image_urn
-                            return PublishResult(success=True, status="Published", external_post_id=post_id)
+                            permalink = f"https://www.linkedin.com/feed/update/{post_id}"
+                            return PublishResult(
+                                success=True,
+                                status="Published",
+                                external_post_id=post_id,
+                                permalink=permalink,
+                                http_status=post_res.status_code,
+                                duration_ms=duration_ms,
+                                sanitized_payload=sanitized_payload
+                            )
 
-                # Fallback: Publish with embedded link/commentary if upload API restricted
-                return await self.publish_text(f"{caption}\n\n{image_url}", account)
+                # If initialization or posting failed
+                duration_ms = int((time.time() - start_time) * 1000)
+                init_err = init_res.json() if init_res.headers.get("content-type", "").startswith("application/json") else {}
+                err_msg = init_err.get("message", init_res.text)
+                status = "needs_reconnect" if init_res.status_code in (401, 403) else "Failed"
+                return PublishResult(
+                    success=False,
+                    status=status,
+                    error=err_msg,
+                    error_code=str(init_res.status_code),
+                    http_status=init_res.status_code,
+                    duration_ms=duration_ms,
+                    sanitized_payload=sanitized_payload,
+                    raw_response=init_err
+                )
 
             except Exception as e:
                 logger.error(f"LinkedIn publish_image error: {e}")
-                return PublishResult(success=False, status="Failed", error=str(e))
+                return PublishResult(
+                    success=False,
+                    status="Failed",
+                    error=str(e),
+                    error_code="NETWORK_ERROR",
+                    duration_ms=int((time.time() - start_time) * 1000),
+                    sanitized_payload=sanitized_payload
+                )
+
 
     async def publish_story(self, media_url: str, account: SocialAccount) -> PublishResult:
         # LinkedIn native stories were sunset; post as standard vertical visual update
@@ -137,7 +207,7 @@ class LinkedInPublisher(PlatformPublisher):
         headers = {
             "Authorization": f"Bearer {token}",
             "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": "202401"
+            "LinkedIn-Version": LINKEDIN_VERSION
         }
         async with httpx.AsyncClient(timeout=20.0) as client:
             try:

@@ -182,7 +182,7 @@ class NanoBananaGenerator:
             f"Subject & Focus: {theme}. Visual context: {context_str}. "
             f"{ref_section} "
             f"Style & Composition: {variant_angle}, {ratio_desc}. "
-            f"Color palette: Harmoniously incorporating brand accents {primary_color} and {secondary_color}. "
+            f"Color palette: Dynamic visual contrast with subtle luminous accents in {primary_color} and {secondary_color}, rich depth, and clean negative space. "
             f"1K resolution, ultra-high definition, photorealistic, cinematic commercial studio lighting, "
             f"crisp details, depth of field, premium award-winning product and lifestyle presentation."
         )

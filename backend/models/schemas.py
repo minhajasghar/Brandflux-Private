@@ -23,6 +23,9 @@ class AuthResponse(BaseModel):
     role: Optional[str] = "user"
     is_suspended: Optional[bool] = False
     onboarding_complete: Optional[bool] = False
+    is_verified: Optional[bool] = False
+    dev_mode: Optional[bool] = False
+    verification_token: Optional[str] = None
 
 # ═══════════════════════════════════════════════════════════
 # BRAND SCHEMAS
@@ -258,6 +261,7 @@ class SessionGenerationRequest(BaseModel):
     reference_images: Optional[List[ReferenceImageItem]] = []
     variant_count: Optional[int] = None
     target_platform: Optional[str] = "instagram_post"
+    selected_platforms: Optional[List[str]] = None
 
 class SelectVariantRequest(BaseModel):
     variant_id: str
@@ -266,6 +270,7 @@ class SelectVariantRequest(BaseModel):
     adjusted_hashtags: Optional[List[str]] = None
     target_platform: Optional[str] = None
     platform_copies: Optional[Dict[str, Any]] = None
+    selected_platforms: Optional[List[str]] = None
 
 class RegenerateVariantRequest(BaseModel):
     session_id: str
@@ -397,6 +402,7 @@ class ScheduledPostResponse(BaseModel):
     scheduled_at: datetime
     status: str
     external_post_id: Optional[str] = None
+    permalink: Optional[str] = None
     error: Optional[str] = None
     autopilot_run_id: Optional[str] = None
     critique_score: Optional[float] = None

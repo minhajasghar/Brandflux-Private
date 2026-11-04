@@ -109,13 +109,13 @@ def color_distance(hex1: str, hex2: str) -> float:
 
 
 def is_neutral(hex_code: str) -> bool:
-    """Check if color is neutral (near-white, near-black, or low saturation grey)."""
+    """Check if color is neutral (near-white, near-black, or low saturation grey/slate)."""
     h, l, s = get_hsl(hex_code)
-    if l > 0.90:  # Near white
+    if l > 0.88:  # Near white
         return True
-    if l < 0.09:  # Near black
+    if l < 0.18:  # Near black / very dark slate / charcoal (e.g. #111827, #1F2937)
         return True
-    if s < 0.15:  # Desaturated grey
+    if s < 0.20:  # Desaturated grey
         return True
     return False
 
@@ -500,6 +500,13 @@ class BrandColorExtractor:
                     if hex_val:
                         self.candidates.append(ColorCandidate(hex_val, weight=45.0, source="html_css_var"))
 
+                # General HTML / CSS hex color parsing for fallback resilience
+                hex_matches = re.findall(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b", html)
+                for color in hex_matches:
+                    hex_val = parse_css_color(color)
+                    if hex_val:
+                        self.candidates.append(ColorCandidate(hex_val, weight=8.0, source="html_static"))
+
                 # Logo detection
                 if not self.logo_url:
                     og_img = soup.find("meta", property="og:image")
@@ -635,8 +642,17 @@ class BrandColorExtractor:
             else:
                 brand_clusters.append(c)
 
-        # Sort brand clusters by weight descending
-        brand_clusters.sort(key=lambda x: x["weight"], reverse=True)
+        # Sort brand clusters by vibrancy and weight
+        def brand_cluster_score(c):
+            h, l, s = get_hsl(c["hex"])
+            vibrancy = (s ** 0.5) * (1.0 - abs(l - 0.5) * 0.7)
+            sources_str = " ".join(c.get("sources", []))
+            boost = 1.0
+            if "logo" in sources_str or "css_var" in sources_str or "button" in sources_str:
+                boost = 1.25
+            return c["weight"] * vibrancy * boost
+
+        brand_clusters.sort(key=brand_cluster_score, reverse=True)
         neutral_clusters.sort(key=lambda x: x["weight"], reverse=True)
 
         # Determine Primary, Secondary, and Accent
@@ -681,6 +697,12 @@ class BrandColorExtractor:
                         "confidence": brand_clusters[1]["confidence"],
                         "source": ", ".join(brand_clusters[1]["source_list"][:2])
                     }
+                elif neutral_clusters:
+                    secondary = {
+                        "hex": neutral_clusters[0]["hex"],
+                        "confidence": neutral_clusters[0]["confidence"],
+                        "source": ", ".join(neutral_clusters[0]["source_list"][:2])
+                    }
                 else:
                     # Derive harmonious analogous companion from the user's primary color
                     h, l, s = get_hsl(primary["hex"])
@@ -689,11 +711,24 @@ class BrandColorExtractor:
                     secondary = {"hex": derived_hex, "confidence": 0.60, "source": "analogous_derived"}
 
             if not accent:
-                # Derive vibrant accent or complement from user's primary color
-                h, l, s = get_hsl(primary["hex"])
-                r, g, b = colorsys.hls_to_rgb((h + 0.50) % 1.0, max(0.35, min(0.70, l)), max(0.60, s))
-                derived_accent = rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
-                accent = {"hex": derived_accent, "confidence": 0.65, "source": "complement_derived"}
+                if len(neutral_clusters) > 1 and neutral_clusters[1]["hex"] != secondary.get("hex"):
+                    accent = {
+                        "hex": neutral_clusters[1]["hex"],
+                        "confidence": neutral_clusters[1]["confidence"],
+                        "source": ", ".join(neutral_clusters[1]["source_list"][:2])
+                    }
+                elif len(neutral_clusters) > 0 and neutral_clusters[0]["hex"] != secondary.get("hex"):
+                    accent = {
+                        "hex": neutral_clusters[0]["hex"],
+                        "confidence": neutral_clusters[0]["confidence"],
+                        "source": ", ".join(neutral_clusters[0]["source_list"][:2])
+                    }
+                else:
+                    # Derive vibrant accent or complement from user's primary color
+                    h, l, s = get_hsl(primary["hex"])
+                    r, g, b = colorsys.hls_to_rgb((h + 0.50) % 1.0, max(0.35, min(0.70, l)), max(0.60, s))
+                    derived_accent = rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
+                    accent = {"hex": derived_accent, "confidence": 0.65, "source": "complement_derived"}
 
         else:
             # All detected colors were neutral (e.g. minimalist black/white/grey website)

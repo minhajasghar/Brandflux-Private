@@ -73,6 +73,31 @@ export default function SessionPage() {
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // ─── Target Social Platforms Selection ────────────────────────────────────
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([
+    'linkedin',
+    'facebook',
+    'instagram',
+    'twitter',
+    'tiktok'
+  ])
+
+  const togglePlatform = (p: string) => {
+    setSelectedPlatforms(prev => 
+      prev.includes(p)
+        ? (prev.length > 1 ? prev.filter(x => x !== p) : prev)
+        : [...prev, p]
+    )
+  }
+
+  const toggleAllPlatforms = () => {
+    if (selectedPlatforms.length === 5) {
+      setSelectedPlatforms(['linkedin'])
+    } else {
+      setSelectedPlatforms(['linkedin', 'facebook', 'instagram', 'twitter', 'tiktok'])
+    }
+  }
+
   // ─── Generation & Variant Results States ──────────────────────────────────
   const [isGenerating, setIsGenerating] = useState(false)
   const [variantSessionData, setVariantSessionData] = useState<MultiVariantSessionResult | null>(null)
@@ -276,7 +301,8 @@ export default function SessionPage() {
           mode: img.mode,
           filename: img.filename
         })),
-        target_platform: activePlatformTab
+        target_platform: activePlatformTab,
+        selected_platforms: selectedPlatforms
       }
 
       const res: MultiVariantSessionResult = await generateSessionVariants(payload)
@@ -378,7 +404,8 @@ export default function SessionPage() {
         adjusted_caption: captionText,
         adjusted_hashtags: hashtagsList,
         target_platform: activePlatformTab,
-        platform_copies: platformCopies
+        platform_copies: platformCopies,
+        selected_platforms: selectedPlatforms
       })
       toast.success('Saved as active selected post for download & calendar!')
     } catch (err: any) {
@@ -429,7 +456,8 @@ export default function SessionPage() {
           adjusted_caption: captionText,
           adjusted_hashtags: hashtagsList,
           target_platform: activePlatformTab,
-          platform_copies: platformCopies
+          platform_copies: platformCopies,
+          selected_platforms: selectedPlatforms
         })
       } catch (e) {
         console.error('Error committing selection before calendar:', e)
@@ -454,7 +482,8 @@ export default function SessionPage() {
         variant_id: variant.id,
         style_direction: styleDirection,
         reference_context: referenceContext,
-        target_platform: activePlatformTab
+        target_platform: activePlatformTab,
+        selected_platforms: selectedPlatforms
       })
 
       if (res?.variant) {
@@ -742,6 +771,62 @@ export default function SessionPage() {
                   rows={3}
                   className="w-full bg-surface-secondary border border-border rounded-xl px-4 py-3 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-muted"
                 />
+              </div>
+            </div>
+
+            {/* 3. Target Social Platforms Selection */}
+            <div className="bg-surface border border-border rounded-3xl p-6 sm:p-8 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-text flex items-center gap-2">
+                    <span>3. Target Social Platforms</span>
+                  </h2>
+                  <p className="text-xs text-muted">Check which platforms you want to generate copy and layout for (or select all).</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleAllPlatforms}
+                  className="px-3.5 py-1.5 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border text-xs font-bold text-accent transition self-start sm:self-auto"
+                >
+                  {selectedPlatforms.length === 5 ? 'Deselect All' : 'Select All Platforms'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                {[
+                  { id: 'linkedin', label: 'LinkedIn', icon: '💼', sub: 'Posts & Insights' },
+                  { id: 'facebook', label: 'Facebook', icon: '📘', sub: 'Page Posts' },
+                  { id: 'instagram', label: 'Instagram', icon: '📸', sub: 'Feed & Visuals' },
+                  { id: 'twitter', label: 'X / Twitter', icon: '🐦', sub: 'Fast Updates' },
+                  { id: 'tiktok', label: 'TikTok', icon: '🎵', sub: 'Short Video Copy' },
+                ].map(p => {
+                  const isChecked = selectedPlatforms.includes(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => togglePlatform(p.id)}
+                      className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between gap-3 ${
+                        isChecked 
+                          ? 'bg-accent/10 border-accent text-text ring-1 ring-accent/30' 
+                          : 'bg-surface-secondary border-border text-muted hover:border-border-hover'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-2xl">{p.icon}</span>
+                        <div className={`h-5 w-5 rounded-md flex items-center justify-center border text-xs font-bold transition ${
+                          isChecked ? 'bg-accent text-black border-accent' : 'border-muted/40'
+                        }`}>
+                          {isChecked && '✓'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-sm text-text">{p.label}</div>
+                        <div className="text-[10px] text-muted">{p.sub}</div>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 

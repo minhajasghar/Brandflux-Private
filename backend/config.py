@@ -87,6 +87,14 @@ LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID", "").strip()
 LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "").strip()
 LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI", "http://localhost:8000/oauth/linkedin/callback").strip()
 
+TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY", "").strip()
+TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "").strip()
+TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI", "https://brandflux-oauth.loca.lt/oauth/tiktok/callback").strip()
+
+TWITTER_CLIENT_ID = os.getenv("TWITTER_CLIENT_ID", "").strip()
+TWITTER_CLIENT_SECRET = os.getenv("TWITTER_CLIENT_SECRET", "").strip()
+TWITTER_REDIRECT_URI = os.getenv("TWITTER_REDIRECT_URI", "http://localhost:8000/oauth/twitter/callback").strip()
+
 # ─── Aggregator Feature Flag (e.g. Ayrshare) ────────────────
 USE_SOCIAL_AGGREGATOR = os.getenv("USE_SOCIAL_AGGREGATOR", "false").lower() in ("true", "1", "yes")
 AYRSHARE_API_KEY = os.getenv("AYRSHARE_API_KEY", "").strip()
@@ -98,3 +106,14 @@ SCAN_STALE_MINUTES = int(os.getenv("SCAN_STALE_MINUTES", "30"))
 # ─── Scheduler ─────────────────────────────────────────────
 DAILY_QUESTIONS_HOUR = int(os.getenv("DAILY_QUESTIONS_HOUR", "6"))
 WEEKLY_GUIDANCE_DAY = os.getenv("WEEKLY_GUIDANCE_DAY", "mon")
+
+# ─── Email & In-App Notification System ─────────────────────
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "dev").strip().lower()
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:3000").strip().rstrip("/")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000").strip().rstrip("/")
+EMAIL_API_KEY = os.getenv("EMAIL_API_KEY", "").strip()
+EMAIL_FROM = os.getenv("EMAIL_FROM", "notifications@brandflux.ai").strip()
+EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Brandflux").strip()
+EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "support@brandflux.ai").strip()
+ADMIN_ALERT_EMAIL = os.getenv("ADMIN_ALERT_EMAIL", "admin@brandflux.ai").strip()
+

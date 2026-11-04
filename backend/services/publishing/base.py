@@ -7,9 +7,14 @@ from models.models import SocialAccount
 @dataclass
 class PublishResult:
     success: bool
-    status: str  # "Published", "Publishing", "Failed"
+    status: str  # "Published", "Publishing", "Failed", "needs_reconnect"
     external_post_id: Optional[str] = None
+    permalink: Optional[str] = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
+    http_status: Optional[int] = None
+    duration_ms: Optional[int] = None
+    sanitized_payload: Optional[Dict[str, Any]] = None
     raw_response: Optional[Dict[str, Any]] = None
 
 

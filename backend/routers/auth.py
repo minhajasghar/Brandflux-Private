@@ -1,22 +1,33 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
+from pydantic import BaseModel
+from typing import Optional
 
 from database import get_db
 from models.models import User, Brand
 from models.schemas import SignupRequest, LoginRequest, AuthResponse, BrandProfile
 from services import auth_service, scraper
 from middleware.auth import get_current_user
+from config import APP_BASE_URL, EMAIL_PROVIDER
+from services.email.email_service import send_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+class ResendVerificationRequest(BaseModel):
+    email: str
 
 @router.post("/signup", response_model=AuthResponse)
 async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
-    Sign up: creates user + brand + triggers first website scan.
+    Sign up: creates user + brand + triggers first website scan + sends verification email.
     """
     # 1. Check if email already exists
-    existing = db.query(User).filter(User.email == req.email).first()
+    existing = db.query(User).filter(User.email == req.email.strip().lower()).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -24,11 +35,16 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
         )
 
     # 2. Hash the password using passlib bcrypt
-    # 3. Create new User in database
+    # 3. Create new User with verification token
+    verify_token = uuid.uuid4().hex
     user = User(
-        email=req.email,
+        email=req.email.strip().lower(),
         password_hash=auth_service.hash_password(req.password),
         full_name=req.full_name,
+        is_verified=False,
+        verification_token=verify_token,
+        verification_token_expires_at=datetime.utcnow() + timedelta(hours=24),
+        welcome_sent=False
     )
     db.add(user)
     db.flush()
@@ -49,10 +65,26 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
     from routers.auth import _run_first_scan
     background_tasks.add_task(_run_first_scan, brand.id, brand.user_id, req.website_url)
 
-    # 5. Generate JWT token (expires in 7 days)
+    # 5. Dispatch Verification Email (Dev mode captures in outbox, Resend sends)
+    verification_url = f"{APP_BASE_URL}/verify?token={verify_token}"
+    background_tasks.add_task(
+        send_email,
+        to=user.email,
+        template="verify_email",
+        data={
+            "verification_url": verification_url,
+            "full_name": user.full_name or "there"
+        },
+        user_id=user.id,
+        brand_id=brand.id,
+        idempotency_key=f"verify_{user.id}_{verify_token[:8]}"
+    )
+
+    # 6. Generate JWT token
     token = auth_service.create_token(user.id, token_version=getattr(user, "token_version", 1) or 1)
 
-    # 6. Return response
+    # 7. Return response
+    is_dev = (EMAIL_PROVIDER or "dev").strip().lower() == "dev"
     return AuthResponse(
         token=token,
         user_id=user.id,
@@ -60,8 +92,12 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
         full_name=user.full_name,
         role=getattr(user, "role", "user") or "user",
         is_suspended=getattr(user, "is_suspended", False) or False,
-        onboarding_complete=False
+        onboarding_complete=False,
+        is_verified=False,
+        dev_mode=is_dev,
+        verification_token=verify_token if is_dev else None
     )
+
 
 @router.post("/login", response_model=AuthResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
@@ -111,8 +147,176 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         full_name=user.full_name,
         role=user_role,
         is_suspended=getattr(user, "is_suspended", False) or False,
-        onboarding_complete=is_onboarding_complete
+        onboarding_complete=is_onboarding_complete,
+        is_verified=getattr(user, "is_verified", True)
     )
+
+@router.post("/verify-email")
+async def verify_email_endpoint(
+    req: VerifyEmailRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Verify user's email with single-use 24h token.
+    On success: marks user verified, triggers welcome email once, and returns login token.
+    """
+    token = req.token.strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Verification token is required")
+
+    user = db.query(User).filter(User.verification_token == token).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or already used verification token")
+
+    if user.verification_token_expires_at and user.verification_token_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Verification link has expired. Please request a new one.")
+
+    user.is_verified = True
+    user.verification_token = None
+    user.verification_token_expires_at = None
+
+    # Send Welcome Email idempotently (sent once after verification)
+    if not user.welcome_sent:
+        user.welcome_sent = True
+        create_post_url = f"{APP_BASE_URL}/session"
+        brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+        brand_id = brand.id if brand else None
+        background_tasks.add_task(
+            send_email,
+            to=user.email,
+            template="welcome",
+            data={
+                "full_name": user.full_name or "there",
+                "create_post_url": create_post_url
+            },
+            user_id=user.id,
+            brand_id=brand_id,
+            idempotency_key=f"welcome_{user.id}"
+        )
+
+    db.commit()
+    db.refresh(user)
+
+    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    user_role = getattr(user, "role", "user") or "user"
+    is_onboarding_complete = True if user_role == "admin" else (brand.onboarding_complete if brand else False)
+    jwt_token = auth_service.create_token(user.id, token_version=getattr(user, "token_version", 1) or 1)
+
+    return {
+        "status": "success",
+        "message": "Email verified successfully!",
+        "token": jwt_token,
+        "user_id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user_role,
+        "is_verified": True,
+        "onboarding_complete": is_onboarding_complete
+    }
+
+@router.get("/verify-info")
+def get_verify_info(
+    email: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns verification status for email, and in dev mode returns verification_token for instant verify.
+    """
+    user = db.query(User).filter(User.email == email.strip().lower()).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    is_dev = (EMAIL_PROVIDER or "dev").strip().lower() == "dev"
+    return {
+        "email": user.email,
+        "is_verified": bool(user.is_verified),
+        "dev_mode": is_dev,
+        "verification_token": user.verification_token if is_dev else None
+    }
+
+@router.post("/resend-verification")
+async def resend_verification(
+    req: ResendVerificationRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """Resend a new verification token if not yet verified."""
+    user = db.query(User).filter(User.email == req.email.strip().lower()).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    if user.is_verified:
+        return {"status": "already_verified", "message": "Email is already verified"}
+
+    new_token = uuid.uuid4().hex
+    user.verification_token = new_token
+    user.verification_token_expires_at = datetime.utcnow() + timedelta(hours=24)
+    db.commit()
+
+    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    verification_url = f"{APP_BASE_URL}/verify?token={new_token}"
+    background_tasks.add_task(
+        send_email,
+        to=user.email,
+        template="verify_email",
+        data={
+            "verification_url": verification_url,
+            "full_name": user.full_name or "there"
+        },
+        user_id=user.id,
+        brand_id=brand.id if brand else None,
+        idempotency_key=f"verify_{user.id}_{new_token[:8]}"
+    )
+
+    return {"status": "success", "message": "Verification email sent"}
+
+class UpdateProfileRequest(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+
+
+@router.put("/profile")
+def update_profile(
+    req: UpdateProfileRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update current user profile (full name, login email)."""
+    if req.email:
+        new_email = req.email.strip().lower()
+        if "@" not in new_email or "." not in new_email:
+            raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+        
+        # Check if email is already taken by another account
+        existing = db.query(User).filter(User.email == new_email, User.id != user.id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="This email address is already in use by another account.")
+        
+        user.email = new_email
+
+    if req.full_name is not None:
+        user.full_name = req.full_name.strip()
+
+    db.commit()
+    db.refresh(user)
+
+    # Generate updated token so the session keeps working with new details
+    fresh_token = auth_service.create_token(user.id)
+
+    return {
+        "status": "success",
+        "message": "Profile updated successfully.",
+        "token": fresh_token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "plan": user.plan,
+            "role": getattr(user, "role", "user") or "user"
+        }
+    }
+
 
 @router.get("/me")
 def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):

@@ -70,22 +70,21 @@ export default function SignupPage() {
     setError(null)
 
     try {
-      await signup(formData)
-      // Clear token — user must log in manually
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('brandflux_token')
-        sessionStorage.removeItem('brandflux_token')
-        document.cookie = 'brandflux_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;'
-        document.cookie = 'brandflux_onboarding_complete=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;'
-      }
+      const res = await signup(formData)
 
-      toast.success('Account created successfully! Please sign in.', {
-        duration: 3000,
-        icon: '🎉',
+      toast.success('Account created! Please verify your email.', {
+        duration: 3500,
+        icon: '✉️',
       })
+
+      // Route to verification screen
+      const verifyUrl = res.verification_token 
+        ? `/verify?email=${encodeURIComponent(formData.email)}&token=${res.verification_token}`
+        : `/verify?email=${encodeURIComponent(formData.email)}`
+
       setTimeout(() => {
-        router.push('/login')
-      }, 1500)
+        router.push(verifyUrl)
+      }, 1000)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Something went wrong. Please try again.')
       setIsLoading(false)

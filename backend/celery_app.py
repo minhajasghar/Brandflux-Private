@@ -1,11 +1,25 @@
 import os
+import redis
 from celery import Celery
 from config import REDIS_URL
 
+broker_url = REDIS_URL
+backend_url = REDIS_URL
+
+# Check Redis connectivity; if unreachable on local dev/Windows, fallback to SQLite transport
+try:
+    r = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=0.8)
+    r.ping()
+except Exception:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    broker_db = os.path.join(base_dir, "celery_broker.sqlite").replace("\\", "/")
+    broker_url = f"sqla+sqlite:///{broker_db}"
+    backend_url = f"db+sqlite:///{broker_db}"
+
 celery_app = Celery(
     "brandflux_publishing",
-    broker=REDIS_URL,
-    backend=REDIS_URL,
+    broker=broker_url,
+    backend=backend_url,
     include=["tasks.publishing_tasks", "tasks.autopilot_tasks"]
 )
 

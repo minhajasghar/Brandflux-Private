@@ -26,6 +26,11 @@ class User(Base):
     deleted_at = Column(DateTime, nullable=True)
     token_version = Column(Integer, default=1, nullable=False)
     last_active_at = Column(DateTime, nullable=True)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    verification_token = Column(String(255), nullable=True, index=True)
+    verification_token_expires_at = Column(DateTime, nullable=True)
+    welcome_sent = Column(Boolean, default=False, nullable=False)
+    notification_preferences = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
     # Relationships
@@ -34,6 +39,7 @@ class User(Base):
     social_accounts = relationship("SocialAccount", back_populates="user", cascade="all, delete-orphan")
     usages = relationship("Usage", back_populates="user", cascade="all, delete-orphan")
     posts = relationship("Post", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
 # ═══════════════════════════════════════════════════════════
 # BRAND — Auto-populated from website scraping + AI analysis
@@ -234,6 +240,7 @@ class Post(Base):
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     title = Column(String(255), nullable=False)
     topic = Column(String(255), nullable=True)
+    source = Column(String(50), default="manual")  # manual | autopilot
     credits_used = Column(Integer, default=1, nullable=False)
     session_id = Column(String(36), nullable=True)
     created_at = Column(DateTime, default=func.now())
@@ -242,8 +249,25 @@ class Post(Base):
     # Relationships
     brand = relationship("Brand", back_populates="posts")
     user = relationship("User", back_populates="posts")
+    images = relationship("PostImage", back_populates="post", cascade="all, delete-orphan", order_by="PostImage.created_at.asc()")
     platform_copies = relationship("PlatformCopy", back_populates="post", cascade="all, delete-orphan", order_by="PlatformCopy.created_at.asc()")
     scheduled_posts = relationship("ScheduledPost", back_populates="parent_post")
+
+# ═══════════════════════════════════════════════════════════
+# POST IMAGE — AI Visual Variant for a Generation
+# ═══════════════════════════════════════════════════════════
+class PostImage(Base):
+    __tablename__ = "post_images"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    post_id = Column(String(36), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    image_url = Column(Text, nullable=False)
+    is_selected = Column(Boolean, default=False)
+    expires_at = Column(DateTime, nullable=True)  # Unselected auto-expires after 7 days
+    created_at = Column(DateTime, default=func.now())
+
+    # Relationships
+    post = relationship("Post", back_populates="images")
 
 # ═══════════════════════════════════════════════════════════
 # PLATFORM COPY — Channel-specific Child Copy of a Generation
@@ -254,13 +278,17 @@ class PlatformCopy(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     post_id = Column(String(36), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
     platform = Column(String(50), nullable=False)  # instagram, linkedin, facebook, twitter, tiktok
+    account_id = Column(String(255), nullable=True)  # which page/profile ID
     caption = Column(Text, nullable=True)
     hashtags = Column(JSON, nullable=True)
     image_url = Column(Text, nullable=True)
+    selected_image_id = Column(String(36), nullable=True)
     aspect_ratio = Column(String(20), default="1:1")
-    status = Column(String(50), default="draft")  # draft, scheduled, publishing, published, failed
+    status = Column(String(50), default="not_posted")  # not_posted, scheduled, publishing, posted, failed, needs_reconnect, pending_approval
     scheduled_at = Column(DateTime, nullable=True)
+    posted_at = Column(DateTime, nullable=True)
     external_post_id = Column(String(255), nullable=True)
+    permalink = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -365,6 +393,7 @@ class ScheduledPost(Base):
     scheduled_at = Column(DateTime, nullable=False)
     status = Column(String(50), default="Draft")  # Draft, Pending Approval, Scheduled, Publishing, Published, Failed
     external_post_id = Column(String(255), nullable=True)
+    permalink = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
     autopilot_run_id = Column(String(36), nullable=True)
     critique_score = Column(Float, nullable=True)
@@ -585,6 +614,78 @@ class SystemSetting(Base):
     updated_by = Column(String(255), nullable=True)
 
 
+# ═══════════════════════════════════════════════════════════
+# PUBLISH ATTEMPT — Immutable Audit Log of Every API Action
+# ═══════════════════════════════════════════════════════════
+class PublishAttempt(Base):
+    __tablename__ = "publish_attempts"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=True)
+    platform_copy_id = Column(String(36), ForeignKey("platform_copies.id", ondelete="SET NULL"), nullable=True)
+    scheduled_post_id = Column(String(36), ForeignKey("scheduled_posts.id", ondelete="SET NULL"), nullable=True)
+    
+    platform = Column(String(50), nullable=False)  # facebook, instagram, linkedin, twitter, tiktok
+    account_id = Column(String(255), nullable=True)
+    status = Column(String(50), nullable=False)    # success, failed, needs_reconnect
+    http_status = Column(Integer, nullable=True)
+    
+    # Sanitized request (tokens stripped)
+    request_payload_sanitized = Column(JSON, nullable=True)
+    response_body = Column(Text, nullable=True)
+    error_code = Column(String(100), nullable=True)
+    error_message = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    external_post_id = Column(String(255), nullable=True)
+    permalink = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=func.now())
 
 
+# ═══════════════════════════════════════════════════════════
+# EMAIL LOG — Captured Outbox in Dev Mode & Delivery Audit
+# ═══════════════════════════════════════════════════════════
+class EmailLog(Base):
+    __tablename__ = "email_logs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="SET NULL"), nullable=True)
+    recipient = Column(String(255), nullable=False, index=True)
+    subject = Column(String(512), nullable=False)
+    template = Column(String(100), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default="captured (dev)")  # 'captured (dev)', 'sent', 'failed'
+    provider = Column(String(50), nullable=False, default="dev")
+    full_html = Column(Text, nullable=False)
+    plain_text = Column(Text, nullable=True)
+    links_json = Column(JSON, nullable=True)
+    metadata_json = Column(JSON, nullable=True)
+    idempotency_key = Column(String(255), nullable=True, unique=True, index=True)
+    created_at = Column(DateTime, default=func.now(), index=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    brand = relationship("Brand", foreign_keys=[brand_id])
+
+
+# ═══════════════════════════════════════════════════════════
+# IN-APP NOTIFICATION — The Single Source of Truth
+# ═══════════════════════════════════════════════════════════
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(String(50), nullable=False, default="info")  # autopilot_checkin, autopilot_post_ready, autopilot_result, failed, needs_reconnect, welcome, info, alert
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    read_at = Column(DateTime, nullable=True)
+    action_type = Column(String(50), nullable=True)  # checkin, review, view_post, retry, reconnect, link
+    action_payload = Column(JSON, nullable=True)
+    idempotency_key = Column(String(255), nullable=True, unique=True, index=True)
+    created_at = Column(DateTime, default=func.now(), index=True)
+
+    user = relationship("User", back_populates="notifications")
+    brand = relationship("Brand", foreign_keys=[brand_id])
 

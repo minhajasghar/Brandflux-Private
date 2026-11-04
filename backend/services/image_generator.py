@@ -43,6 +43,8 @@ PLATFORM_DEFAULT_DIMENSIONS = {
     "linkedin_post": (1200, 627),
     "facebook": (1200, 630),
     "facebook_post": (1200, 630),
+    "twitter": (1200, 675),
+    "twitter_post": (1200, 675),
 }
 
 # Template filename mapping

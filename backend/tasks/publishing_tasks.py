@@ -27,10 +27,14 @@ def run_async(coro):
 def publish_scheduled_post(self: Task, post_id: str):
     """
     Publish a scheduled post.
+    Routes strictly through the ONE shared canonical publish function (execute_social_publish).
     - Strictly idempotent: guarantees a post is never published twice.
-    - Exponential backoff on transient network or API failures.
-    - Writes final status, external_post_id, or error back to the database.
+    - Follow-up check confirms existence before marking Published.
+    - Writes final status, external_post_id, permalink, or error back to the database.
+    - Logs every attempt in publish_attempts.
     """
+    from services.publishing.publish_service import execute_social_publish
+
     db = SessionLocal()
     try:
         post = db.query(ScheduledPost).filter(ScheduledPost.id == post_id).first()
@@ -39,95 +43,41 @@ def publish_scheduled_post(self: Task, post_id: str):
             return {"status": "not_found", "post_id": post_id}
 
         # ─── Idempotency Guard ──────────────────────────────────────────────
-        if post.status == "Published":
+        if post.status == "Published" and post.external_post_id:
             logger.info(f"[PublishTask] Post {post_id} is already Published. Skipping.")
-            return {"status": "already_published", "external_post_id": post.external_post_id}
+            return {"status": "already_published", "external_post_id": post.external_post_id, "permalink": post.permalink}
 
-        if post.status == "Publishing" and self.request.retries == 0:
-            logger.warning(f"[PublishTask] Post {post_id} is currently Publishing. Preventing duplicate run.")
-            return {"status": "concurrent_publishing"}
+        logger.info(f"[PublishTask] Calling shared execute_social_publish for scheduled post {post.id} ({post.platform})...")
 
-        # Mark in progress
-        post.status = "Publishing"
-        db.commit()
+        # Call the ONE shared publish function
+        result = run_async(execute_social_publish(
+            db=db,
+            platform=post.platform,
+            brand_id=post.brand_id,
+            caption=post.caption,
+            image_url=post.media_url,
+            platform_copy_id=post.platform_copy_id,
+            scheduled_post_id=post.id
+        ))
 
-        # ─── Find Connected Social Account ──────────────────────────────────
-        account = db.query(SocialAccount).filter(
-            SocialAccount.brand_id == post.brand_id,
-            SocialAccount.is_active == True
-        ).all()
-
-        target_account = None
-        plat_lower = post.platform.lower()
-
-        # Match specific or family platform
-        for acc in account:
-            acc_plat = acc.platform.lower()
-            if ("instagram" in plat_lower and "instagram" in acc_plat) or \
-               ("linkedin" in plat_lower and "linkedin" in acc_plat) or \
-               ("facebook" in plat_lower and "facebook" in acc_plat) or \
-               ("meta" in acc_plat):
-                target_account = acc
-                break
-
-        if not target_account and account:
-            # Fallback to first active account
-            target_account = account[0]
-
-        if not target_account:
-            err_msg = f"No active social account connected for platform '{post.platform}'."
-            logger.error(f"[PublishTask] {err_msg}")
-            post.status = "Failed"
-            post.error = err_msg
-            db.commit()
-            return {"status": "failed", "error": err_msg}
-
-        # ─── Execute Publication via Platform Adapter ───────────────────────
-        publisher = get_publisher(post.platform)
-        logger.info(f"[PublishTask] Publishing post {post.id} to {post.platform} using {publisher.__class__.__name__}...")
-
-        if post.platform == "instagram_story" and post.media_url:
-            result = run_async(publisher.publish_story(post.media_url, target_account))
-        elif post.media_url:
-            result = run_async(publisher.publish_image(post.media_url, post.caption or "", target_account))
-        else:
-            result = run_async(publisher.publish_text(post.caption or "", target_account))
-
-        # ─── Database Writeback ─────────────────────────────────────────────
         if result.success:
-            post.status = "Published"
-            post.external_post_id = result.external_post_id
-            post.error = None
-            db.commit()
-            logger.info(f"[PublishTask] Successfully published post {post.id}. External ID: {result.external_post_id}")
-            return {"status": "published", "external_post_id": result.external_post_id}
+            logger.info(f"[PublishTask] Successfully published post {post.id}. External ID: {result.external_post_id}, Permalink: {result.permalink}")
+            return {
+                "status": "published",
+                "external_post_id": result.external_post_id,
+                "permalink": result.permalink
+            }
         else:
-            # Retry with exponential backoff if retries left
-            retry_count = self.request.retries
-            max_retries = self.max_retries or 3
-            if retry_count < max_retries:
-                countdown = int(60 * (2 ** retry_count))  # 60s, 120s, 240s
-                logger.warning(
-                    f"[PublishTask] Attempt {retry_count + 1} failed: {result.error}. "
-                    f"Retrying in {countdown}s with exponential backoff..."
-                )
-                db.commit()
-                raise self.retry(exc=Exception(result.error), countdown=countdown)
-            else:
-                post.status = "Failed"
-                post.error = result.error
-                db.commit()
-                logger.error(f"[PublishTask] All retries exhausted for post {post.id}. Error: {result.error}")
-                return {"status": "failed", "error": result.error}
+            logger.error(f"[PublishTask] Publishing failed for post {post.id}: {result.error} (status: {post.status})")
+            return {
+                "status": post.status,
+                "error": result.error,
+                "error_code": result.error_code
+            }
 
     except Exception as exc:
         db.rollback()
-        # If it was an internal self.retry exception, re-raise it for Celery
-        if "Retry" in exc.__class__.__name__:
-            raise exc
-
         logger.exception(f"[PublishTask] Unhandled exception publishing {post_id}: {exc}")
-        # Mark failed on final crash
         try:
             p = db.query(ScheduledPost).filter(ScheduledPost.id == post_id).first()
             if p:
@@ -138,6 +88,7 @@ def publish_scheduled_post(self: Task, post_id: str):
             pass
         return {"status": "error", "error": str(exc)}
     finally:
+        db.close()
         db.close()
 
 

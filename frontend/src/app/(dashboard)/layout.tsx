@@ -21,6 +21,7 @@ import Cookies from 'js-cookie'
 import { getProfile } from '@/lib/api'
 import BottomNav from '@/components/shared/BottomNav'
 import BrandSwitcher from '@/components/layout/BrandSwitcher'
+import NotificationBell from '@/components/notifications/NotificationBell'
 
 export default function DashboardLayout({
   children,
@@ -226,6 +227,9 @@ export default function DashboardLayout({
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* In-App Notification Center Bell */}
+            <NotificationBell />
+
             <div className="px-2.5 sm:px-3 py-1 rounded-full bg-surface-secondary border border-border text-[11px] sm:text-xs font-bold text-text flex items-center gap-1.5 sm:gap-2">
               <span className="text-accent">●</span>
               <span>{userPlan}</span>

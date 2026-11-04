@@ -111,18 +111,32 @@ class HTMLRenderer:
         # Normalize brand colors
         if "brand_colors" not in merged_context:
             colors = merged_context.get("colors") or []
-            primary = merged_context.get("primary_color") or (colors[0] if colors else "#1558C9")
-            secondary = merged_context.get("secondary_color") or (colors[1] if len(colors) > 1 else "#D4FF24")
+            primary = merged_context.get("primary_color") or (colors[0] if colors else "#F97316")
+            secondary = merged_context.get("secondary_color") or (colors[1] if len(colors) > 1 else "#F48C25")
+            
+            # Dynamic primary glow and highlight tint
+            try:
+                hex_clean = primary.lstrip("#")
+                if len(hex_clean) == 3:
+                    hex_clean = "".join([c * 2 for c in hex_clean])
+                r, g, b = int(hex_clean[0:2], 16), int(hex_clean[2:4], 16), int(hex_clean[4:6], 16)
+                glow = f"rgba({r}, {g}, {b}, 0.28)"
+                primary_light = f"#{min(255, int(r * 1.15)):02X}{min(255, int(g * 1.15)):02X}{min(255, int(b * 1.15)):02X}"
+            except Exception:
+                glow = "rgba(249, 115, 22, 0.28)"
+                primary_light = primary
+
             merged_context["brand_colors"] = {
-                "bg": "#05060A",
-                "surface": "#0D0F16",
-                "surface_card": "#121622",
-                "border": "#1C2030",
+                "bg": "#0B0F17",
+                "surface": "#111827",
+                "surface_card": "#1F2937",
+                "border": "rgba(255, 255, 255, 0.12)",
                 "primary": primary,
-                "primary_light": "#4C8DFF",
+                "primary_light": primary_light,
+                "primary_glow": glow,
                 "accent": secondary,
-                "text": "#F4F5F7",
-                "muted": "#8A90A2",
+                "text": "#F9FAFB",
+                "muted": "#9CA3AF",
             }
 
         template = self.jinja_env.get_template(template_name)

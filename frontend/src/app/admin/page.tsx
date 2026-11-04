@@ -73,8 +73,9 @@ import {
   adminCreateAdmin,
   adminUpdateAdminRole
 } from '@/lib/api'
+import AdminEmailsTab from '@/components/admin/AdminEmailsTab'
 
-type AdminTab = 'overview' | 'users' | 'usage' | 'credentials' | 'scans' | 'publishing' | 'plans' | 'audit' | 'health' | 'admins'
+type AdminTab = 'overview' | 'users' | 'emails' | 'usage' | 'credentials' | 'scans' | 'publishing' | 'plans' | 'audit' | 'health' | 'admins'
 
 function AdminPortalContent() {
   const searchParams = useSearchParams()
@@ -857,6 +858,11 @@ function AdminPortalContent() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* ─── TAB: DEV EMAILS OUTBOX ─── */}
+      {activeTab === 'emails' && (
+        <AdminEmailsTab />
       )}
 
       {/* ─── TAB 3: USAGE & FEATURE FLAGS (KILL SWITCH) ─── */}

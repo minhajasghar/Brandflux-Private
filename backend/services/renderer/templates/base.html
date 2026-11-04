@@ -15,7 +15,7 @@
       --border: {{ brand_colors.border | default("#1C2030") }};
       --primary: {{ brand_colors.primary | default("#1558C9") }};
       --primary-light: {{ brand_colors.primary_light | default("#4C8DFF") }};
-      --primary-glow: rgba(21, 88, 201, 0.25);
+      --primary-glow: {{ brand_colors.primary_glow | default("rgba(249, 115, 22, 0.25)") }};
       --accent: {{ brand_colors.accent | default("#D4FF24") }};
       --text: {{ brand_colors.text | default("#F4F5F7") }};
       --muted: {{ brand_colors.muted | default("#8A90A2") }};
@@ -95,14 +95,20 @@
       gap: 16px;
     }
     .brand-logo-img {
-      height: 48px;
-      max-width: 160px;
-      object-fit: contain;
+      width: 52px;
+      height: 52px;
+      min-width: 52px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      background-color: #0B0F17;
     }
     .brand-logo-fallback {
-      height: 48px;
-      width: 48px;
-      border-radius: 12px;
+      height: 52px;
+      width: 52px;
+      min-width: 52px;
+      border-radius: 50%;
       background: var(--primary);
       color: #fff;
       display: flex;

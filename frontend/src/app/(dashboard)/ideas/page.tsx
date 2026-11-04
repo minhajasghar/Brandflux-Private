@@ -13,7 +13,8 @@ import {
   Plus, 
   Loader2, 
   Bookmark, 
-  ArrowRight 
+  ArrowRight,
+  RotateCcw
 } from 'lucide-react'
 import api from '@/lib/api'
 import { toast } from 'react-hot-toast'
@@ -80,6 +81,8 @@ export default function IdeasPage() {
   const [isPublishing, setIsPublishing] = useState<string | null>(null)
   const [schedulingCopyId, setSchedulingCopyId] = useState<string | null>(null)
   const [scheduledDateTime, setScheduledDateTime] = useState<string>('')
+  const [selectedCopyIdsToPublish, setSelectedCopyIdsToPublish] = useState<string[]>([])
+  const [isBatchPublishing, setIsBatchPublishing] = useState(false)
 
   // Templates State
   const [templates, setTemplates] = useState<SavedTemplate[]>([])
@@ -198,18 +201,28 @@ export default function IdeasPage() {
       const res = await api.get(`/content/history/${sessionId}`)
       if (res.data) {
         setSessionDetail(res.data)
+        if (res.data.copies && Array.isArray(res.data.copies)) {
+          const fbCopy = res.data.copies.find((c: any) => (c.platform || '').toLowerCase() === 'facebook')
+          if (fbCopy) {
+            setSelectedCopyIdsToPublish([fbCopy.id || fbCopy.copy_id])
+          } else {
+            setSelectedCopyIdsToPublish(res.data.copies.filter((c: any) => c.status !== 'needs_reconnect').map((c: any) => c.id || c.copy_id).filter(Boolean))
+          }
+        }
         if (initialPlatform) {
           const norm = initialPlatform.toLowerCase()
-          if (norm.includes('tiktok') && res.data.tiktok) setActiveDetailTab('tiktok')
-          else if ((norm.includes('twitter') || norm.includes('x')) && res.data.twitter_post) setActiveDetailTab('twitter_post')
+          if (norm.includes('facebook') && res.data.facebook_post) setActiveDetailTab('facebook_post')
           else if (norm.includes('linkedin') && res.data.linkedin_post) setActiveDetailTab('linkedin_post')
-          else if (norm.includes('facebook') && res.data.facebook_post) setActiveDetailTab('facebook_post')
+          else if (norm.includes('instagram') && res.data.instagram_post) setActiveDetailTab('instagram_post')
+          else if ((norm.includes('twitter') || norm.includes('x')) && res.data.twitter_post) setActiveDetailTab('twitter_post')
+          else if (norm.includes('tiktok') && res.data.tiktok) setActiveDetailTab('tiktok')
           else if (norm.includes('story') && res.data.instagram_story) setActiveDetailTab('instagram_story')
-          else if (res.data.instagram_post) setActiveDetailTab('instagram_post')
-        } else {
-          if (res.data.instagram_post) setActiveDetailTab('instagram_post')
-          else if (res.data.linkedin_post) setActiveDetailTab('linkedin_post')
           else if (res.data.facebook_post) setActiveDetailTab('facebook_post')
+        } else {
+          // Prioritize connected Facebook over disconnected platforms
+          if (res.data.facebook_post) setActiveDetailTab('facebook_post')
+          else if (res.data.linkedin_post) setActiveDetailTab('linkedin_post')
+          else if (res.data.instagram_post) setActiveDetailTab('instagram_post')
           else if (res.data.twitter_post) setActiveDetailTab('twitter_post')
           else if (res.data.tiktok) setActiveDetailTab('tiktok')
           else if (res.data.instagram_story) setActiveDetailTab('instagram_story')
@@ -748,27 +761,33 @@ export default function IdeasPage() {
                   </div>
 
                   {/* Drawer Navigation Tabs */}
-                  <div className="flex gap-1.5 mt-6 border-b border-border overflow-x-auto scrollbar-hide">
+                  <div className="flex gap-2 mt-6 border-b border-border overflow-x-auto scrollbar-hide pb-2">
                     {[
-                      { id: 'instagram_post', label: 'Instagram Post', check: sessionDetail.instagram_post },
-                      { id: 'linkedin_post', label: 'LinkedIn', check: sessionDetail.linkedin_post },
-                      { id: 'facebook_post', label: 'Facebook', check: sessionDetail.facebook_post },
-                      { id: 'twitter_post', label: 'Twitter / X', check: sessionDetail.twitter_post },
-                      { id: 'tiktok', label: 'TikTok', check: sessionDetail.tiktok },
-                      { id: 'instagram_story', label: 'Story', check: sessionDetail.instagram_story }
+                      { id: 'linkedin_post', plat: 'linkedin', label: '💼 LinkedIn', data: sessionDetail.linkedin_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'linkedin') },
+                      { id: 'facebook_post', plat: 'facebook', label: '📘 Facebook', data: sessionDetail.facebook_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'facebook') },
+                      { id: 'instagram_post', plat: 'instagram', label: '📸 Instagram', data: sessionDetail.instagram_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'instagram') },
+                      { id: 'twitter_post', plat: 'twitter', label: '🐦 Twitter / X', data: sessionDetail.twitter_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'twitter' || c.platform.toLowerCase() === 'x') },
+                      { id: 'tiktok', plat: 'tiktok', label: '🎵 TikTok', data: sessionDetail.tiktok || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'tiktok') },
+                      { id: 'instagram_story', plat: 'story', label: '📱 Story', data: sessionDetail.instagram_story || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'story') }
                     ].map(tab => {
-                      if (!tab.check) return null
+                      if (!tab.data) return null
+                      const isActive = activeDetailTab === tab.id || activeDetailTab === tab.plat
                       return (
                         <button
                           key={tab.id}
                           onClick={() => setActiveDetailTab(tab.id)}
-                          className={`px-4 py-2.5 font-bold text-xs whitespace-nowrap transition-all border-b-2 ${
-                            activeDetailTab === tab.id
-                              ? 'border-accent text-accent bg-surface-secondary'
-                              : 'border-transparent text-muted hover:text-text'
+                          className={`px-3.5 py-2 rounded-xl font-black text-xs whitespace-nowrap transition-all flex items-center gap-1.5 border ${
+                            isActive
+                              ? 'border-accent bg-accent/15 text-accent shadow-sm'
+                              : 'border-border bg-surface-secondary text-muted hover:text-text hover:bg-surface-hover'
                           }`}
                         >
-                          {tab.label}
+                          <span>{tab.label}</span>
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-black uppercase ${
+                            tab.data.status === 'published' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-muted/20 text-muted'
+                          }`}>
+                            {tab.data.status || 'Draft'}
+                          </span>
                         </button>
                       )
                     })}
@@ -948,20 +967,311 @@ export default function IdeasPage() {
                       <p className="text-xs text-muted leading-relaxed">{sessionDetail.guidance?.tip_of_day || 'Align this post theme with your main products to elevate conversion ratios.'}</p>
                     </div>
 
+                    {/* Destination Platforms Selector (Where to post / where not to post) */}
+                    {sessionDetail.copies && sessionDetail.copies.length > 0 && (
+                      <div className="bg-surface-secondary border border-border p-5 rounded-2xl space-y-4">
+                        <div className="flex items-center justify-between border-b border-border pb-3">
+                          <div>
+                            <h4 className="text-xs font-black uppercase tracking-wider text-text flex items-center gap-1.5">
+                              <Globe className="h-3.5 w-3.5 text-accent" />
+                              Choose Where to Publish
+                            </h4>
+                            <p className="text-[11px] text-muted">Check the platforms you want this generation posted to.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allIds = sessionDetail.copies.map((c: any) => c.id || c.copy_id).filter(Boolean);
+                              setSelectedCopyIdsToPublish(prev => prev.length === allIds.length ? [] : allIds);
+                            }}
+                            className="text-[10px] font-bold text-accent hover:underline"
+                          >
+                            {selectedCopyIdsToPublish.length === sessionDetail.copies.length ? 'Deselect All' : 'Select All'}
+                          </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          {sessionDetail.copies.map((c: any) => {
+                            const cId = c.id || c.copy_id;
+                            const isChecked = selectedCopyIdsToPublish.includes(cId);
+                            const plat = (c.platform || '').toLowerCase();
+                            const icon = plat.includes('linkedin') ? '💼' : plat.includes('facebook') ? '📘' : plat.includes('instagram') ? '📸' : plat.includes('twitter') || plat.includes('x') ? '🐦' : '🎵';
+                            const platName = plat.charAt(0).toUpperCase() + plat.slice(1);
+                            return (
+                              <label
+                                key={cId}
+                                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition ${
+                                  isChecked ? 'bg-surface border-accent/60 text-text ring-1 ring-accent/20' : 'bg-surface/50 border-border text-muted hover:border-border-hover'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      const nextIds = selectedCopyIdsToPublish.includes(cId)
+                                        ? selectedCopyIdsToPublish.filter(x => x !== cId)
+                                        : [...selectedCopyIdsToPublish, cId];
+                                      setSelectedCopyIdsToPublish(nextIds);
+
+                                      // Automatically switch detail tab to this platform
+                                      const tabMap: Record<string, string> = {
+                                        facebook: 'facebook_post',
+                                        linkedin: 'linkedin_post',
+                                        instagram: 'instagram_post',
+                                        twitter: 'twitter_post',
+                                        x: 'twitter_post',
+                                        tiktok: 'tiktok'
+                                      };
+                                      const targetTab = tabMap[plat] || 'facebook_post';
+                                      if (sessionDetail[targetTab]) {
+                                        setActiveDetailTab(targetTab);
+                                      }
+                                    }}
+                                    className="h-4 w-4 rounded accent-accent cursor-pointer"
+                                  />
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{icon}</span>
+                                      <span className="text-xs font-extrabold text-text">{platName}</span>
+                                    </div>
+                                    <span className="text-[10px] text-muted block truncate max-w-[220px]">
+                                      {c.caption ? c.caption.slice(0, 48) + '...' : 'Ready to post'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
+                                  c.status === 'published'
+                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                    : c.status === 'publishing'
+                                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 animate-pulse'
+                                    : c.status === 'needs_reconnect'
+                                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                    : c.status === 'failed'
+                                    ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                                    : 'bg-surface border-border text-muted'
+                                }`}>
+                                  {c.status || 'Draft'}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (selectedCopyIdsToPublish.length === 0) return toast.error('Check at least one platform to publish.');
+                            setIsBatchPublishing(true);
+                            try {
+                              const res = await api.post('/content/publish-batch', { copy_ids: selectedCopyIdsToPublish, force: true });
+                              if (res.data?.success) {
+                                toast.success(`Published to ${res.data.published_count} platform(s)! 🎉`);
+                              }
+                              if (res.data?.errors?.length > 0) {
+                                const relevantErrors = res.data.errors.filter((e: any) => selectedCopyIdsToPublish.includes(e.copy_id));
+                                if (relevantErrors.length > 0) {
+                                  toast.error(`Platform error: ${relevantErrors[0]?.message || 'Check error details'}`);
+                                }
+                              }
+                              const refreshed = await api.get(`/content/history/${selectedSessionId}`);
+                              setSessionDetail(refreshed.data);
+                              fetchHistory(true);
+                            } catch (err: any) {
+                              const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Publish failed.';
+                              toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+                            } finally {
+                              setIsBatchPublishing(false);
+                            }
+                          }}
+                          disabled={isBatchPublishing || selectedCopyIdsToPublish.length === 0}
+                          className="w-full py-3 px-4 rounded-xl bg-accent hover:bg-accent-hover text-black font-black text-xs flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-accent-glow"
+                        >
+                          {isBatchPublishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+                          <span>Publish to Selected ({selectedCopyIdsToPublish.length}) Platforms</span>
+                        </button>
+                        <p className="text-[10px] text-muted text-center pt-1">
+                          👆 Publishes to <strong>all checked platforms</strong> at once. Click any row to view its individual controls below.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Per-Platform Live Publishing & Scheduling Controls */}
                     {(() => {
                       const activeData = sessionDetail[activeDetailTab] || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === activeDetailTab.toLowerCase().replace('_post', ''));
                       const copyId = activeData?.id || activeData?.copy_id;
                       if (!copyId) return null;
 
+                      const statusLower = (activeData.status || 'draft').toLowerCase();
+                      const platName = (activeData.platform || activeDetailTab.replace('_post', '')).charAt(0).toUpperCase() + (activeData.platform || activeDetailTab.replace('_post', '')).slice(1);
+
                       return (
                         <div className="bg-surface-secondary border border-border p-4 rounded-2xl space-y-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Platform Controls</span>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-accent/10 text-accent">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                              Active Inspector: <strong className="text-text">{platName}</strong>
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${
+                              statusLower === 'published'
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : statusLower === 'publishing'
+                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 animate-pulse'
+                                : statusLower === 'needs_reconnect'
+                                ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                : statusLower === 'failed'
+                                ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                                : 'bg-surface border-border text-muted'
+                            }`}>
                               {activeData.status || 'Draft'}
                             </span>
                           </div>
+
+                          {/* Rule 1: Verified Published banner with direct permalink & Post Again testing option */}
+                          {statusLower === 'published' && (
+                            <div className="space-y-3">
+                              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-3">
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-black text-emerald-400 flex items-center gap-1.5">
+                                    <span>✓</span> Live on {platName}
+                                  </p>
+                                  <p className="text-[10px] text-zinc-400">Post verified and live on official API.</p>
+                                </div>
+                                {activeData.permalink && (
+                                  <a
+                                    href={activeData.permalink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center gap-1 transition shadow-sm shrink-0"
+                                  >
+                                    <span>View on {platName}</span>
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between p-3 rounded-xl bg-surface border border-border">
+                                <div>
+                                  <p className="text-xs font-bold text-text">Post Again for Testing</p>
+                                  <p className="text-[10px] text-muted">Publish this post live to {platName} again.</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setIsPublishing(copyId);
+                                    try {
+                                      await api.post(`/content/copy/${copyId}/publish?force=true`);
+                                      toast.success(`Published live to ${platName} again! 🎉`);
+                                      const res = await api.get(`/content/history/${selectedSessionId}`);
+                                      setSessionDetail(res.data);
+                                      fetchHistory(true);
+                                    } catch (err: any) {
+                                      const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Republish failed.';
+                                      toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+                                    } finally {
+                                      setIsPublishing(null);
+                                    }
+                                  }}
+                                  disabled={isPublishing === copyId}
+                                  className="px-3.5 py-2 rounded-xl bg-accent hover:bg-accent-hover text-black font-extrabold text-xs transition flex items-center gap-1.5 shadow-sm"
+                                >
+                                  {isPublishing === copyId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                                  <span>Post Again to {platName}</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Rule 4: needs_reconnect state with reconnect button */}
+                          {statusLower === 'needs_reconnect' && (
+                            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2">
+                              <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+                                <span>⚠️</span>
+                                <span>Account Needs Reconnect</span>
+                              </div>
+                              <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                                {activeData.error || `No active ${platName} account connected or the authentication token has expired.`}
+                              </p>
+                              <div className="flex gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => router.push('/settings')}
+                                  className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-black text-xs transition"
+                                >
+                                  Reconnect in Settings
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await api.post(`/content/copy/${copyId}/retry`);
+                                      toast.success('Reset to draft.');
+                                      const res = await api.get(`/content/history/${selectedSessionId}`);
+                                      setSessionDetail(res.data);
+                                      fetchHistory(true);
+                                    } catch (err) {}
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-surface border border-border text-muted hover:text-text text-xs font-bold transition"
+                                >
+                                  Reset to Draft
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Rule 6: Failed state showing error & retry button */}
+                          {statusLower === 'failed' && (
+                            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl space-y-2">
+                              <div className="flex items-center gap-1.5 text-rose-400 font-bold text-xs">
+                                <span>✕</span>
+                                <span>Publishing Failed</span>
+                              </div>
+                              <p className="text-[11px] text-rose-200/80 leading-relaxed break-words">
+                                {activeData.error || 'Live platform API rejected the update.'}
+                              </p>
+                              <div className="flex gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setIsPublishing(copyId);
+                                    try {
+                                      await api.post(`/content/copy/${copyId}/publish?force=true`);
+                                      toast.success(`Published live to ${platName}! 🎉`);
+                                      const res = await api.get(`/content/history/${selectedSessionId}`);
+                                      setSessionDetail(res.data);
+                                      fetchHistory(true);
+                                    } catch (err: any) {
+                                      const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Retry failed.';
+                                      toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+                                      const res = await api.get(`/content/history/${selectedSessionId}`);
+                                      setSessionDetail(res.data);
+                                    } finally {
+                                      setIsPublishing(null);
+                                    }
+                                  }}
+                                  disabled={isPublishing === copyId}
+                                  className="px-3 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-black text-xs transition flex items-center gap-1.5"
+                                >
+                                  {isPublishing === copyId ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                                  <span>Retry Publishing</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await api.post(`/content/copy/${copyId}/retry`);
+                                      toast.success('Reset to draft.');
+                                      const res = await api.get(`/content/history/${selectedSessionId}`);
+                                      setSessionDetail(res.data);
+                                      fetchHistory(true);
+                                    } catch (err) {}
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-surface border border-border text-muted hover:text-text text-xs font-bold transition"
+                                >
+                                  Reset to Draft
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           {schedulingCopyId === copyId ? (
                             <div className="space-y-2">
@@ -1009,21 +1319,25 @@ export default function IdeasPage() {
                                   setIsPublishing(copyId);
                                   try {
                                     await api.post(`/content/copy/${copyId}/publish`);
-                                    toast.success('Published successfully!');
+                                    toast.success(`Published live to ${platName}! 🎉`);
                                     const res = await api.get(`/content/history/${selectedSessionId}`);
                                     setSessionDetail(res.data);
                                     fetchHistory(true);
                                   } catch (err: any) {
-                                    toast.error(err.response?.data?.detail || 'Publish failed.');
+                                    const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Publish failed.';
+                                    toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+                                    const res = await api.get(`/content/history/${selectedSessionId}`);
+                                    setSessionDetail(res.data);
+                                    fetchHistory(true);
                                   } finally {
                                     setIsPublishing(null);
                                   }
                                 }}
-                                disabled={isPublishing === copyId}
+                                disabled={isPublishing === copyId || statusLower === 'published'}
                                 className="py-2 px-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-extrabold flex items-center justify-center gap-1.5 transition disabled:opacity-50"
                               >
                                 {isPublishing === copyId ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                                <span>Publish Now</span>
+                                <span>{statusLower === 'published' ? 'Published' : 'Publish Now'}</span>
                               </button>
 
                               <button
@@ -1049,12 +1363,12 @@ export default function IdeasPage() {
                                     setSessionDetail(res.data);
                                     fetchHistory(true);
                                   } catch (err: any) {
-                                    toast.error(err.response?.data?.detail || 'Retry failed.');
+                                    toast.error(err.response?.data?.detail || 'Reset failed.');
                                   }
                                 }}
                                 className="py-2 px-2.5 rounded-xl bg-surface hover:bg-surface-secondary text-zinc-300 border border-border text-xs font-extrabold flex items-center justify-center gap-1.5 transition"
                               >
-                                <span>Retry / Reset</span>
+                                <span>Reset Status</span>
                               </button>
                             </div>
                           )}

@@ -5,7 +5,14 @@ from typing import List, Optional, Dict, Any
 import uuid
 
 from database import get_db
-from models.models import Brand, ContentIdea, GeneratedPost, SmartQuestion, UserAnswer, User, SessionVariant, Post, PlatformCopy, ScheduledPost
+from models.models import (
+    Brand, ContentIdea, GeneratedPost, SmartQuestion, UserAnswer,
+    User, SessionVariant, Post, PlatformCopy, ScheduledPost,
+    SocialAccount, PublishAttempt
+)
+import json
+import logging
+logger = logging.getLogger(__name__)
 from models.schemas import (
     ContentGenerateRequest, GeneratedPostResponse,
     ContentBatchResponse
@@ -311,6 +318,8 @@ async def get_content_history(
                 "aspect_ratio": copy.aspect_ratio,
                 "status": copy.status or "draft",
                 "scheduled_at": copy.scheduled_at.isoformat() if copy.scheduled_at else None,
+                "external_post_id": copy.external_post_id,
+                "permalink": copy.permalink,
                 "error": copy.error
             })
 
@@ -410,6 +419,7 @@ async def get_content_history_detail(
                 "status": copy.status or "draft",
                 "scheduled_at": copy.scheduled_at.isoformat() if copy.scheduled_at else None,
                 "external_post_id": copy.external_post_id,
+                "permalink": copy.permalink,
                 "error": copy.error,
                 "best_day": "Today",
                 "best_time": "Optimal time"
@@ -504,16 +514,34 @@ async def get_content_history_detail(
     return content
 
 # ─── Per-Platform Actions: Publish, Schedule, Retry ────────────────────────
+from pydantic import BaseModel
+
 class ScheduleCopyRequest(BaseModel):
     scheduled_at: datetime
+
+class PublishBatchRequest(BaseModel):
+    copy_ids: List[str]
+    force: Optional[bool] = False
 
 @router.post("/copy/{copy_id}/publish")
 async def publish_platform_copy(
     copy_id: str,
+    force: bool = False,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Publish a single platform copy immediately."""
+    """
+    Publish a single platform copy live to its respective social platform API.
+    Routes strictly through the ONE shared canonical publish service (execute_social_publish).
+    RULES ENFORCED:
+    - Status lifecycle: draft -> publishing -> published, or failed / needs_reconnect.
+    - Status is marked 'published' ONLY after API returns a real external post ID and verified permalink.
+    - If no account or token expired, status is marked 'needs_reconnect'.
+    - Zero stubs/mock fallbacks.
+    - All attempts logged to publish_attempts table.
+    """
+    from services.publishing.publish_service import execute_social_publish
+
     copy = db.query(PlatformCopy).join(Post).filter(
         PlatformCopy.id == copy_id,
         Post.user_id == user.id
@@ -522,17 +550,123 @@ async def publish_platform_copy(
     if not copy:
         raise HTTPException(status_code=404, detail="Platform copy not found")
 
-    copy.status = "published"
-    copy.updated_at = datetime.utcnow()
-    db.commit()
+    brand_id = copy.post.brand_id if copy.post else None
+
+    # Call canonical shared publish service
+    result = await execute_social_publish(
+        db=db,
+        platform=copy.platform,
+        brand_id=brand_id,
+        caption=copy.caption,
+        image_url=copy.image_url,
+        platform_copy_id=copy.id,
+        force=force
+    )
+
+    if result.success and copy.status == "published":
+        return {
+            "success": True,
+            "message": f"Successfully published live to {copy.platform.capitalize()}!",
+            "copy_id": copy.id,
+            "platform": copy.platform,
+            "status": "published",
+            "external_post_id": copy.external_post_id,
+            "permalink": copy.permalink
+        }
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": result.error or "Publishing failed.",
+                "status": copy.status,
+                "platform": copy.platform,
+                "error_code": result.error_code
+            }
+        )
+
+@router.post("/publish-batch")
+async def publish_batch_copies(
+    req: PublishBatchRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Publish multiple platform copies in one action."""
+    results = []
+    errors = []
+    for c_id in req.copy_ids:
+        try:
+            res = await publish_platform_copy(copy_id=c_id, force=bool(req.force), user=user, db=db)
+            results.append(res)
+        except HTTPException as he:
+            detail = he.detail if isinstance(he.detail, dict) else {"message": str(he.detail)}
+            errors.append({"copy_id": c_id, **detail})
+        except Exception as e:
+            errors.append({"copy_id": c_id, "message": str(e), "status": "failed"})
 
     return {
-        "success": True,
-        "message": f"Successfully published to {copy.platform.capitalize()}!",
-        "copy_id": copy.id,
-        "platform": copy.platform,
-        "status": copy.status
+        "success": len(results) > 0,
+        "published_count": len(results),
+        "results": results,
+        "errors": errors
     }
+
+@router.get("/copy/{copy_id}/attempts")
+def get_copy_publish_attempts(
+    copy_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Retrieve full audit history of publish attempts for a specific platform copy."""
+    copy = db.query(PlatformCopy).join(Post).filter(
+        PlatformCopy.id == copy_id,
+        Post.user_id == user.id
+    ).first()
+    if not copy:
+        raise HTTPException(status_code=404, detail="Platform copy not found")
+
+    attempts = db.query(PublishAttempt).filter(
+        PublishAttempt.platform_copy_id == copy_id
+    ).order_by(PublishAttempt.created_at.desc()).all()
+
+    return {
+        "copy_id": copy_id,
+        "platform": copy.platform,
+        "current_status": copy.status,
+        "attempts": [
+            {
+                "id": a.id,
+                "status": a.status,
+                "http_status": a.http_status,
+                "error_code": a.error_code,
+                "error_message": a.error_message,
+                "duration_ms": a.duration_ms,
+                "external_post_id": a.external_post_id,
+                "permalink": a.permalink,
+                "created_at": a.created_at.isoformat() if a.created_at else None
+            }
+            for a in attempts
+        ]
+    }
+
+@router.post("/copy/{copy_id}/reset")
+def reset_platform_copy_status(
+    copy_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Reset a failed or needs_reconnect copy back to draft status."""
+    copy = db.query(PlatformCopy).join(Post).filter(
+        PlatformCopy.id == copy_id,
+        Post.user_id == user.id
+    ).first()
+    if not copy:
+        raise HTTPException(status_code=404, detail="Platform copy not found")
+
+    copy.status = "draft"
+    copy.error = None
+    copy.updated_at = datetime.utcnow()
+    db.commit()
+    return {"success": True, "copy_id": copy.id, "status": "draft"}
 
 @router.post("/copy/{copy_id}/schedule")
 async def schedule_platform_copy(

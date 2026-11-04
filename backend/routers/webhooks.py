@@ -56,16 +56,15 @@ async def meta_webhook_events(
             media_id = val.get("media_id") or val.get("id")
 
             if media_id:
-                # Find matching scheduled post by external_post_id
+                # Find matching scheduled post strictly by existing external_post_id
                 post = db.query(ScheduledPost).filter(
                     ScheduledPost.external_post_id == str(media_id)
                 ).first()
 
-                if post:
-                    post.status = "Published"
-                    post.error = None
-                    db.commit()
-                    logger.info(f"[Webhook] Updated post {post.id} to Published via Meta webhook.")
+                # RULE: Webhooks may only CONFIRM or update a post that already has an external_post_id;
+                # they must NEVER create a "Published" status on their own.
+                if post and post.external_post_id and post.status == "Published":
+                    logger.info(f"[Webhook] Confirmed live Meta event for verified published post {post.id} (external ID: {post.external_post_id}).")
 
     return {"status": "received"}
 
@@ -80,6 +79,7 @@ async def ayrshare_webhook_events(
 ):
     """
     Receive asynchronous post status callbacks from Ayrshare aggregator.
+    Webhooks may only confirm already verified published posts or record failure.
     """
     try:
         data = await request.json()
@@ -93,18 +93,18 @@ async def ayrshare_webhook_events(
 
     if post_id:
         post = db.query(ScheduledPost).filter(
-            (ScheduledPost.external_post_id == str(post_id)) | (ScheduledPost.id == str(post_id))
+            ScheduledPost.external_post_id == str(post_id)
         ).first()
 
-        if post:
-            if status == "success":
-                post.status = "Published"
-                post.error = None
+        # Webhooks may only confirm or update a post that already has an external_post_id
+        if post and post.external_post_id:
+            if status == "success" and post.status == "Published":
+                logger.info(f"[Webhook] Confirmed aggregator status for already published post {post.id}.")
             elif status == "error":
                 post.status = "Failed"
                 post.error = data.get("error") or "Aggregator publish failed"
-            db.commit()
-            logger.info(f"[Webhook] Updated post {post.id} status to '{post.status}'.")
+                db.commit()
+                logger.warning(f"[Webhook] Updated post {post.id} status to 'Failed' per error event.")
 
     return {"status": "received"}
 

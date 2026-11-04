@@ -860,11 +860,12 @@ export default function DashboardPage() {
                               let tags: string[] = []
                               if (Array.isArray(raw)) tags = raw
                               else if (typeof raw === 'string') {
+                                const rawStr = raw as string
                                 try {
-                                  const p = JSON.parse(raw)
-                                  tags = Array.isArray(p) ? p : raw.split(/\s+/)
+                                  const p = JSON.parse(rawStr)
+                                  tags = Array.isArray(p) ? p : rawStr.split(/\s+/)
                                 } catch {
-                                  tags = raw.split(/\s+/)
+                                  tags = rawStr.split(/\s+/)
                                 }
                               }
                               tags = tags.filter(Boolean)

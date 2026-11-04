@@ -33,8 +33,9 @@ interface ScheduledPost {
   caption: string | null
   media_url: string | null
   scheduled_at: string
-  status: 'Draft' | 'Pending Approval' | 'Scheduled' | 'Publishing' | 'Published' | 'Failed'
+  status: 'Draft' | 'Pending Approval' | 'Scheduled' | 'Publishing' | 'Published' | 'Failed' | 'needs_reconnect'
   external_post_id: string | null
+  permalink?: string | null
   error: string | null
   created_at: string
   post_id?: string | null
@@ -122,6 +123,15 @@ const STATUS_CONFIG: Record<
     cardBorder: 'border-red-500/50 hover:border-red-400',
     dot: 'bg-red-400',
     dotHex: '#EF4444',
+  },
+  needs_reconnect: {
+    label: 'Needs Reconnect',
+    bg: 'bg-amber-500/20',
+    text: 'text-amber-400',
+    border: 'border-amber-500/40',
+    cardBorder: 'border-amber-500/50 hover:border-amber-400',
+    dot: 'bg-amber-400',
+    dotHex: '#F59E0B',
   },
 }
 
@@ -1114,6 +1124,43 @@ export default function CalendarPage() {
 
                 {/* Drawer Body Form */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+                  {/* Verified Published Live Permalink Banner */}
+                  {selectedPost?.permalink && selectedPost?.status === 'Published' && (
+                    <a
+                      href={selectedPost.permalink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-400 font-extrabold hover:bg-emerald-500/20 transition shadow-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>✓</span>
+                        <span>Live on {selectedPost.platform.charAt(0).toUpperCase() + selectedPost.platform.slice(1)}</span>
+                      </div>
+                      <span className="flex items-center gap-1 underline text-[11px]">
+                        View Post <ExternalLink className="h-3.5 w-3.5" />
+                      </span>
+                    </a>
+                  )}
+
+                  {/* Needs Reconnect Alert */}
+                  {selectedPost?.status === 'needs_reconnect' && (
+                    <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs text-amber-400 font-extrabold">
+                        <span>⚠️</span>
+                        <span>Account Needs Reconnect</span>
+                      </div>
+                      <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                        {selectedPost.error || 'Social account is disconnected or authorization token expired.'}
+                      </p>
+                      <Link
+                        href="/settings"
+                        className="inline-block mt-1 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs transition"
+                      >
+                        Reconnect in Settings
+                      </Link>
+                    </div>
+                  )}
+
                   {/* Linked Parent Post Banner (if created via multi-platform session) */}
                   {selectedPost?.post_id && (
                     <div className="p-3.5 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-between gap-3">

@@ -137,6 +137,14 @@ export async function getProfile() {
   return response.data
 }
 
+export async function updateUserProfile(data: { full_name?: string; email?: string }) {
+  const response = await api.put('/auth/profile', data)
+  if (response.data?.token && typeof window !== 'undefined') {
+    localStorage.setItem('brandflux_token', response.data.token)
+  }
+  return response.data
+}
+
 export async function scanWebsite(url: string) {
   const response = await api.post('/brand/scan-website', { website_url: url })
   return response.data
@@ -552,6 +560,7 @@ export async function selectSessionVariant(payload: {
   adjusted_hashtags?: string[]
   target_platform?: string
   platform_copies?: Record<string, any>
+  selected_platforms?: string[]
 }) {
   const response = await api.post('/sessions/select-variant', payload)
   return response.data
@@ -563,8 +572,83 @@ export async function regenerateSingleVariant(payload: {
   style_direction?: string
   reference_context?: string
   target_platform?: string
+  selected_platforms?: string[]
 }) {
   const response = await api.post('/sessions/regenerate-variant', payload)
+  return response.data
+}
+
+// ─── Notification Center (In-App) ───────────────────────────
+export async function getUnreadNotificationCount() {
+  const response = await api.get('/notifications/unread-count')
+  return response.data
+}
+
+export async function getNotifications(unreadOnly = false, limit = 30, offset = 0) {
+  const response = await api.get(`/notifications?unread_only=${unreadOnly}&limit=${limit}&offset=${offset}`)
+  return response.data
+}
+
+export async function markNotificationRead(id: string) {
+  const response = await api.post(`/notifications/${id}/read`)
+  return response.data
+}
+
+export async function markAllNotificationsRead() {
+  const response = await api.post('/notifications/mark-all-read')
+  return response.data
+}
+
+export async function executeNotificationAction(
+  id: string,
+  payload: {
+    action: string
+    choice?: string
+    special_text?: string
+    selected_platforms?: string[]
+  }
+) {
+  const response = await api.post(`/notifications/${id}/action`, payload)
+  return response.data
+}
+
+// ─── Admin Dev Emails Outbox ────────────────────────────────
+export async function getAdminCapturedEmails(filters?: {
+  recipient?: string
+  template?: string
+  status?: string
+  limit?: number
+  offset?: number
+}) {
+  const params = new URLSearchParams()
+  if (filters?.recipient) params.append('recipient', filters.recipient)
+  if (filters?.template && filters.template !== 'all') params.append('template', filters.template)
+  if (filters?.status && filters.status !== 'all') params.append('status_filter', filters.status)
+  if (filters?.limit) params.append('limit', String(filters.limit))
+  if (filters?.offset) params.append('offset', String(filters.offset))
+
+  const response = await api.get(`/admin/emails?${params.toString()}`)
+  return response.data
+}
+
+export async function getAdminCapturedEmailDetail(id: string) {
+  const response = await api.get(`/admin/emails/${id}`)
+  return response.data
+}
+
+// ─── Email Verification & Auth ──────────────────────────────
+export async function verifyEmail(token: string) {
+  const response = await api.post('/auth/verify-email', { token })
+  return response.data
+}
+
+export async function getVerifyInfo(email: string) {
+  const response = await api.get(`/auth/verify-info?email=${encodeURIComponent(email)}`)
+  return response.data
+}
+
+export async function resendVerification(email: string) {
+  const response = await api.post('/auth/resend-verification', { email })
   return response.data
 }
 

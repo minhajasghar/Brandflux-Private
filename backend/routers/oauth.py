@@ -48,6 +48,26 @@ def get_linkedin_credentials():
     redirect_uri = os.getenv("LINKEDIN_REDIRECT_URI", "http://localhost:8000/oauth/linkedin/callback").strip()
     return client_id, client_secret, redirect_uri
 
+def get_tiktok_credentials():
+    from dotenv import load_dotenv
+    env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if os.path.exists(env_file):
+        load_dotenv(env_file, override=True)
+    client_key = os.getenv("TIKTOK_CLIENT_KEY", "").strip()
+    client_secret = os.getenv("TIKTOK_CLIENT_SECRET", "").strip()
+    redirect_uri = os.getenv("TIKTOK_REDIRECT_URI", "https://brandflux-oauth.loca.lt/oauth/tiktok/callback").strip()
+    return client_key, client_secret, redirect_uri
+
+def get_twitter_credentials():
+    from dotenv import load_dotenv
+    env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if os.path.exists(env_file):
+        load_dotenv(env_file, override=True)
+    client_id = os.getenv("TWITTER_CLIENT_ID", "").strip()
+    client_secret = os.getenv("TWITTER_CLIENT_SECRET", "").strip()
+    redirect_uri = os.getenv("TWITTER_REDIRECT_URI", "http://localhost:8000/oauth/twitter/callback").strip()
+    return client_id, client_secret, redirect_uri
+
 FRONTEND_SETTINGS_URL = os.getenv("FRONTEND_URL", "http://localhost:3000") + "/settings?tab=connected"
 
 
@@ -116,14 +136,65 @@ def get_authorization_url(
         if not li_client_secret:
             raise HTTPException(status_code=400, detail="LINKEDIN_CLIENT_SECRET is not configured in backend/.env.")
         
+        # Scopes: configurable via .env (e.g. for Company Page: openid profile email w_organization_social r_organization_social)
+        from dotenv import load_dotenv
+        env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+        if os.path.exists(env_file):
+            load_dotenv(env_file, override=True)
+        default_scopes = "openid profile email w_organization_social r_organization_social"
+        raw_scopes = os.getenv("LINKEDIN_SCOPES", default_scopes).strip()
+        # LinkedIn requires space-separated scopes (RFC 6749)
+        scopes_str = " ".join([s.strip() for s in raw_scopes.replace(",", " ").split() if s.strip()])
+
         params = {
             "response_type": "code",
             "client_id": li_client_id,
             "redirect_uri": li_redirect,
             "state": state,
-            "scope": "openid profile email w_member_social"
+            "scope": scopes_str
         }
         auth_url = f"https://www.linkedin.com/oauth/v2/authorization?{urlencode(params)}"
+        return {"authorization_url": auth_url, "auth_url": auth_url, "state": state}
+
+    elif plat == "tiktok":
+        client_key, client_secret, redirect_uri = get_tiktok_credentials()
+        if not client_key:
+            raise HTTPException(status_code=400, detail="TIKTOK_CLIENT_KEY is not configured in backend/.env")
+        if not client_secret:
+            raise HTTPException(status_code=400, detail="TIKTOK_CLIENT_SECRET is not configured in backend/.env")
+
+        from dotenv import load_dotenv
+        env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+        if os.path.exists(env_file):
+            load_dotenv(env_file, override=True)
+        raw_tt_scopes = os.getenv("TIKTOK_SCOPES", "user.info.basic,video.upload").strip()
+        scopes = [s.strip() for s in raw_tt_scopes.split(",") if s.strip()]
+        params = {
+            "client_key": client_key,
+            "scope": ",".join(scopes),
+            "response_type": "code",
+            "redirect_uri": redirect_uri,
+            "state": state,
+        }
+        auth_url = f"https://www.tiktok.com/v2/auth/authorize/?{urlencode(params)}"
+        return {"authorization_url": auth_url, "auth_url": auth_url, "state": state}
+
+    elif plat in ("twitter", "x"):
+        tw_client_id, tw_client_secret, tw_redirect = get_twitter_credentials()
+        if not tw_client_id:
+            raise HTTPException(status_code=400, detail="TWITTER_CLIENT_ID is not configured in backend/.env. Please create a Twitter/X Developer App and add credentials.")
+
+        scopes = ["tweet.read", "tweet.write", "users.read", "offline.access"]
+        params = {
+            "response_type": "code",
+            "client_id": tw_client_id,
+            "redirect_uri": tw_redirect,
+            "scope": " ".join(scopes),
+            "state": state,
+            "code_challenge": "challenge",
+            "code_challenge_method": "plain"
+        }
+        auth_url = f"https://twitter.com/i/oauth2/authorize?{urlencode(params)}"
         return {"authorization_url": auth_url, "auth_url": auth_url, "state": state}
 
     else:
@@ -314,7 +385,9 @@ async def meta_oauth_callback(
 
 @router.get("/linkedin/callback")
 async def linkedin_oauth_callback(
-    code: str = Query(..., description="LinkedIn authorization code"),
+    code: Optional[str] = Query(None, description="LinkedIn authorization code"),
+    error: Optional[str] = Query(None),
+    error_description: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
@@ -322,6 +395,13 @@ async def linkedin_oauth_callback(
     Exchange LinkedIn authorization code for member access token.
     Retrieves member profile URN and persists encrypted credentials.
     """
+    if error:
+        logger.error(f"LinkedIn OAuth error from redirect: error={error}, desc={error_description}")
+        clean_msg = error_description or error
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=linkedin_oauth_{error}&error_desc={clean_msg}")
+
+    if not code:
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=missing_code")
     user_id = state.split(":")[0] if state and ":" in state else None
     if not user_id:
         return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=invalid_state")
@@ -352,15 +432,20 @@ async def linkedin_oauth_callback(
         expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
         refresh_token = token_info.get("refresh_token")
 
-        # Step 2: Fetch user profile identity (OpenID userinfo)
-        userinfo_url = "https://api.linkedin.com/v2/userinfo"
-        userinfo_res = await client.get(
-            userinfo_url,
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-        userinfo = userinfo_res.json()
+        # Step 2: Fetch user profile identity (OpenID userinfo, if scope includes openid)
+        userinfo = {}
+        try:
+            userinfo_url = "https://api.linkedin.com/v2/userinfo"
+            userinfo_res = await client.get(
+                userinfo_url,
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            if userinfo_res.status_code == 200:
+                userinfo = userinfo_res.json()
+        except Exception as ue:
+            logger.info(f"OpenID userinfo skipped or not authorized: {ue}")
         member_sub = userinfo.get("sub") or f"li_{uuid.uuid4().hex[:8]}"
-        member_name = userinfo.get("name") or "LinkedIn Member"
+        member_name = userinfo.get("name") or "LinkedIn Admin"
 
         # Upsert SocialAccount
         account = db.query(SocialAccount).filter(
@@ -390,9 +475,272 @@ async def linkedin_oauth_callback(
             "email": userinfo.get("email")
         }
 
+        # Step 3: Fetch Organization Pages (if user has organization admin access)
+        try:
+            org_res = await client.get(
+                "https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            org_json = org_res.json()
+            elements = org_json.get("elements", [])
+            for elem in elements:
+                target = elem.get("organizationalTarget", "")
+                if "organization:" in target:
+                    org_id = target.split(":")[-1]
+                    org_name = "TNT Innovations"
+                    try:
+                        detail_res = await client.get(
+                            f"https://api.linkedin.com/v2/organizations/{org_id}",
+                            headers={"Authorization": f"Bearer {access_token}"}
+                        )
+                        detail_json = detail_res.json()
+                        org_name = detail_json.get("localizedName") or org_name
+                    except Exception as de:
+                        logger.warning(f"Error fetching org details for {org_id}: {de}")
+
+                    org_account = db.query(SocialAccount).filter(
+                        SocialAccount.brand_id == brand.id,
+                        SocialAccount.platform == "linkedin",
+                        SocialAccount.account_id == org_id
+                    ).first()
+
+                    if not org_account:
+                        org_account = SocialAccount(
+                            brand_id=brand.id,
+                            user_id=user_id,
+                            platform="linkedin",
+                            account_id=org_id,
+                            account_name=org_name
+                        )
+                        db.add(org_account)
+
+                    org_account.access_token_encrypted = encrypt_token(access_token)
+                    if refresh_token:
+                        org_account.refresh_token_encrypted = encrypt_token(refresh_token)
+                    org_account.token_expires_at = expires_at
+                    org_account.is_active = True
+                    org_account.metadata_json = {
+                        "is_organization": True,
+                        "org_urn": f"urn:li:organization:{org_id}",
+                        "name": org_name,
+                        "picture": userinfo.get("picture")
+                    }
+
+                    # Prioritize Company Page over Personal profile
+                    if account and account.id != org_account.id:
+                        account.is_active = False
+        except Exception as e:
+            logger.warning(f"Error checking LinkedIn organization ACLs: {e}")
+
         db.commit()
 
     return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&connected=linkedin&status=success")
+
+
+@router.get("/tiktok/callback")
+async def tiktok_oauth_callback(
+    code: Optional[str] = Query(None, description="TikTok authorization code"),
+    error: Optional[str] = Query(None),
+    error_description: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Exchange TikTok authorization code for creator access token.
+    Retrieves user open_id and display name, encrypts tokens, and stores them in SocialAccount.
+    """
+    if error:
+        logger.error(f"TikTok OAuth error from redirect: error={error}, desc={error_description}")
+        clean_msg = error_description or error
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=tiktok_oauth_{error}&error_desc={clean_msg}")
+
+    if not code:
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=missing_code")
+
+    user_id = state.split(":")[0] if state and ":" in state else None
+    if not user_id:
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=invalid_state")
+
+    brand = db.query(Brand).filter(Brand.user_id == user_id).first()
+    if not brand:
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=brand_not_found")
+
+    client_key, client_secret, redirect_uri = get_tiktok_credentials()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Step 1: Exchange code for access token
+        token_url = "https://open.tiktokapis.com/v2/oauth/token/"
+        data = {
+            "client_key": client_key,
+            "client_secret": client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        res = await client.post(token_url, data=data, headers=headers)
+        token_info = res.json()
+        logger.info(f"TikTok token response: {token_info}")
+
+        token_data = token_info.get("data", token_info)
+        access_token = token_data.get("access_token")
+        if not access_token:
+            err_msg = token_info.get("error", {}).get("message") or token_info.get("error_description") or "TikTok token exchange failed"
+            logger.error(f"TikTok token error: {token_info}")
+            return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=tiktok_auth_failed&error_desc={err_msg}")
+
+        open_id = token_data.get("open_id") or f"tiktok_{uuid.uuid4().hex[:8]}"
+        expires_in = token_data.get("expires_in", 86400)
+        expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        refresh_token = token_data.get("refresh_token")
+
+        # Step 2: Fetch user profile (display name, avatar)
+        display_name = "TikTok Creator"
+        avatar_url = None
+        try:
+            user_url = "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name"
+            user_res = await client.get(user_url, headers={"Authorization": f"Bearer {access_token}"})
+            user_info_resp = user_res.json()
+            user_dict = user_info_resp.get("data", {}).get("user", {})
+            if user_dict.get("display_name"):
+                display_name = user_dict.get("display_name")
+            if user_dict.get("avatar_url"):
+                avatar_url = user_dict.get("avatar_url")
+        except Exception as e:
+            logger.warning(f"Could not fetch TikTok user info: {e}")
+
+        # Step 3: Persist or update SocialAccount
+        existing_tt = db.query(SocialAccount).filter(
+            SocialAccount.brand_id == brand.id,
+            SocialAccount.platform == "tiktok",
+            SocialAccount.account_id == open_id
+        ).first()
+
+        clean_name = f"@{display_name}" if not display_name.startswith("@") else display_name
+        if not existing_tt:
+            existing_tt = SocialAccount(
+                brand_id=brand.id,
+                user_id=user_id,
+                platform="tiktok",
+                account_id=open_id,
+                account_name=clean_name
+            )
+            db.add(existing_tt)
+
+        existing_tt.access_token_encrypted = encrypt_token(access_token)
+        existing_tt.token_expires_at = expires_at
+        existing_tt.is_active = True
+        existing_tt.account_name = clean_name
+        existing_tt.metadata_json = {
+            "open_id": open_id,
+            "display_name": display_name,
+            "avatar_url": avatar_url,
+            "refresh_token_encrypted": encrypt_token(refresh_token) if refresh_token else None
+        }
+
+        db.commit()
+
+    return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&connected=tiktok&status=success")
+
+
+@router.get("/twitter/callback")
+async def twitter_oauth_callback(
+    code: Optional[str] = Query(None, description="Twitter authorization code"),
+    error: Optional[str] = Query(None),
+    error_description: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Exchange Twitter/X OAuth 2.0 PKCE code for access token.
+    Retrieves user profile, encrypts token, and persists SocialAccount.
+    """
+    if error:
+        logger.error(f"Twitter OAuth error: error={error}, desc={error_description}")
+        clean_msg = error_description or error
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=twitter_oauth_{error}&error_desc={clean_msg}")
+
+    if not code:
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=missing_code")
+
+    user_id = state.split(":")[0] if state and ":" in state else None
+    if not user_id:
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=invalid_state")
+
+    brand = db.query(Brand).filter(Brand.user_id == user_id).first()
+    if not brand:
+        return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=brand_not_found")
+
+    client_id, client_secret, redirect_uri = get_twitter_credentials()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_url = "https://api.twitter.com/2/oauth2/token"
+        data = {
+            "code": code,
+            "grant_type": "authorization_code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "code_verifier": "challenge"
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        auth = (client_id, client_secret) if client_secret else None
+        res = await client.post(token_url, data=data, headers=headers, auth=auth)
+        token_info = res.json()
+        logger.info(f"Twitter token response: {token_info}")
+
+        access_token = token_info.get("access_token")
+        if not access_token:
+            err_msg = token_info.get("error_description") or token_info.get("error") or "Twitter token exchange failed"
+            return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&error=twitter_auth_failed&error_desc={err_msg}")
+
+        expires_in = token_info.get("expires_in", 7200)
+        expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        refresh_token = token_info.get("refresh_token")
+
+        # Step 2: Fetch user profile
+        username = "x_user"
+        account_id = f"tw_{uuid.uuid4().hex[:8]}"
+        try:
+            me_res = await client.get(
+                "https://api.twitter.com/2/users/me?user.fields=profile_image_url",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            me_data = me_res.json().get("data", {})
+            if me_data.get("id"):
+                account_id = me_data.get("id")
+            if me_data.get("username"):
+                username = me_data.get("username")
+        except Exception as e:
+            logger.warning(f"Could not fetch Twitter profile: {e}")
+
+        clean_name = f"@{username}" if not username.startswith("@") else username
+        existing_tw = db.query(SocialAccount).filter(
+            SocialAccount.brand_id == brand.id,
+            SocialAccount.platform.in_(["twitter", "x"]),
+            SocialAccount.account_id == account_id
+        ).first()
+
+        if not existing_tw:
+            existing_tw = SocialAccount(
+                brand_id=brand.id,
+                user_id=user_id,
+                platform="twitter",
+                account_id=account_id,
+                account_name=clean_name
+            )
+            db.add(existing_tw)
+
+        existing_tw.access_token_encrypted = encrypt_token(access_token)
+        existing_tw.token_expires_at = expires_at
+        existing_tw.is_active = True
+        existing_tw.account_name = clean_name
+        existing_tw.metadata_json = {
+            "account_id": account_id,
+            "username": username,
+            "refresh_token_encrypted": encrypt_token(refresh_token) if refresh_token else None
+        }
+
+        db.commit()
+
+    return RedirectResponse(f"{FRONTEND_SETTINGS_URL}&connected=twitter&status=success")
 
 
 # ═══════════════════════════════════════════════════════════

@@ -42,15 +42,15 @@ class BrandScraper:
             if not logo_url and color_extractor.logo_url:
                 logo_url = color_extractor.logo_url
         except Exception as e:
-            logger.warning(f"Layered color extractor failed: {e}; falling back to static regex.")
-            fallback_colors = self._extract_colors(html)
+            logger.warning(f"Layered color extractor failed: {e}; falling back to static CSS regex.")
+            fallback_colors = await self._fetch_and_extract_css_colors(soup, html)
             palette_data = {
-                "primary": {"hex": fallback_colors[0] if fallback_colors else "#2563EB", "confidence": 0.50, "source": "static_regex"},
-                "secondary": {"hex": fallback_colors[1] if len(fallback_colors) > 1 else "#64748B", "confidence": 0.50, "source": "static_regex"},
-                "accent": {"hex": fallback_colors[2] if len(fallback_colors) > 2 else "#38BDF8", "confidence": 0.50, "source": "default"},
+                "primary": {"hex": fallback_colors[0] if fallback_colors else "#F97316", "confidence": 0.65, "source": "static_css_regex"},
+                "secondary": {"hex": fallback_colors[1] if len(fallback_colors) > 1 else "#111827", "confidence": 0.60, "source": "static_css_regex"},
+                "accent": {"hex": fallback_colors[2] if len(fallback_colors) > 2 else "#1F2937", "confidence": 0.55, "source": "static_css_regex"},
                 "neutrals": [],
-                "colors": fallback_colors or ["#2563EB", "#64748B"],
-                "extraction_method": "static_regex_fallback"
+                "colors": fallback_colors or ["#F97316", "#111827", "#1F2937", "#FFFFFF", "#6B7280"],
+                "extraction_method": "static_css_fallback"
             }
 
         colors = palette_data.get("colors") or ["#2563EB", "#64748B"]
@@ -163,6 +163,25 @@ class BrandScraper:
             "contact_info": contact_info,
             "social_links": social_links
         }
+
+    async def _fetch_and_extract_css_colors(self, soup: BeautifulSoup, html: str) -> List[str]:
+        """Fetch linked CSS stylesheets and extract hex colors, falling back to html."""
+        css_text = html or ""
+        try:
+            links = soup.find_all("link", rel=lambda r: r and "stylesheet" in r)
+            css_urls = [urljoin(self.url, l.get("href")) for l in links if l.get("href")][:3]
+            if css_urls:
+                async with httpx.AsyncClient(timeout=6.0, follow_redirects=True, headers=self.headers) as client:
+                    for u in css_urls:
+                        try:
+                            res = await client.get(u)
+                            if res.status_code == 200:
+                                css_text += "\n" + res.text
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        return self._extract_colors(css_text)
 
     def _extract_colors(self, html: str) -> List[str]:
         """Extract hex colors from HTML/CSS."""

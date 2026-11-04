@@ -323,18 +323,18 @@ Post Details:
 - Special context: {special_message}
 
 Rules for the prompt:
-1. NO text or words in the image (text will be added separately)
-2. Match the brand colors: {primary_color}
+1. NO text, typography, or words in the image (text will be added separately by graphic overlay)
+2. Brand colors & dynamic contrast: Harmoniously incorporate brand colors ({primary_color}) as luminous lighting accents, subtle ambient glows, or key focal elements, while maintaining high contrast with deep rich shadows or clean modern tech environments (e.g. sleek futuristic glass, modern architectural tech, isometric 3D concepts, cinematic studio lighting). Do NOT make the image flat or monochromatic.
 3. Match brand tone:
-   Fun → bright, colorful, energetic
-   Professional → clean, minimal, corporate
-   Inspiring → dramatic lighting, powerful
-   Friendly → warm, soft, approachable
-4. Platform specific:
-   Instagram → visually stunning, lifestyle feel
-   LinkedIn → professional setting, office/business context
-   Facebook → relatable, everyday feel
-   Story → full frame, immersive
+   Fun → vibrant, colorful, dynamic energy
+   Professional → sleek, high-tech, minimal, authoritative
+   Inspiring → dramatic cinematic lighting, deep shadows, bold focal points
+   Friendly → warm, accessible, natural depth
+4. Platform specific framing:
+   Instagram → bold, visually captivating, high-contrast aesthetic
+   LinkedIn → sophisticated industry innovation, cutting-edge technology, modern leadership
+   Facebook → engaging, relatable, premium clarity
+   Story → immersive full-frame vertical atmosphere (9:16)
 
 Return JSON strictly matching this structure:
 {{

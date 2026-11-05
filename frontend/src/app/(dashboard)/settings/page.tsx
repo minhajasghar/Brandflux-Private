@@ -1,6 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import AutopilotTab from '@/components/autopilot/AutopilotTab'
+import ConnectedAccountsTab from '@/components/settings/ConnectedAccountsTab'
+
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { 
@@ -49,7 +53,12 @@ import {
   approveAllPendingPosts,
   approveSinglePost,
   rejectSinglePost,
-  updateUserProfile
+  updateUserProfile,
+  getUserCredits,
+  getBillingStatus,
+  purchaseCreditPack,
+  requestEmailChange,
+  confirmEmailChange
 } from '@/lib/api'
 
 type TabType = 'brand-kit' | 'autopilot' | 'connected' | 'account' | 'billing'
@@ -66,12 +75,16 @@ const isDarkHex = (color: string): boolean => {
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<TabType>('brand-kit')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [rescanning, setRescanning] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState<'primary' | 'alt' | null>(null)
   const [updatingProfile, setUpdatingProfile] = useState(false)
+  const [billingCredits, setBillingCredits] = useState<any>(null)
+  const [billingStatus, setBillingStatus] = useState<any>(null)
+  const [buyingPack, setBuyingPack] = useState(false)
 
   // Account State
   const [userProfile, setUserProfile] = useState({
@@ -80,6 +93,11 @@ export default function SettingsPage() {
     full_name: '',
     plan: 'Starter'
   })
+  const [newEmailInput, setNewEmailInput] = useState('')
+  const [emailChangePassword, setEmailChangePassword] = useState('')
+  const [requestingEmailChange, setRequestingEmailChange] = useState(false)
+  const [emailChangeRequestedMsg, setEmailChangeRequestedMsg] = useState('')
+
   const [passwords, setPasswords] = useState({
     currentPassword: '',
     newPassword: '',
@@ -320,7 +338,25 @@ export default function SettingsPage() {
         setActiveTab('connected')
       } else if (tabParam === 'autopilot') {
         setActiveTab('autopilot')
+      } else if (tabParam === 'billing') {
+        setActiveTab('billing')
+      } else if (tabParam === 'account') {
+        setActiveTab('account')
       }
+
+      const emailTokenParam = urlParams.get('verify_email_token')
+      if (emailTokenParam) {
+        confirmEmailChange(emailTokenParam).then((res) => {
+          toast.success(res.message || 'Email updated successfully!')
+          if (res.user) {
+            setUserProfile(prev => ({ ...prev, email: res.user.email }))
+          }
+          window.history.replaceState({}, '', '/settings?tab=account')
+        }).catch((err) => {
+          toast.error(err.response?.data?.detail || 'Failed to verify email change.')
+        })
+      }
+
       const connectedParam = urlParams.get('connected')
       if (connectedParam) {
         toast.success(`Successfully connected ${connectedParam}!`)
@@ -336,20 +372,30 @@ export default function SettingsPage() {
     async function loadData() {
       try {
         setLoading(true)
-        const [profileData, kitData] = await Promise.all([
+        const [profileData, kitData, credData, statusData] = await Promise.all([
           getProfile().catch(() => null),
           getBrandKit().catch(() => null),
+          getUserCredits().catch(() => null),
+          getBillingStatus().catch(() => null),
           fetchSocialAccounts().catch(() => null),
           fetchAutopilotData().catch(() => null)
         ])
 
         if (profileData) {
+          const u = profileData.user || profileData
           setUserProfile({
-            id: profileData.id || '',
-            email: profileData.email || '',
-            full_name: profileData.full_name || '',
-            plan: profileData.plan ? profileData.plan.toUpperCase() : 'STARTER'
+            id: u.id || '',
+            email: u.email || '',
+            full_name: u.full_name || '',
+            plan: u.plan ? u.plan.toUpperCase() : 'STARTER'
           })
+        }
+
+        if (credData && typeof credData.balance === 'number') {
+          setBillingCredits(credData)
+        }
+        if (statusData) {
+          setBillingStatus(statusData)
         }
 
         if (kitData) {
@@ -385,31 +431,77 @@ export default function SettingsPage() {
     loadData()
   }, [])
 
-  const handleUpdateProfile = async () => {
-    if (!userProfile.email) {
-      toast.error('Email address is required')
+  const handleUpdateName = async () => {
+    if (!userProfile.full_name?.trim()) {
+      toast.error('Please enter your full name')
       return
     }
     try {
       setUpdatingProfile(true)
-      const res = await updateUserProfile({
-        full_name: userProfile.full_name,
-        email: userProfile.email
-      })
-      toast.success(res?.message || 'Profile updated successfully')
+      const res = await updateUserProfile({ full_name: userProfile.full_name.trim() })
+      toast.success(res?.message || 'Name saved successfully!')
       if (res?.user) {
         setUserProfile(prev => ({
           ...prev,
-          full_name: res.user.full_name,
-          email: res.user.email
+          full_name: res.user.full_name
         }))
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to update profile')
+      toast.error(err.response?.data?.detail || 'Failed to save name')
     } finally {
       setUpdatingProfile(false)
     }
   }
+
+  const handleRequestEmailChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newEmailInput.trim()) {
+      toast.error('Please enter a new email address')
+      return
+    }
+    if (!emailChangePassword) {
+      toast.error('Current password is required to change email')
+      return
+    }
+    try {
+      setRequestingEmailChange(true)
+      const res = await requestEmailChange({
+        new_email: newEmailInput.trim(),
+        current_password: emailChangePassword
+      })
+      toast.success('Verification link sent!')
+      setEmailChangeRequestedMsg(res.message || `Verification link sent to ${newEmailInput}`)
+      setNewEmailInput('')
+      setEmailChangePassword('')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to request email change')
+    } finally {
+      setRequestingEmailChange(false)
+    }
+  }
+
+  const handlePurchasePack = async (amount: number = 20, packName: string = 'Standard Pack (20 credits)') => {
+    try {
+      setBuyingPack(true)
+      const res = await purchaseCreditPack(amount, packName)
+      toast.success(res.message || `Added ${amount} post credits!`)
+      const [credData, statusData] = await Promise.all([
+        getUserCredits().catch(() => null),
+        getBillingStatus().catch(() => null)
+      ])
+      if (credData) setBillingCredits(credData)
+      if (statusData) setBillingStatus(statusData)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('brandflux:credits_updated'))
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to add post credits')
+    } finally {
+      setBuyingPack(false)
+    }
+  }
+
+  const handleUpdateProfile = handleUpdateName
 
   const handleConnectOAuth = async (platform: string) => {
     try {
@@ -1117,333 +1209,8 @@ export default function SettingsPage() {
           {/* ═════════════════════════════════════════════════════════════ */}
           {/* TAB: AUTOPILOT AGENT                                         */}
           {/* ═════════════════════════════════════════════════════════════ */}
-          {activeTab === 'autopilot' && (
-            <motion.div
-              key="autopilot"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.15 }}
-              className="space-y-6"
-            >
-              {/* Top Hero & Control Card */}
-              <div className="p-6 rounded-2xl bg-surface border border-border shadow-glow space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
-                  <div className="flex items-center gap-3.5">
-                    <div className="h-12 w-12 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center text-primary-light shadow-glow">
-                      <Bot className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-bold text-text">Brandflux Autopilot Agent</h2>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                          autopilotConfig.kill_switch
-                            ? 'bg-danger/15 text-danger border border-danger/40 animate-pulse'
-                            : (autopilotConfig.mode === 'autopilot' 
-                                ? 'bg-accent/15 text-accent border border-accent/40' 
-                                : 'bg-primary/15 text-primary-light border border-primary/40')
-                        }`}>
-                          {autopilotConfig.kill_switch ? 'KILL SWITCH ACTIVE' : `${autopilotConfig.mode.toUpperCase()} MODE`}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted mt-0.5">
-                        Autonomous weekly cycle: Metrics Analysis → 7-Day Plan → Copy &amp; Playwright Graphics → Self-Critique → Scheduled.
-                      </p>
-                    </div>
-                  </div>
+          {activeTab === 'autopilot' && <AutopilotTab />}
 
-                  {/* Actions: Run Now & Kill Switch */}
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={handleToggleKillSwitch}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                        autopilotConfig.kill_switch
-                          ? 'bg-danger text-white border border-danger shadow-lg shadow-danger/25 animate-pulse'
-                          : 'bg-surface-secondary border border-border text-muted hover:border-danger hover:text-danger'
-                      }`}
-                    >
-                      <Power className="h-3.5 w-3.5" />
-                      <span>{autopilotConfig.kill_switch ? 'Kill Switch Engaged' : 'Emergency Kill Switch'}</span>
-                    </button>
-
-                    <button
-                      onClick={handleTriggerAutopilot}
-                      disabled={runningAutopilot || autopilotConfig.kill_switch}
-                      className="px-4 py-2 bg-accent hover:bg-accent-hover text-black font-extrabold text-xs rounded-xl transition duration-200 shadow-accent-glow flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {runningAutopilot ? (
-                        <>
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin text-black" />
-                          <span>Executing Agent...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Play className="h-3.5 w-3.5 fill-black text-black" />
-                          <span>Run Autopilot Now</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Mode Selector Cards */}
-                <div className="grid md:grid-cols-2 gap-4">
-                  {/* Approval Mode */}
-                  <div 
-                    onClick={() => handleUpdateMode('approval')}
-                    className={`p-4 rounded-xl border cursor-pointer transition ${
-                      autopilotConfig.mode === 'approval'
-                        ? 'bg-primary/10 border-primary ring-1 ring-primary/40'
-                        : 'bg-surface-secondary border-border hover:border-border-hover'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">🛡️</span>
-                        <h4 className="text-sm font-bold text-text">Approval Mode (Recommended)</h4>
-                      </div>
-                      <span className={`h-4 w-4 rounded-full border flex items-center justify-center ${
-                        autopilotConfig.mode === 'approval' ? 'border-primary bg-primary text-white' : 'border-muted'
-                      }`}>
-                        {autopilotConfig.mode === 'approval' && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted leading-relaxed">
-                      Agent plans, writes, and renders graphics, runs self-critique, and places posts in <strong className="text-accent">Pending Approval</strong>. You review and approve in 1 click.
-                    </p>
-                  </div>
-
-                  {/* Hands-Free Autopilot */}
-                  <div 
-                    onClick={() => handleUpdateMode('autopilot')}
-                    className={`p-4 rounded-xl border cursor-pointer transition ${
-                      autopilotConfig.mode === 'autopilot'
-                        ? 'bg-accent/10 border-accent ring-1 ring-accent/40'
-                        : 'bg-surface-secondary border-border hover:border-border-hover'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">⚡</span>
-                        <h4 className="text-sm font-bold text-text">Autopilot Mode (Hands-Free)</h4>
-                      </div>
-                      <span className={`h-4 w-4 rounded-full border flex items-center justify-center ${
-                        autopilotConfig.mode === 'autopilot' ? 'border-accent bg-accent text-black' : 'border-muted'
-                      }`}>
-                        {autopilotConfig.mode === 'autopilot' && <Check className="h-2.5 w-2.5 stroke-[3] text-black" />}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted leading-relaxed">
-                      Fully autonomous. After passing quality critique thresholds, posts are immediately scheduled to the live calendar and published automatically via Celery.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Guardrails Configuration */}
-                <div className="space-y-4 pt-2">
-                  <h3 className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-2">
-                    <Sliders className="h-3.5 w-3.5 text-primary-light" />
-                    Agent Guardrails &amp; Constraints
-                  </h3>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {/* Max posts per day */}
-                    <div className="p-4 rounded-xl bg-surface-secondary border border-border space-y-2">
-                      <label className="text-xs font-bold text-text">Max Posts Per Day</label>
-                      <p className="text-[11px] text-muted">Prevents over-saturation and protects social account health.</p>
-                      <div className="flex items-center gap-2 pt-1">
-                        {[1, 2, 3, 4].map(num => (
-                          <button
-                            key={num}
-                            onClick={() => handleUpdateDailyCap(num)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                              autopilotConfig.max_posts_per_day === num
-                                ? 'bg-primary text-white shadow-glow'
-                                : 'bg-surface border border-border text-muted hover:text-text'
-                            }`}
-                          >
-                            {num} / day
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Factual claim guardrail alert */}
-                    <div className="p-4 rounded-xl bg-surface-secondary border border-border space-y-2">
-                      <label className="text-xs font-bold text-text flex items-center gap-1.5">
-                        <ShieldAlert className="h-3.5 w-3.5 text-accent" />
-                        <span>Factual Claims &amp; Price Guardrail</span>
-                      </label>
-                      <p className="text-[11px] text-muted leading-relaxed">
-                        Strict policy: Agent will <strong className="text-text">never invent prices, dollar figures, or discounts</strong> not explicitly stated in verified daily check-ins. Posts with unverified claims are rejected.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Banned topics list */}
-                  <div className="p-4 rounded-xl bg-surface-secondary border border-border space-y-2">
-                    <label className="text-xs font-bold text-text">Banned Topics &amp; Prohibited Keywords</label>
-                    <p className="text-[11px] text-muted">Agent automatically rejects and regenerates any post referencing these subjects.</p>
-                    <div className="p-2 rounded-xl bg-surface border border-border flex flex-wrap items-center gap-2">
-                      {autopilotConfig.banned_topics.map((topic, i) => (
-                        <span 
-                          key={i} 
-                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-danger/10 border border-danger/30 text-xs font-bold text-danger"
-                        >
-                          <span>{topic}</span>
-                          <button 
-                            onClick={() => handleRemoveBannedTopic(topic)}
-                            className="hover:text-white transition"
-                          >
-                            &times;
-                          </button>
-                        </span>
-                      ))}
-                      <input
-                        type="text"
-                        value={newBannedTopic}
-                        onChange={(e) => setNewBannedTopic(e.target.value)}
-                        onKeyDown={handleAddBannedTopic}
-                        placeholder="Type topic and press Enter..."
-                        className="bg-transparent text-xs text-text placeholder-muted focus:outline-none px-2 py-1 min-w-[200px]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Pending Approval Queue */}
-              {pendingPosts.length > 0 && (
-                <div className="p-6 rounded-2xl bg-surface border border-accent/40 shadow-accent-glow/10 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
-                    <div>
-                      <h3 className="text-base font-bold text-text flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
-                        Pending Approval Queue ({pendingPosts.length} Posts)
-                      </h3>
-                      <p className="text-xs text-muted mt-0.5">
-                        These posts have passed self-critique and are waiting for your approval before publishing.
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleApproveAll}
-                      className="px-4 py-2 bg-accent hover:bg-accent-hover text-black font-extrabold text-xs rounded-xl transition shadow-accent-glow self-start sm:self-auto"
-                    >
-                      Approve All ({pendingPosts.length} Posts)
-                    </button>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {pendingPosts.map(post => (
-                      <div key={post.id} className="p-4 rounded-xl bg-surface-secondary border border-border flex flex-col justify-between space-y-3">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary-light font-bold text-[10px] uppercase">
-                              {post.platform}
-                            </span>
-                            <span className="text-muted font-mono text-[11px]">
-                              {new Date(post.scheduled_at).toLocaleDateString()} · {new Date(post.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                          <p className="text-xs text-text font-medium line-clamp-3 leading-relaxed">
-                            {post.caption}
-                          </p>
-                          {post.media_url && (
-                            <div className="mt-2 h-28 rounded-lg overflow-hidden border border-border bg-black/40 relative">
-                              <img src={post.media_url} alt="Post creative" className="w-full h-full object-contain" />
-                            </div>
-                          )}
-                          {post.critique_score && (
-                            <div className="flex items-center gap-1.5 text-[11px] text-accent font-bold pt-1">
-                              <span>★ Quality Score:</span>
-                              <span>{post.critique_score} / 10</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-                          <button
-                            onClick={() => handleRejectSingle(post.id)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-muted hover:text-danger hover:bg-danger/10 transition"
-                          >
-                            Reject
-                          </button>
-                          <button
-                            onClick={() => handleApproveSingle(post.id)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary hover:bg-primary-hover text-white transition shadow-glow flex items-center gap-1"
-                          >
-                            <Check className="h-3 w-3 stroke-[3]" />
-                            <span>Approve</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Decision Audit Trail */}
-              <div className="p-6 rounded-2xl bg-surface border border-border space-y-4">
-                <div className="flex items-center justify-between border-b border-border pb-4">
-                  <div>
-                    <h3 className="text-base font-bold text-text flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-primary-light" />
-                      Decision Audit Trail (Autopilot Logs)
-                    </h3>
-                    <p className="text-xs text-muted mt-0.5">
-                      Full transparency into every autonomous decision, self-critique score, and guardrail check.
-                    </p>
-                  </div>
-                  <button
-                    onClick={fetchAutopilotData}
-                    disabled={loadingAutopilotData}
-                    className="p-1.5 rounded-lg bg-surface-secondary border border-border hover:border-primary text-muted hover:text-text transition"
-                    title="Refresh logs"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${loadingAutopilotData ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-
-                <div className="space-y-2.5 max-h-96 overflow-y-auto scrollbar-thin pr-1">
-                  {decisionLogs.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-muted">
-                      No decision logs recorded yet. Run Autopilot above to generate your first audit trail.
-                    </div>
-                  ) : (
-                    decisionLogs.map((log: any) => (
-                      <div 
-                        key={log.id} 
-                        className="p-3 rounded-xl bg-surface-secondary border border-border flex items-start justify-between gap-3 text-xs"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
-                              log.status === 'SUCCESS' ? 'bg-success/15 text-success' :
-                              log.status === 'BLOCKED' ? 'bg-danger/15 text-danger' :
-                              log.status === 'WARNING' ? 'bg-amber-500/15 text-amber-300' :
-                              'bg-primary/15 text-primary-light'
-                            }`}>
-                              {log.stage}
-                            </span>
-                            <span className="text-[10px] text-muted font-mono">{log.run_id}</span>
-                          </div>
-                          <p className="text-text font-medium leading-relaxed">
-                            {log.decision_summary}
-                          </p>
-                        </div>
-                        <span className="text-[10px] text-muted whitespace-nowrap font-mono">
-                          {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ═════════════════════════════════════════════════════════════ */}
-          {/* TAB 2: ACCOUNT                                               */}
           {/* ═════════════════════════════════════════════════════════════ */}
           {activeTab === 'account' && (
             <motion.div
@@ -1454,7 +1221,7 @@ export default function SettingsPage() {
               transition={{ duration: 0.15 }}
               className="space-y-6"
             >
-              {/* Profile Card */}
+              {/* Profile Card Header */}
               <div className="p-6 rounded-2xl bg-surface border border-border space-y-5">
                 <div className="flex items-center gap-4 pb-4 border-b border-border">
                   <div className="h-14 w-14 rounded-2xl bg-primary flex items-center justify-center text-white text-xl font-extrabold shadow-glow">
@@ -1469,38 +1236,104 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted uppercase">Full Name</label>
+                {/* Name Edit Form (Saves immediately) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-text">Full Name</h4>
+                      <p className="text-xs text-muted">Your public display name within Brandflux.</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <input
                       type="text"
                       value={userProfile.full_name}
                       onChange={(e) => setUserProfile(prev => ({ ...prev, full_name: e.target.value }))}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-surface-secondary border border-border text-sm font-semibold text-text focus:outline-none focus:border-primary"
+                      placeholder="Your full name"
+                      className="flex-1 px-3.5 py-2.5 rounded-xl bg-surface-secondary border border-border text-sm font-semibold text-text focus:outline-none focus:border-primary"
                     />
+                    <button
+                      type="button"
+                      onClick={handleUpdateName}
+                      disabled={updatingProfile}
+                      className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-white shadow-glow rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      <span>{updatingProfile ? 'Saving...' : 'Save Name'}</span>
+                    </button>
                   </div>
+                </div>
+              </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted uppercase">Email Address (Login)</label>
-                    <input
-                      type="email"
-                      value={userProfile.email}
-                      onChange={(e) => setUserProfile(prev => ({ ...prev, email: e.target.value }))}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-surface-secondary border border-border text-sm font-semibold text-text focus:outline-none focus:border-primary"
-                    />
+              {/* Email Change Card (Password protected + verification link) */}
+              <div className="p-6 rounded-2xl bg-surface border border-border space-y-5">
+                <div className="border-b border-border pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-bold text-text">Account Login Email</h3>
+                      <p className="text-xs text-muted mt-0.5">
+                        Current email: <strong className="text-text">{userProfile.email}</strong>
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-success/15 border border-success/30 text-[10px] font-bold text-success flex items-center gap-1">
+                      <Check className="h-3 w-3" /> Active &amp; Verified
+                    </span>
                   </div>
                 </div>
 
-                <div className="pt-2 flex justify-end">
-                  <button
-                    onClick={handleUpdateProfile}
-                    disabled={updatingProfile}
-                    className="px-4 py-2 bg-primary hover:bg-primary/90 text-white shadow-glow rounded-xl text-xs font-bold transition flex items-center gap-2 disabled:opacity-50"
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                    <span>{updatingProfile ? 'Saving...' : 'Save Profile Changes'}</span>
-                  </button>
-                </div>
+                {emailChangeRequestedMsg && (
+                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/30 text-text space-y-1">
+                    <div className="flex items-center gap-2 text-xs font-bold text-primary-light">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Verification Sent
+                    </div>
+                    <p className="text-xs text-muted">{emailChangeRequestedMsg}</p>
+                    <p className="text-[11px] text-muted">In dev mode, check the Emails outbox in Admin portal to preview the verification email.</p>
+                  </div>
+                )}
+
+                <form onSubmit={handleRequestEmailChange} className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-muted uppercase">New Email Address</label>
+                      <input
+                        type="email"
+                        value={newEmailInput}
+                        onChange={(e) => setNewEmailInput(e.target.value)}
+                        placeholder="new.email@example.com"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface-secondary border border-border text-sm font-semibold text-text focus:outline-none focus:border-primary"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-muted uppercase">Current Password (Required)</label>
+                      <input
+                        type="password"
+                        value={emailChangePassword}
+                        onChange={(e) => setEmailChangePassword(e.target.value)}
+                        placeholder="Enter current password"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface-secondary border border-border text-sm font-semibold text-text focus:outline-none focus:border-primary"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted">
+                    For security, your email will not change immediately. We send a verification link to the new address and notify your existing address.
+                  </p>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={requestingEmailChange || !newEmailInput || !emailChangePassword}
+                      className="px-5 py-2.5 bg-surface-secondary border border-border hover:border-primary text-text text-xs font-bold rounded-xl transition flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${requestingEmailChange ? 'animate-spin' : ''}`} />
+                      <span>{requestingEmailChange ? 'Sending...' : 'Request Email Change'}</span>
+                    </button>
+                  </div>
+                </form>
               </div>
 
               {/* Password Change Card */}
@@ -1568,383 +1401,8 @@ export default function SettingsPage() {
           {/* ═════════════════════════════════════════════════════════════ */}
           {/* TAB 3: CONNECTED ACCOUNTS                                    */}
           {/* ═════════════════════════════════════════════════════════════ */}
-          {activeTab === 'connected' && (
-            <motion.div
-              key="connected"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.15 }}
-              className="space-y-6"
-            >
-              {/* Header Box */}
-              <div className="p-6 rounded-2xl bg-surface border border-border space-y-4">
-                <div className="border-b border-border pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <h3 className="text-base font-bold text-text flex items-center gap-2">
-                      <Share2 className="h-4 w-4 text-primary-light" />
-                      Social Publishing &amp; OAuth Integrations
-                    </h3>
-                    <p className="text-xs text-muted mt-0.5">
-                      Connect your social accounts. Tokens are encrypted using Fernet (AES-128-CBC) and refreshed automatically.
-                    </p>
-                  </div>
-                  <button
-                    onClick={fetchSocialAccounts}
-                    disabled={loadingAccounts}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-secondary border border-border hover:border-primary text-xs font-bold text-text transition disabled:opacity-50 self-start sm:self-auto"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 text-primary-light ${loadingAccounts ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
-                  </button>
-                </div>
+          {activeTab === 'connected' && <ConnectedAccountsTab />}
 
-                {/* Available Channels */}
-                <div className="grid md:grid-cols-2 gap-4 pt-2">
-                  {/* Meta (Instagram & Facebook) */}
-                  {(() => {
-                    const metaAccounts = socialAccounts.filter(a => a.platform === 'instagram' || a.platform === 'facebook')
-                    const isConnected = metaAccounts.length > 0
-                    const hasExpiring = metaAccounts.some(a => a.needs_reconnect || (a.days_until_expiry !== undefined && a.days_until_expiry <= 7))
-
-                    return (
-                      <div className="p-5 rounded-2xl bg-surface-secondary border border-border flex flex-col justify-between space-y-4">
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl">📸</span>
-                              <div>
-                                <h4 className="text-sm font-bold text-text">Instagram &amp; Facebook</h4>
-                                <p className="text-[11px] text-muted">Meta Graph API v19.0 (Direct Carousel &amp; Feed)</p>
-                              </div>
-                            </div>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                              isConnected 
-                                ? 'bg-success/15 border border-success/40 text-success' 
-                                : 'bg-surface border border-border text-muted'
-                            }`}>
-                              {isConnected ? 'Connected' : 'Disconnected'}
-                            </span>
-                          </div>
-
-                          {isConnected ? (
-                            <div className="space-y-2 pt-1">
-                              {metaAccounts.map(acc => (
-                                <div key={acc.id} className="p-2.5 rounded-xl bg-surface border border-border/80 flex items-center justify-between">
-                                  <div className="min-w-0 pr-2">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs">{acc.platform === 'instagram' ? '📷' : '📘'}</span>
-                                      <p className="text-xs font-bold text-text truncate">
-                                        {acc.account_name || acc.page_name || acc.platform}
-                                      </p>
-                                    </div>
-                                    <p className="text-[10px] text-muted truncate mt-0.5">
-                                      {acc.days_until_expiry !== undefined ? `Expires in ${acc.days_until_expiry}d` : 'Long-lived Token (60d)'}
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() => handleDisconnectAccount(acc.id, acc.account_name || acc.platform)}
-                                    className="text-[11px] font-bold text-muted hover:text-danger px-2 py-1 rounded transition"
-                                  >
-                                    Disconnect
-                                  </button>
-                                </div>
-                              ))}
-
-                              {hasExpiring && (
-                                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-[11px] text-amber-300">
-                                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-                                  <span>Token expiring soon (&lt; 7 days). Reconnection recommended.</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted">
-                              Publish scheduled carousels, feed photos, and stories straight to your connected Instagram Business or Facebook Page.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="pt-2 border-t border-border/60">
-                          <button
-                            onClick={() => handleConnectOAuth('meta')}
-                            disabled={connectingPlatform === 'meta'}
-                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-                              isConnected
-                                ? 'bg-surface border border-primary text-text hover:bg-primary hover:text-white'
-                                : 'bg-primary hover:bg-primary/90 text-white shadow-glow'
-                            }`}
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            <span>{connectingPlatform === 'meta' ? 'Connecting...' : (isConnected ? 'Reconnect Meta Account' : 'Connect Meta (Instagram / FB)')}</span>
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* LinkedIn */}
-                  {(() => {
-                    const liAccounts = socialAccounts.filter(a => a.platform === 'linkedin')
-                    const isConnected = liAccounts.length > 0
-                    const hasExpiring = liAccounts.some(a => a.needs_reconnect || (a.days_until_expiry !== undefined && a.days_until_expiry <= 7))
-
-                    return (
-                      <div className="p-5 rounded-2xl bg-surface-secondary border border-border flex flex-col justify-between space-y-4">
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl">💼</span>
-                              <div>
-                                <h4 className="text-sm font-bold text-text">LinkedIn</h4>
-                                <p className="text-[11px] text-muted">LinkedIn REST Posts API (Profiles &amp; Pages)</p>
-                              </div>
-                            </div>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                              isConnected 
-                                ? 'bg-success/15 border border-success/40 text-success' 
-                                : 'bg-surface border border-border text-muted'
-                            }`}>
-                              {isConnected ? 'Connected' : 'Disconnected'}
-                            </span>
-                          </div>
-
-                          {isConnected ? (
-                            <div className="space-y-2 pt-1">
-                              {liAccounts.map(acc => (
-                                <div key={acc.id} className="p-2.5 rounded-xl bg-surface border border-border/80 flex items-center justify-between">
-                                  <div className="min-w-0 pr-2">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs">💼</span>
-                                      <p className="text-xs font-bold text-text truncate">
-                                        {acc.account_name || 'LinkedIn Member'}
-                                      </p>
-                                    </div>
-                                    <p className="text-[10px] text-muted truncate mt-0.5">
-                                      {acc.days_until_expiry !== undefined ? `Expires in ${acc.days_until_expiry}d` : 'Active OAuth Token'}
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() => handleDisconnectAccount(acc.id, acc.account_name || 'LinkedIn')}
-                                    className="text-[11px] font-bold text-muted hover:text-danger px-2 py-1 rounded transition"
-                                  >
-                                    Disconnect
-                                  </button>
-                                </div>
-                              ))}
-
-                              {hasExpiring && (
-                                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-[11px] text-amber-300">
-                                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-                                  <span>Token expiring soon. Reconnect to avoid publishing pauses.</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted">
-                              Publish thought leadership articles, multi-image updates, and text posts directly to your personal or organization profile.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="pt-2 border-t border-border/60">
-                          <button
-                            onClick={() => handleConnectOAuth('linkedin')}
-                            disabled={connectingPlatform === 'linkedin'}
-                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-                              isConnected
-                                ? 'bg-surface border border-primary text-text hover:bg-primary hover:text-white'
-                                : 'bg-primary hover:bg-primary/90 text-white shadow-glow'
-                            }`}
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            <span>{connectingPlatform === 'linkedin' ? 'Connecting...' : (isConnected ? 'Reconnect LinkedIn' : 'Connect LinkedIn')}</span>
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* TikTok */}
-                  {(() => {
-                    const ttAccounts = socialAccounts.filter(a => a.platform === 'tiktok')
-                    const isConnected = ttAccounts.length > 0
-                    const hasExpiring = ttAccounts.some(a => a.needs_reconnect || (a.days_until_expiry !== undefined && a.days_until_expiry <= 7))
-
-                    return (
-                      <div className="p-5 rounded-2xl bg-surface-secondary border border-border flex flex-col justify-between space-y-4">
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl">🎵</span>
-                              <div>
-                                <h4 className="text-sm font-bold text-text">TikTok</h4>
-                                <p className="text-[11px] text-muted">TikTok Content Posting API (Direct Video &amp; Photos)</p>
-                              </div>
-                            </div>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                              isConnected 
-                                ? 'bg-success/15 border border-success/40 text-success' 
-                                : 'bg-surface border border-border text-muted'
-                            }`}>
-                              {isConnected ? 'Connected' : 'Disconnected'}
-                            </span>
-                          </div>
-
-                          {isConnected ? (
-                            <div className="space-y-2 pt-1">
-                              {ttAccounts.map(acc => (
-                                <div key={acc.id} className="p-2.5 rounded-xl bg-surface border border-border/80 flex items-center justify-between">
-                                  <div className="min-w-0 pr-2">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs">🎵</span>
-                                      <p className="text-xs font-bold text-text truncate">
-                                        {acc.account_name || '@tiktok_user'}
-                                      </p>
-                                    </div>
-                                    <p className="text-[10px] text-muted truncate mt-0.5">
-                                      {acc.days_until_expiry !== undefined ? `Expires in ${acc.days_until_expiry}d` : 'Active OAuth Token'}
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() => handleDisconnectAccount(acc.id, acc.account_name || 'TikTok')}
-                                    className="text-[11px] font-bold text-muted hover:text-danger px-2 py-1 rounded transition"
-                                  >
-                                    Disconnect
-                                  </button>
-                                </div>
-                              ))}
-
-                              {hasExpiring && (
-                                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-[11px] text-amber-300">
-                                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-                                  <span>Token expiring soon. Reconnect to keep publishing active.</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted">
-                              Publish branded photo carousels and short-form videos directly to your authorized TikTok creator profile.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="pt-2 border-t border-border/60">
-                          <button
-                            onClick={() => handleConnectOAuth('tiktok')}
-                            disabled={connectingPlatform === 'tiktok'}
-                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-                              isConnected
-                                ? 'bg-surface border border-primary text-text hover:bg-primary hover:text-white'
-                                : 'bg-primary hover:bg-primary/90 text-white shadow-glow'
-                            }`}
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            <span>{connectingPlatform === 'tiktok' ? 'Connecting...' : (isConnected ? 'Reconnect TikTok' : 'Connect TikTok')}</span>
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* X / Twitter */}
-                  {(() => {
-                    const twAccounts = socialAccounts.filter(a => a.platform === 'twitter' || a.platform === 'x')
-                    const isConnected = twAccounts.length > 0
-                    const hasExpiring = twAccounts.some(a => a.needs_reconnect || (a.days_until_expiry !== undefined && a.days_until_expiry <= 7))
-
-                    return (
-                      <div className="p-5 rounded-2xl bg-surface-secondary border border-border flex flex-col justify-between space-y-4">
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl">𝕏</span>
-                              <div>
-                                <h4 className="text-sm font-bold text-text">X (Twitter)</h4>
-                                <p className="text-[11px] text-muted">X API v2 (Tweets, Threads &amp; Media)</p>
-                              </div>
-                            </div>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                              isConnected 
-                                ? 'bg-success/15 border border-success/40 text-success' 
-                                : 'bg-surface border border-border text-muted'
-                            }`}>
-                              {isConnected ? 'Connected' : 'Disconnected'}
-                            </span>
-                          </div>
-
-                          {isConnected ? (
-                            <div className="space-y-2 pt-1">
-                              {twAccounts.map(acc => (
-                                <div key={acc.id} className="p-2.5 rounded-xl bg-surface border border-border/80 flex items-center justify-between">
-                                  <div className="min-w-0 pr-2">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs">𝕏</span>
-                                      <p className="text-xs font-bold text-text truncate">
-                                        {acc.account_name || '@x_user'}
-                                      </p>
-                                    </div>
-                                    <p className="text-[10px] text-muted truncate mt-0.5">
-                                      {acc.days_until_expiry !== undefined ? `Expires in ${acc.days_until_expiry}d` : 'Active OAuth 2.0 Token'}
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() => handleDisconnectAccount(acc.id, acc.account_name || 'X')}
-                                    className="text-[11px] font-bold text-muted hover:text-danger px-2 py-1 rounded transition"
-                                  >
-                                    Disconnect
-                                  </button>
-                                </div>
-                              ))}
-
-                              {hasExpiring && (
-                                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-[11px] text-amber-300">
-                                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-                                  <span>Token expiring soon. Reconnect to keep publishing active.</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted">
-                              Publish branded tweets, image attachments, and short-form announcements directly to your X profile.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="pt-2 border-t border-border/60">
-                          <button
-                            onClick={() => handleConnectOAuth('twitter')}
-                            disabled={connectingPlatform === 'twitter'}
-                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-                              isConnected
-                                ? 'bg-surface border border-primary text-text hover:bg-primary hover:text-white'
-                                : 'bg-primary hover:bg-primary/90 text-white shadow-glow'
-                            }`}
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            <span>{connectingPlatform === 'twitter' ? 'Connecting...' : (isConnected ? 'Reconnect X' : 'Connect X')}</span>
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })()}
-                </div>
-
-                {/* Automation & Worker Status Banner */}
-                <div className="mt-4 p-4 rounded-xl bg-surface-secondary/60 border border-border flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
-                    <span className="font-semibold text-text">Celery Publisher Worker</span>
-                    <span className="text-muted hidden sm:inline">· Polls scheduled_posts due every minute with idempotent retries</span>
-                  </div>
-                  <span className="text-accent font-mono font-bold text-[11px]">ACTIVE &amp; READY</span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ═════════════════════════════════════════════════════════════ */}
-          {/* TAB 4: BILLING & PLANS                                       */}
           {/* ═════════════════════════════════════════════════════════════ */}
           {activeTab === 'billing' && (
             <motion.div
@@ -1955,45 +1413,239 @@ export default function SettingsPage() {
               transition={{ duration: 0.15 }}
               className="space-y-6"
             >
-              {/* Current Plan Overview */}
-              <div className="p-6 rounded-2xl bg-surface border border-primary shadow-glow space-y-5">
-                <div className="flex items-center justify-between pb-4 border-b border-border">
-                  <div>
-                    <span className="text-xs font-bold text-primary-light uppercase tracking-wider">Active Subscription</span>
-                    <h3 className="text-2xl font-extrabold text-text mt-0.5">Growth Tier</h3>
-                    <p className="text-xs text-muted">Billed monthly · Renews on November 29, 2026</p>
+              {/* Trial Status Banner */}
+              {billingStatus?.is_trial && (
+                <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                  billingStatus?.trial_is_expired 
+                    ? 'bg-danger/10 border-danger/30' 
+                    : 'bg-accent/10 border-accent/30'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <Sparkles className={`h-5 w-5 shrink-0 mt-0.5 ${billingStatus?.trial_is_expired ? 'text-danger' : 'text-accent'}`} />
+                    <div>
+                      <h4 className="font-bold text-sm text-text">
+                        {billingStatus?.trial_is_expired ? 'Free Trial Expired' : '14-Day Free Trial Active'}
+                      </h4>
+                      <p className="text-xs text-muted mt-1 leading-relaxed">
+                        {billingStatus?.trial_is_expired
+                          ? 'Your trial period or 15 credits allowance has ended. AI generation and verified publishing are currently locked. Your content and brand kits remain safely preserved.'
+                          : `${billingStatus?.trial_days_left ?? 0} days left · ${billingCredits?.balance ?? billingStatus?.credits_remaining ?? 0} credits remaining · Daily cap: ${billingStatus?.generations_today ?? 0}/${billingStatus?.daily_generation_cap ?? 5} posts.`}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-3xl font-black text-text">$19</span>
-                    <span className="text-xs text-muted">/month</span>
+                  <button
+                    onClick={() => router.push('/pricing')}
+                    className="px-4 py-2 bg-accent hover:bg-accent-hover text-black text-xs font-black rounded-xl transition shadow-accent-glow shrink-0 flex items-center gap-1.5 self-start sm:self-auto"
+                  >
+                    <span>{billingStatus?.trial_is_expired ? 'Upgrade to Continue' : 'Upgrade Plan'}</span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Low / Zero Balance Warnings */}
+              {!billingStatus?.trial_is_expired && billingCredits?.is_zero_balance && (
+                <div className="p-4 rounded-2xl bg-surface border border-accent flex items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="h-5 w-5 text-accent shrink-0" />
+                    <div>
+                      <h4 className="font-bold text-sm text-text">Zero Post Credits Remaining</h4>
+                      <p className="text-xs text-muted mt-0.5">
+                        You have consumed your monthly allowance. Top up with a credit pack or upgrade your tier to keep generating!
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => router.push('/pricing')}
+                    className="px-4 py-2 bg-accent hover:bg-accent-hover text-black text-xs font-black rounded-xl transition shadow-accent-glow shrink-0"
+                  >
+                    Upgrade Tier
+                  </button>
+                </div>
+              )}
+
+              {!billingStatus?.trial_is_expired && !billingCredits?.is_zero_balance && billingCredits?.is_low_balance && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+                    <div>
+                      <h4 className="font-bold text-sm text-text">Low Balance Warning</h4>
+                      <p className="text-xs text-muted mt-0.5">
+                        You have {billingCredits.balance} post credits remaining ({billingCredits.percentage_remaining}% of your plan allowance).
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => router.push('/pricing')}
+                    className="px-3.5 py-1.5 bg-surface-secondary border border-border hover:border-amber-400 text-text text-xs font-bold rounded-xl transition shrink-0"
+                  >
+                    View Plans
+                  </button>
+                </div>
+              )}
+
+              {/* Current Plan & Post Credits Overview */}
+              <div className="p-6 rounded-2xl bg-surface border border-border space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
+                  <div>
+                    <span className="text-xs font-bold text-accent uppercase tracking-wider">Active Subscription</span>
+                    <h3 className="text-2xl font-extrabold text-text mt-0.5">
+                      {billingStatus?.plan_name || billingCredits?.plan || userProfile.plan}
+                    </h3>
+                    <p className="text-xs text-muted">
+                      1 post credit = 1 new post with 2 image variants &amp; all platform captions
+                    </p>
+                  </div>
+                  <div className="sm:text-right flex items-center sm:flex-col sm:items-end justify-between gap-2">
+                    <div>
+                      <span className="text-3xl font-black text-text">{billingCredits?.balance ?? 0}</span>
+                      <span className="text-xs text-muted ml-1 font-bold">post credits left</span>
+                    </div>
+                    <button
+                      onClick={() => router.push('/pricing')}
+                      className="text-xs text-accent font-bold hover:underline flex items-center gap-1"
+                    >
+                      <span>Change Plan</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
                   </div>
                 </div>
 
                 {/* Usage meter */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="text-text">Monthly AI Generations</span>
-                    <span className="text-accent font-extrabold">18 / 30 Posts Used</span>
+                    <span className="text-text">Credits Usage Meter</span>
+                    <span className="text-accent font-extrabold">
+                      {billingCredits?.used_this_period ?? 0} / {billingCredits?.quota ?? 30} Posts Used
+                    </span>
                   </div>
-                  <div className="h-2.5 w-full rounded-full bg-surface-secondary overflow-hidden border border-border">
-                    <div className="h-full bg-accent rounded-full" style={{ width: '60%' }} />
+                  <div className="h-3 w-full rounded-full bg-surface-secondary overflow-hidden border border-border">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        billingCredits?.is_zero_balance ? 'bg-danger' : billingCredits?.is_low_balance ? 'bg-amber-400' : 'bg-accent'
+                      }`}
+                      style={{ 
+                        width: `${Math.min(100, Math.round(((billingCredits?.used_this_period ?? 0) / (billingCredits?.quota || 30)) * 100))}%` 
+                      }} 
+                    />
                   </div>
+                  <p className="text-[11px] text-muted">
+                    Balance refreshes at the start of each monthly billing cycle.
+                  </p>
                 </div>
 
-                <div className="pt-2 flex flex-wrap gap-3">
-                  <button 
-                    onClick={() => toast.success('Redirecting to Stripe Customer Portal...')}
-                    className="px-4 py-2 bg-accent hover:bg-accent-hover text-black text-xs font-extrabold rounded-xl transition shadow-accent-glow"
+                {/* Re-roll Pool Allowance */}
+                <div className="p-4 rounded-xl bg-surface-secondary/70 border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div>
+                    <span className="font-extrabold text-text block">Monthly Re-roll Pool</span>
+                    <span className="text-muted">
+                      {billingStatus?.free_rerolls_left ?? 0} free re-rolls remaining ({billingStatus?.rerolls_used_this_month ?? 0} / {billingStatus?.reroll_pool ?? 15} used this month).
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-muted bg-surface px-2.5 py-1 rounded-lg border border-border shrink-0">
+                    Additional re-rolls: 0.5 credits each
+                  </span>
+                </div>
+
+                {/* Credit Pack Top-Ups */}
+                <div className="pt-2 border-t border-border space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-muted uppercase tracking-wider">Instant Credit Pack (Paid Plans Only)</h4>
+                      <p className="text-[11px] text-muted">
+                        Need extra posts before your renewal? Add credits without changing your plan.
+                      </p>
+                    </div>
+                  </div>
+
+                  {billingStatus?.is_trial ? (
+                    <div className="p-4 rounded-xl bg-surface-secondary border border-dashed border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-bold text-text block">20 Post Credits · $14 ($0.70 / credit)</span>
+                        <span className="text-[11px] text-muted">
+                          Credit packs are exclusive to paid subscribers. Upgrading to Starter ($19/mo for 30 credits = $0.63 / credit) is more economical.
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => router.push('/pricing')}
+                        className="px-3.5 py-1.5 bg-accent hover:bg-accent-hover text-black text-xs font-black rounded-xl transition shrink-0"
+                      >
+                        Explore Plans
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-surface-secondary border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-sm font-extrabold text-text block">+20 Post Credits · $14</span>
+                        <span className="text-[11px] text-muted">$0.70 per multi-channel post with 2 variants &amp; captions. Never expires.</span>
+                      </div>
+                      <button
+                        onClick={() => handlePurchasePack(20, 'Standard Pack (20 credits)')}
+                        disabled={buyingPack}
+                        className="px-4 py-2 bg-accent hover:bg-accent-hover text-black text-xs font-black rounded-xl transition shadow-accent-glow shrink-0 disabled:opacity-50"
+                      >
+                        {buyingPack ? 'Processing...' : 'Buy Pack ($14)'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Credit Ledger Audit History */}
+              <div className="p-6 rounded-2xl bg-surface border border-border space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-text">Credit Ledger History</h3>
+                    <p className="text-xs text-muted">Every grant, usage deduction, and refund is recorded in this auditable log.</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      getUserCredits().then(res => setBillingCredits(res))
+                      toast.success('Ledger refreshed')
+                    }}
+                    className="p-2 rounded-xl bg-surface-secondary border border-border hover:bg-surface-hover text-muted hover:text-text transition"
+                    title="Refresh Ledger"
                   >
-                    Upgrade to Pro
-                  </button>
-                  <button 
-                    onClick={() => toast.success('Stripe invoice history opened')}
-                    className="px-4 py-2 bg-surface-secondary border border-border hover:border-primary text-text text-xs font-bold rounded-xl transition"
-                  >
-                    View Invoices
+                    <RefreshCw className="h-4 w-4" />
                   </button>
                 </div>
+
+                {billingCredits?.history && billingCredits.history.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-border text-muted">
+                          <th className="pb-2 font-bold uppercase tracking-wider">Date</th>
+                          <th className="pb-2 font-bold uppercase tracking-wider">Delta</th>
+                          <th className="pb-2 font-bold uppercase tracking-wider">Reason</th>
+                          <th className="pb-2 font-bold uppercase tracking-wider">Reference</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {billingCredits.history.map((entry: any) => (
+                          <tr key={entry.id} className="py-2.5">
+                            <td className="py-2 text-muted">
+                              {entry.created_at ? new Date(entry.created_at).toLocaleString() : 'Recent'}
+                            </td>
+                            <td className="py-2 font-extrabold">
+                              <span className={entry.delta > 0 ? 'text-success' : 'text-danger'}>
+                                {entry.delta > 0 ? `+${entry.delta}` : entry.delta} credit{Math.abs(entry.delta) === 1 ? '' : 's'}
+                              </span>
+                            </td>
+                            <td className="py-2 font-medium text-text">
+                              {entry.reason}
+                            </td>
+                            <td className="py-2 font-mono text-[11px] text-muted truncate max-w-[150px]">
+                              {entry.reference_id || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted py-4 text-center">No ledger entries recorded yet.</p>
+                )}
               </div>
             </motion.div>
           )}

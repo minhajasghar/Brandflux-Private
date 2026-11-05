@@ -325,26 +325,81 @@ DEFAULT_PLANS_CONFIG = {
 }
 
 def get_plans_config(db: Session) -> Dict[str, Any]:
-    """Retrieve dynamic plan definitions without hardcoding."""
-    from models.models import SystemSetting
-    setting = db.query(SystemSetting).filter(SystemSetting.key == "plans_config").first()
-    if not setting:
-        return DEFAULT_PLANS_CONFIG.copy()
-    return setting.value or DEFAULT_PLANS_CONFIG.copy()
+    """Retrieve dynamic plan definitions directly from the plans table."""
+    from models.models import Plan
+    plans = db.query(Plan).all()
+    if not plans:
+        from services.plan_service import DEFAULT_PLANS
+        return DEFAULT_PLANS.copy()
+    
+    result = {}
+    for p in plans:
+        result[p.id] = {
+            "id": p.id,
+            "label": p.name,
+            "name": p.name,
+            "price": p.price_usd,
+            "price_usd": p.price_usd,
+            "price_annual_usd": p.price_annual_usd,
+            "price_local": p.price_local,
+            "credits": p.credits,
+            "brands_limit": p.brands,
+            "platforms_limit": p.platforms,
+            "max_posts_per_day": p.max_posts_per_day,
+            "daily_generation_cap": p.daily_generation_cap,
+            "reroll_pool": p.reroll_pool,
+            "x_allowed": p.x_allowed,
+            "x_monthly_allowance": p.x_monthly_allowance,
+            "features": p.features or []
+        }
+    return result
 
 
 def update_plans_config(db: Session, plans: Dict[str, Any], admin: User) -> Dict[str, Any]:
-    """Update dynamic plan limits and write to audit log."""
-    from models.models import SystemSetting
-    setting = db.query(SystemSetting).filter(SystemSetting.key == "plans_config").first()
-    old_plans = setting.value if setting else DEFAULT_PLANS_CONFIG.copy()
+    """Update dynamic plan limits in the plans table and record to audit log."""
+    from models.models import Plan, SystemSetting
+    old_plans = get_plans_config(db)
 
+    for plan_key, plan_data in plans.items():
+        clean_key = plan_key.lower().strip()
+        p = db.query(Plan).filter(Plan.id == clean_key).first()
+        if not p:
+            p = Plan(id=clean_key, name=plan_data.get("label") or plan_data.get("name") or clean_key.capitalize())
+            db.add(p)
+        
+        p.name = plan_data.get("label") or plan_data.get("name") or p.name
+        if "price" in plan_data or "price_usd" in plan_data:
+            p.price_usd = int(plan_data.get("price_usd", plan_data.get("price", p.price_usd)))
+        if "price_annual_usd" in plan_data:
+            p.price_annual_usd = int(plan_data.get("price_annual_usd", p.price_annual_usd))
+        if "credits" in plan_data:
+            p.credits = int(plan_data["credits"])
+        if "brands_limit" in plan_data or "brands" in plan_data:
+            p.brands = int(plan_data.get("brands_limit", plan_data.get("brands", p.brands)))
+        if "platforms_limit" in plan_data or "platforms" in plan_data:
+            p.platforms = int(plan_data.get("platforms_limit", plan_data.get("platforms", p.platforms)))
+        if "max_posts_per_day" in plan_data:
+            p.max_posts_per_day = int(plan_data["max_posts_per_day"])
+        if "daily_generation_cap" in plan_data:
+            p.daily_generation_cap = int(plan_data["daily_generation_cap"])
+        if "reroll_pool" in plan_data:
+            p.reroll_pool = int(plan_data["reroll_pool"])
+        if "x_allowed" in plan_data:
+            p.x_allowed = bool(plan_data["x_allowed"])
+        if "x_monthly_allowance" in plan_data:
+            p.x_monthly_allowance = int(plan_data["x_monthly_allowance"])
+        if "features" in plan_data:
+            p.features = plan_data["features"]
+
+    # Also keep system setting mirror in sync
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "plans_config").first()
     if not setting:
         setting = SystemSetting(key="plans_config", value=plans, updated_by=admin.email)
         db.add(setting)
     else:
         setting.value = plans
         setting.updated_by = admin.email
+
     db.commit()
 
     log_audit_action(
@@ -355,7 +410,7 @@ def update_plans_config(db: Session, plans: Dict[str, Any], admin: User) -> Dict
         target_id="plans_config",
         details={"before": old_plans, "after": plans}
     )
-    return plans
+    return get_plans_config(db)
 
 
 # ─── AI Credentials & Models Configuration ──────────────────────────────────

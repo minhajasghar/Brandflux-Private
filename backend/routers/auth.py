@@ -1,4 +1,5 @@
 import uuid
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -33,6 +34,21 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
+
+    # 1b. Enforce one trial per website domain
+    import urllib.parse
+    parsed_domain = urllib.parse.urlparse(req.website_url if "://" in req.website_url else f"http://{req.website_url}").netloc.lower()
+    clean_domain = parsed_domain.replace("www.", "").strip()
+    if clean_domain:
+        existing_domain_brand = db.query(Brand).join(User, Brand.user_id == User.id).filter(
+            Brand.website_url.ilike(f"%{clean_domain}%"),
+            User.plan.in_(["trial", "free"])
+        ).first()
+        if existing_domain_brand:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A free trial has already been registered for this website domain. Please sign in or choose a paid plan."
+            )
 
     # 2. Hash the password using passlib bcrypt
     # 3. Create new User with verification token
@@ -176,6 +192,17 @@ async def verify_email_endpoint(
     user.verification_token = None
     user.verification_token_expires_at = None
 
+    # Trial officially begins at email verification: 14 days OR 15 credits
+    now = datetime.utcnow()
+    if not user.trial_started_at:
+        user.trial_started_at = now
+        user.trial_ends_at = now + timedelta(days=14)
+        user.plan = "trial"
+
+    # Grant initial 15 post credits to user's ledger
+    from services.credit_service import ensure_user_ledger_initialized
+    ensure_user_ledger_initialized(user, db)
+
     # Send Welcome Email idempotently (sent once after verification)
     if not user.welcome_sent:
         user.welcome_sent = True
@@ -275,6 +302,13 @@ class UpdateProfileRequest(BaseModel):
     full_name: Optional[str] = None
     email: Optional[str] = None
 
+class RequestEmailChangeRequest(BaseModel):
+    new_email: str
+    current_password: str
+
+class ConfirmEmailChangeRequest(BaseModel):
+    token: str
+
 
 @router.put("/profile")
 def update_profile(
@@ -282,31 +316,156 @@ def update_profile(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update current user profile (full name, login email)."""
-    if req.email:
-        new_email = req.email.strip().lower()
-        if "@" not in new_email or "." not in new_email:
-            raise HTTPException(status_code=400, detail="Please enter a valid email address.")
-        
-        # Check if email is already taken by another account
-        existing = db.query(User).filter(User.email == new_email, User.id != user.id).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="This email address is already in use by another account.")
-        
-        user.email = new_email
-
+    """Update current user profile (full name saves immediately; email changes require password verification)."""
     if req.full_name is not None:
         user.full_name = req.full_name.strip()
+
+    if req.email and req.email.strip().lower() != user.email.lower():
+        raise HTTPException(
+            status_code=400,
+            detail="To change your email address, please use the Email Change verification form which requires password confirmation."
+        )
 
     db.commit()
     db.refresh(user)
 
-    # Generate updated token so the session keeps working with new details
     fresh_token = auth_service.create_token(user.id)
 
     return {
         "status": "success",
-        "message": "Profile updated successfully.",
+        "message": "Full name saved successfully.",
+        "token": fresh_token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "plan": user.plan,
+            "role": getattr(user, "role", "user") or "user"
+        }
+    }
+
+
+@router.post("/request-email-change")
+async def request_email_change(
+    req: RequestEmailChangeRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Request email change:
+    - Requires current password verification.
+    - Validates uniqueness of new email.
+    - Sends verification link to new email address (captured in Emails outbox in dev mode).
+    - Sends security notice to current email address.
+    - Applies only when confirmed.
+    """
+    # 1. Verify current password
+    if not auth_service.verify_password(req.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect current password. Please try again.")
+
+    new_email = req.new_email.strip().lower()
+    if "@" not in new_email or "." not in new_email:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+
+    if new_email == user.email.lower():
+        raise HTTPException(status_code=400, detail="The new email address cannot be the same as your current address.")
+
+    # 2. Check uniqueness
+    existing = db.query(User).filter(User.email == new_email, User.id != user.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="This email address is already in use by another account.")
+
+    # 3. Generate token & expiration (24h)
+    token = secrets.token_urlsafe(32)
+    user.pending_email = new_email
+    user.email_change_token = token
+    user.email_change_expires_at = datetime.utcnow() + timedelta(hours=24)
+    db.commit()
+
+    verification_url = f"{APP_BASE_URL}/settings?tab=account&verify_email_token={token}"
+
+    # 4. Send verification email to NEW address
+    try:
+        await send_email(
+            to=new_email,
+            template="email_change_verification",
+            data={
+                "verification_url": verification_url,
+                "full_name": user.full_name or "there",
+                "new_email": new_email
+            },
+            user_id=user.id,
+            db=db
+        )
+    except Exception as e:
+        print(f"Notice: Failed to dispatch email to new address: {e}")
+
+    # 5. Send security notification to OLD/CURRENT address
+    try:
+        await send_email(
+            to=user.email,
+            template="email_change_notice",
+            data={
+                "full_name": user.full_name or "there",
+                "new_email": new_email
+            },
+            user_id=user.id,
+            db=db
+        )
+    except Exception as e:
+        print(f"Notice: Failed to dispatch security notice to old address: {e}")
+
+    return {
+        "status": "success",
+        "message": f"Verification link sent to {new_email}. Please check the inbox (or Admin > Emails outbox) and click the link to confirm.",
+        "pending_email": new_email,
+        "token_preview": token
+    }
+
+
+@router.post("/confirm-email-change")
+def confirm_email_change(
+    req: ConfirmEmailChangeRequest,
+    db: Session = Depends(get_db)
+):
+    """Confirm and apply email address update via verification token."""
+    user = db.query(User).filter(User.email_change_token == req.token).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired email change token.")
+
+    if not user.email_change_expires_at or user.email_change_expires_at < datetime.utcnow():
+        user.email_change_token = None
+        user.pending_email = None
+        user.email_change_expires_at = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="This email change token has expired. Please request a new one.")
+
+    new_email = user.pending_email
+    if not new_email:
+        raise HTTPException(status_code=400, detail="No pending email update found for this token.")
+
+    # Re-verify uniqueness
+    conflict = db.query(User).filter(User.email == new_email, User.id != user.id).first()
+    if conflict:
+        user.email_change_token = None
+        user.pending_email = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="This email address was recently registered by another user.")
+
+    # Apply email change
+    old_email = user.email
+    user.email = new_email
+    user.pending_email = None
+    user.email_change_token = None
+    user.email_change_expires_at = None
+    db.commit()
+    db.refresh(user)
+
+    fresh_token = auth_service.create_token(user.id)
+
+    return {
+        "status": "success",
+        "message": f"Your account email has been successfully updated from {old_email} to {new_email}!",
         "token": fresh_token,
         "user": {
             "id": user.id,

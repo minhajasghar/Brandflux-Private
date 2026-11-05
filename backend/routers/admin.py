@@ -1,3 +1,4 @@
+import os
 import logging
 import asyncio
 import uuid
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 from database import get_db
 from models.models import (
     User, Brand, Usage, AuditLog, GeneratedPost, ScheduledPost, DailySession,
-    ContentIdea, WebsiteScan, SocialAccount, SystemSetting
+    ContentIdea, WebsiteScan, SocialAccount, SystemSetting, PublishAttempt
 )
 from middleware.auth import require_admin, require_admin_write
 from services.admin_service import (
@@ -150,9 +151,27 @@ def list_users(
     total_count = query.count()
     users = query.order_by(User.created_at.desc()).offset(skip).limit(limit).all()
 
+    from services.credit_service import get_user_credit_balance
+    from services.plan_service import get_plan
+
     user_items = []
     for u in users:
         brand_count = len(u.brands or [])
+        credit_info = get_user_credit_balance(u.id, db)
+        user_cost = db.query(func.coalesce(func.sum(Usage.cost), 0.0)).filter(Usage.user_id == u.id).scalar() or 0.0
+        
+        plan_obj = get_plan(db, u.plan)
+        rev = plan_obj.price_usd if plan_obj else 0
+        margin = round(((rev - user_cost) / rev * 100), 1) if rev > 0 else (0.0 if user_cost == 0 else -100.0)
+
+        abuse_flags = detect_abuse_flags_for_user(u, db)
+
+        # Trial days left
+        trial_days_left = None
+        if (u.plan or "").lower() in ("trial", "free") and u.trial_ends_at:
+            delta = u.trial_ends_at - datetime.utcnow()
+            trial_days_left = max(0, delta.days if delta.total_seconds() > 0 else 0)
+
         user_items.append({
             "id": u.id,
             "email": u.email,
@@ -160,7 +179,15 @@ def list_users(
             "role": getattr(u, "role", "user") or "user",
             "plan": (u.plan or "starter").capitalize(),
             "posts_used_this_month": u.posts_used_this_month or 0,
+            "credits_used": credit_info["used_this_period"],
+            "credits_balance": credit_info["balance"],
+            "cost_to_us": round(float(user_cost), 3),
+            "revenue": rev,
+            "margin_pct": margin,
             "brands_count": brand_count,
+            "abuse_flags": abuse_flags,
+            "upgrade_requested_plan": u.upgrade_requested_plan,
+            "trial_days_left": trial_days_left,
             "is_suspended": bool(getattr(u, "is_suspended", False)),
             "is_deleted": bool(getattr(u, "is_deleted", False)),
             "last_active_at": u.last_active_at.isoformat() if u.last_active_at else None,
@@ -292,6 +319,149 @@ def get_user_detail(
 
 
 # ─── 4. User Actions (Audited & Write-Protected) ─────────────────────────────
+
+class ActivatePlanAdminRequest(BaseModel):
+    plan_id: str
+    grant_credits: Optional[int] = None
+    reason: Optional[str] = "Manual plan activation by administrator"
+
+class GrantCreditsAdminRequest(BaseModel):
+    amount: int
+    reason: Optional[str] = "Manual credit grant by administrator"
+
+class ExtendTrialAdminRequest(BaseModel):
+    days: int = 14
+    reason: Optional[str] = "Manual trial extension by administrator"
+
+@router.post("/users/{user_id}/activate-plan")
+def activate_plan_admin_endpoint(
+    user_id: str,
+    req: ActivatePlanAdminRequest,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Manually activate a subscription tier for a user."""
+    from services.plan_service import get_plan
+    from services.credit_service import grant_credit_pack
+    from models.models import Notification
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_plan = get_plan(db, req.plan_id)
+    old_plan = user.plan
+    user.plan = target_plan.id
+    user.upgrade_requested_plan = None
+
+    credits_to_grant = req.grant_credits if req.grant_credits is not None else target_plan.credits
+    if credits_to_grant > 0:
+        grant_credit_pack(
+            user_id=user.id,
+            amount=credits_to_grant,
+            reason=f"plan_activation:{target_plan.id}",
+            reference_id=f"admin_act_{uuid.uuid4().hex[:8]}",
+            db=db
+        )
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_activate_plan",
+        target_type="user",
+        target_id=user.id,
+        target_email=user.email,
+        details={
+            "old_plan": old_plan,
+            "new_plan": target_plan.id,
+            "credits_granted": credits_to_grant,
+            "reason": req.reason
+        }
+    )
+
+    notif = Notification(
+        user_id=user.id,
+        title=f"Plan Upgraded to {target_plan.name}!",
+        message=f"Your Brandflux subscription has been upgraded to the {target_plan.name} with {credits_to_grant} post credits.",
+        type="info"
+    )
+    db.add(notif)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Successfully activated {target_plan.name} for {user.email}.",
+        "plan": target_plan.id
+    }
+
+@router.post("/users/{user_id}/grant-credits")
+def grant_credits_admin_endpoint(
+    user_id: str,
+    req: GrantCreditsAdminRequest,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Manually grant extra post credits to a user."""
+    from services.credit_service import grant_credit_pack
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_balance = grant_credit_pack(
+        user_id=user.id,
+        amount=req.amount,
+        reason=req.reason or "admin_manual_grant",
+        reference_id=f"admin_grant_{uuid.uuid4().hex[:8]}",
+        db=db
+    )
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_grant_credits",
+        target_type="user",
+        target_id=user.id,
+        target_email=user.email,
+        details={"amount": req.amount, "reason": req.reason}
+    )
+    return {
+        "success": True,
+        "message": f"Granted {req.amount} credits to {user.email}.",
+        "new_balance": new_balance
+    }
+
+@router.post("/users/{user_id}/extend-trial")
+def extend_trial_admin_endpoint(
+    user_id: str,
+    req: ExtendTrialAdminRequest,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Extend a user's free trial period."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    now = datetime.utcnow()
+    current_end = user.trial_ends_at if user.trial_ends_at and user.trial_ends_at > now else now
+    user.trial_ends_at = current_end + timedelta(days=req.days)
+    user.plan = "trial"
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_extend_trial",
+        target_type="user",
+        target_id=user.id,
+        target_email=user.email,
+        details={"days_added": req.days, "new_expiry": user.trial_ends_at.isoformat(), "reason": req.reason}
+    )
+    return {
+        "success": True,
+        "message": f"Trial extended by {req.days} days until {user.trial_ends_at.strftime('%Y-%m-%d')}.",
+        "trial_ends_at": user.trial_ends_at.isoformat()
+    }
 
 @router.post("/users/{user_id}/suspend")
 def suspend_user(
@@ -1054,6 +1224,116 @@ def get_publishing_monitor(
         "failed_posts": failed_list,
         "expiring_connections": expiring_list
     }
+
+
+@router.get("/integrations")
+def get_admin_integrations_health(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Developer Side - Platform Integrations Health:
+    Shows per platform: configured or not (env credentials), token health,
+    last successful publish, and last error.
+    """
+    now = datetime.utcnow()
+    
+    meta_id = os.getenv("META_APP_ID", "").strip()
+    meta_secret = os.getenv("META_APP_SECRET", "").strip()
+    li_id = os.getenv("LINKEDIN_CLIENT_ID", "").strip()
+    li_secret = os.getenv("LINKEDIN_CLIENT_SECRET", "").strip()
+    tt_key = os.getenv("TIKTOK_CLIENT_KEY", "").strip()
+    tt_secret = os.getenv("TIKTOK_CLIENT_SECRET", "").strip()
+    tw_id = os.getenv("TWITTER_CLIENT_ID", "").strip()
+    tw_secret = os.getenv("TWITTER_CLIENT_SECRET", "").strip()
+
+    platforms_meta = [
+        {
+            "platform": "facebook",
+            "name": "Facebook",
+            "category": "Meta Graph API v19.0",
+            "is_configured": bool(meta_id and meta_secret),
+            "env_keys": ["META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI"],
+        },
+        {
+            "platform": "instagram",
+            "name": "Instagram Business",
+            "category": "Meta Graph API v19.0",
+            "is_configured": bool(meta_id and meta_secret),
+            "env_keys": ["META_APP_ID", "META_APP_SECRET"],
+        },
+        {
+            "platform": "linkedin",
+            "name": "LinkedIn",
+            "category": "LinkedIn REST API",
+            "is_configured": bool(li_id and li_secret),
+            "env_keys": ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET", "LINKEDIN_REDIRECT_URI"],
+        },
+        {
+            "platform": "tiktok",
+            "name": "TikTok",
+            "category": "TikTok Content Posting API v2",
+            "is_configured": bool(tt_key and tt_secret),
+            "env_keys": ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI"],
+        },
+        {
+            "platform": "twitter",
+            "name": "X (Twitter)",
+            "category": "X API v2",
+            "is_configured": bool(tw_id and tw_secret),
+            "env_keys": ["TWITTER_CLIENT_ID", "TWITTER_CLIENT_SECRET", "TWITTER_REDIRECT_URI"],
+        }
+    ]
+
+    results = []
+    for p in platforms_meta:
+        plat_key = p["platform"]
+        accounts = db.query(SocialAccount).filter(
+            SocialAccount.platform == plat_key,
+            SocialAccount.is_active == True
+        ).all()
+
+        health = "NOT_CONNECTED"
+        if accounts:
+            has_expired = any(a.token_expires_at and a.token_expires_at < now for a in accounts)
+            has_expiring = any(a.token_expires_at and a.token_expires_at <= now + timedelta(days=7) for a in accounts)
+            if has_expired:
+                health = "EXPIRED"
+            elif has_expiring:
+                health = "EXPIRING_SOON"
+            else:
+                health = "HEALTHY"
+
+        last_succ = db.query(PublishAttempt).filter(
+            PublishAttempt.platform == plat_key,
+            PublishAttempt.status == "success"
+        ).order_by(PublishAttempt.created_at.desc()).first()
+
+        last_err = db.query(PublishAttempt).filter(
+            PublishAttempt.platform == plat_key,
+            PublishAttempt.status.in_(["failed", "needs_reconnect"])
+        ).order_by(PublishAttempt.created_at.desc()).first()
+
+        results.append({
+            "platform": plat_key,
+            "name": p["name"],
+            "category": p["category"],
+            "is_configured": p["is_configured"],
+            "env_keys": p["env_keys"],
+            "connected_accounts_count": len(accounts),
+            "token_health": health,
+            "last_successful_publish": {
+                "timestamp": last_succ.created_at.isoformat() if last_succ and last_succ.created_at else None,
+                "post_id": (last_succ.scheduled_post_id or last_succ.platform_copy_id or last_succ.id) if last_succ else None,
+            } if last_succ else None,
+            "last_error": {
+                "timestamp": last_err.created_at.isoformat() if last_err and last_err.created_at else None,
+                "error": last_err.error_message if last_err else None,
+                "http_status": last_err.http_status if last_err else None
+            } if last_err else None
+        })
+
+    return {"platforms": results}
 
 
 @router.post("/publishing/retry/{post_id}")

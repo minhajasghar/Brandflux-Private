@@ -552,6 +552,24 @@ async def publish_platform_copy(
 
     brand_id = copy.post.brand_id if copy.post else None
 
+    # Server-side plan & trial enforcement
+    from services.plan_service import get_user_plan_limits, charge_x_publishing_credit
+    limits = get_user_plan_limits(db, user)
+    if limits["is_trial"] and limits["trial_is_expired"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "TRIAL_EXPIRED",
+                "message": "Your 14-day free trial has expired or credits have been exhausted. Upgrade to continue publishing.",
+                "upgrade_url": "/pricing"
+            }
+        )
+
+    # X posting rules (Pro only, +1 credit if post contains a link)
+    if copy.platform and copy.platform.lower() in ("x", "twitter"):
+        has_link = bool(copy.caption and ("http://" in copy.caption or "https://" in copy.caption))
+        charge_x_publishing_credit(db, user, has_link=has_link, reference_id=copy.id)
+
     # Call canonical shared publish service
     result = await execute_social_publish(
         db=db,

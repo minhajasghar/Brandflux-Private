@@ -34,7 +34,8 @@ import api, {
   uploadReferenceImage, 
   generateSessionVariants, 
   selectSessionVariant, 
-  regenerateSingleVariant 
+  regenerateSingleVariant,
+  getUserCredits
 } from '@/lib/api'
 import { 
   SessionResult, 
@@ -165,6 +166,12 @@ export default function SessionPage() {
         const sessionRes = await api.post('/sessions/questions').catch(() => null)
         if (sessionRes?.data?.session_id) {
           setSessionId(sessionRes.data.session_id)
+        }
+
+        const credData = await getUserCredits().catch(() => null)
+        if (credData && typeof credData.balance === 'number') {
+          setCreditsRemaining(credData.balance)
+          if (credData.plan) setPlanName(credData.plan)
         }
       } catch (err) {
         console.error('Failed to initialize session:', err)
@@ -408,6 +415,9 @@ export default function SessionPage() {
         selected_platforms: selectedPlatforms
       })
       toast.success('Saved as active selected post for download & calendar!')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('brandflux:credits_updated'))
+      }
     } catch (err: any) {
       console.error('Failed to commit variant selection:', err)
     } finally {
@@ -555,9 +565,9 @@ export default function SessionPage() {
                   <Zap className="h-4.5 w-4.5" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Image Credits</p>
+                  <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Post Credits</p>
                   <p className="text-sm font-black text-text">
-                    <span className="text-accent">{creditsRemaining}</span> remaining <span className="text-muted font-normal text-xs">({planName})</span>
+                    <span className="text-accent">{creditsRemaining}</span> left <span className="text-muted font-normal text-xs">({planName} plan)</span>
                   </p>
                 </div>
               </div>
@@ -830,27 +840,51 @@ export default function SessionPage() {
               </div>
             </div>
 
-            {/* Launch Generation Button */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={executeVariantGeneration}
-                disabled={isGenerating}
-                className="w-full bg-accent hover:bg-accent-hover text-black font-extrabold py-4 px-6 rounded-2xl text-base flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-accent-glow disabled:opacity-50"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="animate-spin h-5 w-5" />
-                    <span>Generating Multiple Variants...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-5 w-5" />
-                    <span>Generate Multi-Variant Posts ({maxVariantsAllowed} Designs)</span>
-                    <ArrowRight className="h-4 w-4 ml-1" />
-                  </>
+            {/* Launch Generation Button & Credits Cost Indicator */}
+            <div className="pt-2 space-y-2">
+              <div className="flex items-center justify-between px-1 text-xs font-semibold">
+                <span className="text-muted flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-accent" />
+                  This uses 1 credit, <strong className="text-text">{creditsRemaining} left</strong>
+                </span>
+                {creditsRemaining <= 5 && creditsRemaining > 0 && (
+                  <span className="text-amber-400 font-bold text-[11px]">Running low</span>
                 )}
-              </button>
+              </div>
+
+              {creditsRemaining <= 0 ? (
+                <div className="p-4 rounded-2xl bg-surface border border-accent/40 text-center space-y-2">
+                  <p className="text-sm font-bold text-text">You&apos;ve used all your post credits for this billing period.</p>
+                  <p className="text-xs text-muted">Upgrade your plan or add a credit pack to generate new posts.</p>
+                  <button
+                    type="button"
+                    onClick={() => router.push('/settings?tab=billing')}
+                    className="w-full bg-accent hover:bg-accent-hover text-black font-extrabold py-3 px-4 rounded-xl text-sm transition shadow-accent-glow"
+                  >
+                    Get More Post Credits
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={executeVariantGeneration}
+                  disabled={isGenerating}
+                  className="w-full bg-accent hover:bg-accent-hover text-black font-extrabold py-4 px-6 rounded-2xl text-base flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-accent-glow disabled:opacity-50"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="animate-spin h-5 w-5" />
+                      <span>Generating Multiple Variants...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-5 w-5" />
+                      <span>Generate Multi-Variant Posts ({maxVariantsAllowed} Designs)</span>
+                      <ArrowRight className="h-4 w-4 ml-1" />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </motion.div>
         )}

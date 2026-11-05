@@ -45,6 +45,10 @@ celery_app.conf.update(
             "task": "tasks.publishing_tasks.sync_daily_post_metrics_task",
             "schedule": 86400.0,  # once every 24 hours
         },
+        "check-trial-notifications-daily": {
+            "task": "tasks.publishing_tasks.check_trial_notifications_daily",
+            "schedule": 86400.0,  # once every 24 hours
+        },
         "run-weekly-autopilot-every-sunday": {
             "task": "tasks.autopilot_tasks.run_weekly_autopilot_all_brands",
             "schedule": 604800.0,  # once every 7 days

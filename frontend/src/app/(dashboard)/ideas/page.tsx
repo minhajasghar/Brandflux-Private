@@ -202,12 +202,14 @@ export default function IdeasPage() {
       if (res.data) {
         setSessionDetail(res.data)
         if (res.data.copies && Array.isArray(res.data.copies)) {
-          const fbCopy = res.data.copies.find((c: any) => (c.platform || '').toLowerCase() === 'facebook')
-          if (fbCopy) {
-            setSelectedCopyIdsToPublish([fbCopy.id || fbCopy.copy_id])
-          } else {
-            setSelectedCopyIdsToPublish(res.data.copies.filter((c: any) => c.status !== 'needs_reconnect').map((c: any) => c.id || c.copy_id).filter(Boolean))
-          }
+          // Select only unposted, proven platforms by default (published rows are never checked)
+          const selectable = res.data.copies.filter((c: any) => {
+            const p = (c.platform || '').toLowerCase();
+            const s = (c.status || 'draft').toLowerCase();
+            const isProven = p === 'facebook' || p === 'linkedin' || p === 'instagram';
+            return isProven && s !== 'published' && s !== 'publishing' && s !== 'needs_reconnect' && s !== 'scheduled';
+          }).map((c: any) => c.id || c.copy_id).filter(Boolean);
+          setSelectedCopyIdsToPublish(selectable);
         }
         if (initialPlatform) {
           const norm = initialPlatform.toLowerCase()
@@ -568,6 +570,11 @@ export default function IdeasPage() {
                             (e.target as HTMLElement).style.display = 'none'
                           }}
                         />
+                        {(item.image_url?.includes('test_') || (item as any).source === 'fallback') && (
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-amber-500/90 text-black text-[9px] font-black uppercase tracking-wider shadow">
+                            Fallback / Test Graphic
+                          </span>
+                        )}
                       </div>
                     ) : null}
 
@@ -801,6 +808,11 @@ export default function IdeasPage() {
                         alt={sessionDetail.session_theme} 
                         className="w-full h-full object-contain" 
                       />
+                      {((sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url)?.includes('test_') || sessionDetail.source === 'fallback') && (
+                        <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-md bg-amber-500/90 text-black text-[10px] font-black uppercase tracking-wider shadow">
+                          Fallback / Test Graphic
+                        </span>
+                      )}
                       <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
                         <a
                           href={resolveMediaUrl(sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url)}
@@ -976,39 +988,77 @@ export default function IdeasPage() {
                               <Globe className="h-3.5 w-3.5 text-accent" />
                               Choose Where to Publish
                             </h4>
-                            <p className="text-[11px] text-muted">Check the platforms you want this generation posted to.</p>
+                            <p className="text-[11px] text-muted">Select unposted channels to publish this generation.</p>
                           </div>
                           <button
                             type="button"
                             onClick={() => {
-                              const allIds = sessionDetail.copies.map((c: any) => c.id || c.copy_id).filter(Boolean);
-                              setSelectedCopyIdsToPublish(prev => prev.length === allIds.length ? [] : allIds);
+                              const selectableIds = sessionDetail.copies
+                                .filter((c: any) => {
+                                  const p = (c.platform || '').toLowerCase();
+                                  const s = (c.status || 'draft').toLowerCase();
+                                  const isUnproven = p === 'tiktok' || p === 'twitter' || p === 'x';
+                                  return !isUnproven && s !== 'published' && s !== 'publishing' && s !== 'needs_reconnect' && s !== 'scheduled';
+                                })
+                                .map((c: any) => c.id || c.copy_id)
+                                .filter(Boolean);
+
+                              setSelectedCopyIdsToPublish(prev => prev.length === selectableIds.length ? [] : selectableIds);
                             }}
                             className="text-[10px] font-bold text-accent hover:underline"
                           >
-                            {selectedCopyIdsToPublish.length === sessionDetail.copies.length ? 'Deselect All' : 'Select All'}
+                            {selectedCopyIdsToPublish.length > 0 ? 'Deselect All' : 'Select All Ready'}
                           </button>
                         </div>
 
                         <div className="space-y-2">
                           {sessionDetail.copies.map((c: any) => {
                             const cId = c.id || c.copy_id;
+                            const plat = (c.platform || '').toLowerCase().trim();
                             const isChecked = selectedCopyIdsToPublish.includes(cId);
-                            const plat = (c.platform || '').toLowerCase();
-                            const icon = plat.includes('linkedin') ? '💼' : plat.includes('facebook') ? '📘' : plat.includes('instagram') ? '📸' : plat.includes('twitter') || plat.includes('x') ? '🐦' : '🎵';
-                            const platName = plat.charAt(0).toUpperCase() + plat.slice(1);
+                            const statusLower = (c.status || 'draft').toLowerCase();
+                            
+                            // Platform naming rule: "X", not "Twitter" / "X/Twitter"
+                            const platName = plat === 'twitter' || plat === 'x' 
+                              ? 'X' 
+                              : plat === 'linkedin' 
+                              ? 'LinkedIn' 
+                              : plat === 'facebook' 
+                              ? 'Facebook' 
+                              : plat === 'instagram' 
+                              ? 'Instagram' 
+                              : plat === 'tiktok' 
+                              ? 'TikTok' 
+                              : plat.charAt(0).toUpperCase() + plat.slice(1);
+                              
+                            const icon = plat.includes('linkedin') ? '💼' : plat.includes('facebook') ? '📘' : plat.includes('instagram') ? '📸' : plat.includes('twitter') || plat.includes('x') ? '✖️' : '🎵';
+                            const isUnproven = plat === 'tiktok' || plat === 'twitter' || plat === 'x';
+                            const isPublished = statusLower === 'published';
+                            const isScheduled = statusLower === 'scheduled';
+                            const isNeedsReconnect = statusLower === 'needs_reconnect';
+                            const isFailed = statusLower === 'failed';
+                            const isSelectable = !isUnproven && !isPublished && !isNeedsReconnect && !isScheduled;
+
                             return (
                               <label
                                 key={cId}
-                                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition ${
-                                  isChecked ? 'bg-surface border-accent/60 text-text ring-1 ring-accent/20' : 'bg-surface/50 border-border text-muted hover:border-border-hover'
+                                className={`flex items-center justify-between p-3 rounded-xl border transition ${
+                                  isPublished
+                                    ? 'bg-emerald-500/5 border-emerald-500/20 text-text opacity-90 cursor-default'
+                                    : isUnproven
+                                    ? 'bg-surface/30 border-border/50 text-muted cursor-not-allowed opacity-60'
+                                    : isChecked
+                                    ? 'bg-surface border-accent/60 text-text ring-1 ring-accent/20 cursor-pointer'
+                                    : 'bg-surface/50 border-border text-muted hover:border-border-hover cursor-pointer'
                                 }`}
                               >
                                 <div className="flex items-center gap-3">
                                   <input
                                     type="checkbox"
-                                    checked={isChecked}
+                                    checked={isPublished ? false : isChecked}
+                                    disabled={!isSelectable}
                                     onChange={() => {
+                                      if (!isSelectable) return;
                                       const nextIds = selectedCopyIdsToPublish.includes(cId)
                                         ? selectedCopyIdsToPublish.filter(x => x !== cId)
                                         : [...selectedCopyIdsToPublish, cId];
@@ -1028,71 +1078,143 @@ export default function IdeasPage() {
                                         setActiveDetailTab(targetTab);
                                       }
                                     }}
-                                    className="h-4 w-4 rounded accent-accent cursor-pointer"
+                                    className={`h-4 w-4 rounded accent-accent ${isSelectable ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}
                                   />
                                   <div>
                                     <div className="flex items-center gap-1.5">
-                                      <span>{icon}</span>
+                                      <span className="text-sm">{icon}</span>
                                       <span className="text-xs font-extrabold text-text">{platName}</span>
                                     </div>
-                                    <span className="text-[10px] text-muted block truncate max-w-[220px]">
-                                      {c.caption ? c.caption.slice(0, 48) + '...' : 'Ready to post'}
+                                    <span className="text-[10px] text-muted block truncate max-w-[200px]">
+                                      {c.caption ? c.caption.slice(0, 44) + '...' : 'Ready to post'}
                                     </span>
                                   </div>
                                 </div>
-                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
-                                  c.status === 'published'
-                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                    : c.status === 'publishing'
-                                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 animate-pulse'
-                                    : c.status === 'needs_reconnect'
-                                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                                    : c.status === 'failed'
-                                    ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                                    : 'bg-surface border-border text-muted'
-                                }`}>
-                                  {c.status || 'Draft'}
-                                </span>
+
+                                {/* Plain words status badge */}
+                                <div>
+                                  {isPublished ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded border bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                                        Published
+                                      </span>
+                                      {c.permalink && (
+                                        <a
+                                          href={c.permalink}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-[10px] font-bold text-accent hover:underline flex items-center gap-0.5"
+                                        >
+                                          View post ↗
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : isScheduled ? (
+                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded border bg-blue-500/20 text-blue-400 border-blue-500/30">
+                                      Scheduled {c.scheduled_at ? new Date(c.scheduled_at).toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                                    </span>
+                                  ) : isNeedsReconnect ? (
+                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded border bg-amber-500/20 text-amber-400 border-amber-500/30">
+                                      Reconnect needed
+                                    </span>
+                                  ) : isFailed ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-rose-500/20 text-rose-400 border-rose-500/30 truncate max-w-[130px]" title={c.error || 'Failed'}>
+                                        Failed: {c.error ? c.error.slice(0, 20) + '...' : 'Error'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          try {
+                                            await api.post(`/content/copy/${cId}/retry`);
+                                            toast.success('Retrying platform publish...');
+                                            const res = await api.get(`/content/history/${selectedSessionId}`);
+                                            setSessionDetail(res.data);
+                                            fetchHistory(true);
+                                          } catch (err: any) {
+                                            toast.error('Retry failed.');
+                                          }
+                                        }}
+                                        className="text-[10px] font-bold text-accent hover:underline px-1 py-0.5"
+                                      >
+                                        Retry
+                                      </button>
+                                    </div>
+                                  ) : isUnproven ? (
+                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded border bg-surface border-border text-muted">
+                                      Coming soon
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded border bg-surface border-border text-muted">
+                                      Not posted yet
+                                    </span>
+                                  )}
+                                </div>
                               </label>
                             );
                           })}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (selectedCopyIdsToPublish.length === 0) return toast.error('Check at least one platform to publish.');
-                            setIsBatchPublishing(true);
-                            try {
-                              const res = await api.post('/content/publish-batch', { copy_ids: selectedCopyIdsToPublish, force: true });
-                              if (res.data?.success) {
-                                toast.success(`Published to ${res.data.published_count} platform(s)! 🎉`);
-                              }
-                              if (res.data?.errors?.length > 0) {
-                                const relevantErrors = res.data.errors.filter((e: any) => selectedCopyIdsToPublish.includes(e.copy_id));
-                                if (relevantErrors.length > 0) {
-                                  toast.error(`Platform error: ${relevantErrors[0]?.message || 'Check error details'}`);
-                                }
-                              }
-                              const refreshed = await api.get(`/content/history/${selectedSessionId}`);
-                              setSessionDetail(refreshed.data);
-                              fetchHistory(true);
-                            } catch (err: any) {
-                              const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Publish failed.';
-                              toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
-                            } finally {
-                              setIsBatchPublishing(false);
-                            }
-                          }}
-                          disabled={isBatchPublishing || selectedCopyIdsToPublish.length === 0}
-                          className="w-full py-3 px-4 rounded-xl bg-accent hover:bg-accent-hover text-black font-black text-xs flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-accent-glow"
-                        >
-                          {isBatchPublishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                          <span>Publish to Selected ({selectedCopyIdsToPublish.length}) Platforms</span>
-                        </button>
-                        <p className="text-[10px] text-muted text-center pt-1">
-                          👆 Publishes to <strong>all checked platforms</strong> at once. Click any row to view its individual controls below.
-                        </p>
+                        {/* Dynamic Main Action Button */}
+                        {(() => {
+                          const selectedCopies = (sessionDetail.copies || []).filter((c: any) => 
+                            selectedCopyIdsToPublish.includes(c.id || c.copy_id)
+                          );
+                          const selectedPlatNames = selectedCopies.map((c: any) => {
+                            const p = (c.platform || '').toLowerCase().trim();
+                            return p === 'twitter' || p === 'x' ? 'X' : p === 'linkedin' ? 'LinkedIn' : p === 'facebook' ? 'Facebook' : p === 'instagram' ? 'Instagram' : p;
+                          });
+
+                          let buttonLabel = 'Select a platform to publish';
+                          if (selectedCopies.length === 1) {
+                            buttonLabel = `Publish to ${selectedPlatNames[0]}`;
+                          } else if (selectedCopies.length > 1) {
+                            buttonLabel = `Publish to ${selectedCopies.length} platforms`;
+                          }
+
+                          return (
+                            <div className="space-y-1.5 pt-1">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (selectedCopyIdsToPublish.length === 0) return toast.error('Check at least one platform to publish.');
+                                  setIsBatchPublishing(true);
+                                  try {
+                                    const res = await api.post('/content/publish-batch', { copy_ids: selectedCopyIdsToPublish, force: true });
+                                    if (res.data?.success) {
+                                      toast.success(`Published to ${res.data.published_count} platform(s)! 🎉`);
+                                    }
+                                    if (res.data?.errors?.length > 0) {
+                                      const relevantErrors = res.data.errors.filter((e: any) => selectedCopyIdsToPublish.includes(e.copy_id));
+                                      if (relevantErrors.length > 0) {
+                                        toast.error(`Platform error: ${relevantErrors[0]?.message || 'Check error details'}`);
+                                      }
+                                    }
+                                    const refreshed = await api.get(`/content/history/${selectedSessionId}`);
+                                    setSessionDetail(refreshed.data);
+                                    fetchHistory(true);
+                                  } catch (err: any) {
+                                    const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Publish failed.';
+                                    toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+                                  } finally {
+                                    setIsBatchPublishing(false);
+                                  }
+                                }}
+                                disabled={isBatchPublishing || selectedCopyIdsToPublish.length === 0}
+                                className="w-full py-3.5 px-4 rounded-xl bg-accent hover:bg-accent-hover text-black font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition disabled:opacity-40 disabled:hover:bg-accent shadow-accent-glow"
+                              >
+                                {isBatchPublishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+                                <span>{buttonLabel}</span>
+                              </button>
+                              <p className="text-[11px] text-muted text-center font-medium">
+                                Platforms already published are skipped.
+                              </p>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -1151,12 +1273,14 @@ export default function IdeasPage() {
 
                               <div className="flex items-center justify-between p-3 rounded-xl bg-surface border border-border">
                                 <div>
-                                  <p className="text-xs font-bold text-text">Post Again for Testing</p>
-                                  <p className="text-[10px] text-muted">Publish this post live to {platName} again.</p>
+                                  <p className="text-xs font-bold text-text">Post again</p>
+                                  <p className="text-[10px] text-muted">Publish an additional live post to {platName}.</p>
                                 </div>
                                 <button
                                   type="button"
                                   onClick={async () => {
+                                    const ok = window.confirm(`This will create a second post on ${platName}. Continue?`);
+                                    if (!ok) return;
                                     setIsPublishing(copyId);
                                     try {
                                       await api.post(`/content/copy/${copyId}/publish?force=true`);
@@ -1172,10 +1296,10 @@ export default function IdeasPage() {
                                     }
                                   }}
                                   disabled={isPublishing === copyId}
-                                  className="px-3.5 py-2 rounded-xl bg-accent hover:bg-accent-hover text-black font-extrabold text-xs transition flex items-center gap-1.5 shadow-sm"
+                                  className="px-3.5 py-1.5 rounded-xl bg-surface-secondary border border-border hover:border-accent text-text hover:text-accent font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
                                 >
                                   {isPublishing === copyId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                                  <span>Post Again to {platName}</span>
+                                  <span>Post again</span>
                                 </button>
                               </div>
                             </div>
@@ -1353,23 +1477,25 @@ export default function IdeasPage() {
                                 <span>Schedule</span>
                               </button>
 
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  try {
-                                    await api.post(`/content/copy/${copyId}/retry`);
-                                    toast.success('Status reset to draft.');
-                                    const res = await api.get(`/content/history/${selectedSessionId}`);
-                                    setSessionDetail(res.data);
-                                    fetchHistory(true);
-                                  } catch (err: any) {
-                                    toast.error(err.response?.data?.detail || 'Reset failed.');
-                                  }
-                                }}
-                                className="py-2 px-2.5 rounded-xl bg-surface hover:bg-surface-secondary text-zinc-300 border border-border text-xs font-extrabold flex items-center justify-center gap-1.5 transition"
-                              >
-                                <span>Reset Status</span>
-                              </button>
+                              {!activeData.external_post_id && (statusLower === 'failed' || statusLower === 'scheduled') && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await api.post(`/content/copy/${copyId}/retry`);
+                                      toast.success(statusLower === 'scheduled' ? 'Schedule canceled. Back to not posted.' : 'Status back to not posted.');
+                                      const res = await api.get(`/content/history/${selectedSessionId}`);
+                                      setSessionDetail(res.data);
+                                      fetchHistory(true);
+                                    } catch (err: any) {
+                                      toast.error(err.response?.data?.detail || 'Reset failed.');
+                                    }
+                                  }}
+                                  className="py-2 px-2.5 rounded-xl bg-surface hover:bg-surface-secondary text-zinc-300 border border-border text-xs font-extrabold flex items-center justify-center gap-1.5 transition"
+                                >
+                                  <span>{statusLower === 'scheduled' ? 'Cancel Schedule' : 'Back to not posted'}</span>
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>

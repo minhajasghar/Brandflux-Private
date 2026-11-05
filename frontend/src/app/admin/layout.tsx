@@ -18,13 +18,15 @@ import {
   Radar,
   Radio,
   KeyRound,
-  Mail
+  Mail,
+  Share2
 } from 'lucide-react'
 import Cookies from 'js-cookie'
 import { getProfile } from '@/lib/api'
 
 const adminNavItems = [
   { id: 'overview', label: 'Overview', icon: Activity, href: '/admin?tab=overview' },
+  { id: 'integrations', label: 'Integrations (APIs)', icon: Share2, href: '/admin?tab=integrations' },
   { id: 'users', label: 'Users & Accounts', icon: Users, href: '/admin?tab=users' },
   { id: 'emails', label: 'Emails (Dev Outbox)', icon: Mail, href: '/admin?tab=emails' },
   { id: 'usage', label: 'Usage & Costs', icon: Sliders, href: '/admin?tab=usage' },

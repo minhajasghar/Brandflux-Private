@@ -81,9 +81,30 @@ class SocialAccountResponse(BaseModel):
     days_until_expiry: Optional[int] = None
     needs_reconnect: bool = False
     metadata_json: Optional[dict] = None
+    avatar_url: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+@router.get("/platforms-status")
+def get_platforms_status():
+    """
+    Returns configured status of each social platform based on environment variables.
+    If a platform is not configured, users see 'Coming soon' instead of a broken Connect flow.
+    """
+    meta_id, meta_secret, _ = get_meta_credentials()
+    li_id, li_secret, _ = get_linkedin_credentials()
+    tt_key, tt_secret, _ = get_tiktok_credentials()
+    tw_id, tw_secret, _ = get_twitter_credentials()
+
+    return {
+        "facebook": bool(meta_id and meta_secret),
+        "instagram": bool(meta_id and meta_secret),
+        "linkedin": bool(li_id and li_secret),
+        "tiktok": bool(tt_key and tt_secret),
+        "twitter": bool(tw_id and tw_secret),
+    }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -99,6 +120,9 @@ def get_authorization_url(
     Generate OAuth authorization dialog URL for Meta (Instagram/Facebook) or LinkedIn.
     """
     plat = platform.lower()
+    from services.plan_service import enforce_can_connect_platform
+    enforce_can_connect_platform(db, user, plat)
+
     # Embed user ID in state for verification
     state = f"{user.id}:{plat}:{uuid.uuid4().hex[:8]}"
 
@@ -776,6 +800,14 @@ def get_connected_accounts(
             if days_left <= 7:
                 needs_reconnect = True
 
+        avatar = None
+        if acc.metadata_json and isinstance(acc.metadata_json, dict):
+            avatar = (
+                acc.metadata_json.get("picture") or
+                acc.metadata_json.get("avatar_url") or
+                acc.metadata_json.get("profile_picture_url")
+            )
+
         results.append(
             SocialAccountResponse(
                 id=acc.id,
@@ -786,11 +818,44 @@ def get_connected_accounts(
                 token_expires_at=acc.token_expires_at,
                 days_until_expiry=days_left,
                 needs_reconnect=needs_reconnect,
-                metadata_json=acc.metadata_json
+                metadata_json=acc.metadata_json,
+                avatar_url=avatar
             )
         )
 
     return results
+
+
+@router.post("/accounts/{account_id}/set-active")
+def set_active_social_account(
+    account_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Select active publishing account when multiple pages/profiles exist for a platform.
+    """
+    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    target = db.query(SocialAccount).filter(
+        SocialAccount.id == account_id,
+        SocialAccount.brand_id == brand.id
+    ).first()
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Set all other accounts of same platform to inactive
+    db.query(SocialAccount).filter(
+        SocialAccount.brand_id == brand.id,
+        SocialAccount.platform == target.platform
+    ).update({"is_active": False}, synchronize_session=False)
+
+    target.is_active = True
+    db.commit()
+    return {"status": "success", "message": f"{target.account_name} is now the active {target.platform} account"}
 
 
 @router.delete("/accounts/{account_id}")

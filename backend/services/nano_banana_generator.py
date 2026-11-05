@@ -193,6 +193,11 @@ class NanoBananaGenerator:
         Execute API call exclusively to gemini-nano-banana-2.1 with timeout and return raw PNG bytes.
         Calls the generateContent endpoint with responseModalities=['IMAGE'].
         """
+        is_paid_allowed = os.getenv("ALLOW_PAID_GENERATION", "false").strip().lower() in ("true", "1", "yes")
+        if not is_paid_allowed:
+            logger.warning("Cost safety rule triggered: Paid image generation refused.")
+            raise RuntimeError("Generation is disabled in this environment")
+
         self.validate_api_key()
         api_key = self.get_api_key()
         headers = {
@@ -342,6 +347,11 @@ class NanoBananaGenerator:
         5. Logs per-generation usage/cost to the database `usage` table.
         6. On failure or missing billing: logs failure and returns None (triggering CSS gradient fallback).
         """
+        is_paid_allowed = os.getenv("ALLOW_PAID_GENERATION", "false").strip().lower() in ("true", "1", "yes")
+        if not is_paid_allowed:
+            logger.warning("Cost safety: Paid image generation is disabled (ALLOW_PAID_GENERATION=false).")
+            raise RuntimeError("Generation is disabled in this environment")
+
         norm_ratio, (w, h) = self.normalize_aspect_ratio(aspect_ratio)
         prompt = self.build_background_prompt(
             brand_profile=brand_profile,

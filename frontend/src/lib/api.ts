@@ -145,6 +145,19 @@ export async function updateUserProfile(data: { full_name?: string; email?: stri
   return response.data
 }
 
+export async function requestEmailChange(data: { new_email: string; current_password: string }) {
+  const response = await api.post('/auth/request-email-change', data)
+  return response.data
+}
+
+export async function confirmEmailChange(token: string) {
+  const response = await api.post('/auth/confirm-email-change', { token })
+  if (response.data?.token && typeof window !== 'undefined') {
+    localStorage.setItem('brandflux_token', response.data.token)
+  }
+  return response.data
+}
+
 export async function scanWebsite(url: string) {
   const response = await api.post('/brand/scan-website', { website_url: url })
   return response.data
@@ -240,6 +253,16 @@ export async function getConnectedSocialAccounts() {
   return response.data
 }
 
+export async function getPlatformsStatus(): Promise<Record<string, boolean>> {
+  const response = await api.get('/oauth/platforms-status')
+  return response.data
+}
+
+export async function setActiveSocialAccount(id: string) {
+  const response = await api.post(`/oauth/accounts/${id}/set-active`)
+  return response.data
+}
+
 export async function getOAuthAuthorizeUrl(platform: string) {
   const response = await api.get(`/oauth/${platform}/authorize`)
   return response.data
@@ -247,6 +270,11 @@ export async function getOAuthAuthorizeUrl(platform: string) {
 
 export async function disconnectSocialAccount(id: string) {
   const response = await api.delete(`/oauth/accounts/${id}`)
+  return response.data
+}
+
+export async function getAdminIntegrations() {
+  const response = await api.get('/admin/integrations')
   return response.data
 }
 
@@ -309,8 +337,72 @@ export async function getAutopilotLogs(params?: Record<string, any>) {
   return response.data
 }
 
+export async function getWeeklyPlan() {
+  const response = await api.get('/autopilot/weekly-plan')
+  return response.data
+}
+
+export async function generateWeeklyPlan(data?: { force?: boolean; event_details?: string }) {
+  const response = await api.post('/autopilot/generate-weekly-plan', data, { timeout: 120000 })
+  return response.data
+}
+
+export async function answerEventCheckin(has_event: boolean, event_details?: string) {
+  const response = await api.post('/autopilot/event-checkin', { has_event, event_details })
+  return response.data
+}
+
+export async function editCardWithPrompt(cardId: string, prompt: string) {
+  const response = await api.post(`/autopilot/cards/${cardId}/edit-prompt`, { prompt }, { timeout: 90000 })
+  return response.data
+}
+
+export async function updateCardCaption(cardId: string, caption: string, platform?: string) {
+  const response = await api.put(`/autopilot/cards/${cardId}/copy`, { caption, platform })
+  return response.data
+}
+
+export async function changeCardImage(cardId: string, change_type: string, image_url?: string) {
+  const response = await api.post(`/autopilot/cards/${cardId}/change-image`, { change_type, image_url })
+  return response.data
+}
+
+export async function uploadCardImage(cardId: string, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await api.post(`/autopilot/cards/${cardId}/upload-image`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return response.data
+}
+
+export async function skipCard(cardId: string) {
+  const response = await api.post(`/autopilot/cards/${cardId}/skip`)
+  return response.data
+}
+
+export async function rescheduleCard(cardId: string, scheduled_at: string) {
+  const response = await api.post(`/autopilot/cards/${cardId}/reschedule`, { scheduled_at })
+  return response.data
+}
+
+export async function toggleCardStatus(cardId: string) {
+  const response = await api.post(`/autopilot/cards/${cardId}/toggle-status`)
+  return response.data
+}
+
+export async function publishCardNowVerified(cardId: string) {
+  const response = await api.post(`/autopilot/cards/${cardId}/publish-now`, null, { timeout: 60000 })
+  return response.data
+}
+
+export async function getImageLibrary() {
+  const response = await api.get('/autopilot/image-library')
+  return response.data
+}
+
 export async function getPendingApprovalPosts() {
-  const response = await api.get('/autopilot/pending-posts')
+  const response = await api.get('/autopilot/weekly-plan')
   return response.data
 }
 
@@ -320,12 +412,12 @@ export async function approveAllPendingPosts() {
 }
 
 export async function approveSinglePost(postId: string) {
-  const response = await api.post(`/autopilot/posts/${postId}/approve`)
+  const response = await api.post(`/autopilot/cards/${postId}/toggle-status`)
   return response.data
 }
 
 export async function rejectSinglePost(postId: string, reason?: string) {
-  const response = await api.post(`/autopilot/posts/${postId}/reject`, null, { params: { reason } })
+  const response = await api.post(`/autopilot/cards/${postId}/skip`)
   return response.data
 }
 
@@ -656,4 +748,31 @@ export async function resendVerification(email: string) {
   return response.data
 }
 
+// ─── Credits & Billing ──────────────────────────────────────
+export async function getUserCredits() {
+  const response = await api.get('/billing/credits')
+  return response.data
+}
+
+export async function getBillingStatus() {
+  const response = await api.get('/billing/status')
+  return response.data
+}
+
+export async function getPublicPlans() {
+  const response = await api.get('/billing/plans')
+  return response.data
+}
+
+export async function requestPlanUpgrade(planId: string, billingCycle: string = 'monthly', note?: string) {
+  const response = await api.post('/billing/request-upgrade', { plan_id: planId, billing_cycle: billingCycle, note })
+  return response.data
+}
+
+export async function purchaseCreditPack(amount: number = 20, packName: string = 'Standard Pack (20 credits)') {
+  const response = await api.post('/billing/credit-pack', { amount, pack_name: packName })
+  return response.data
+}
+
+export { api }
 export default api

@@ -51,6 +51,11 @@ class GeminiService:
 
     def ensure_configured(self):
         """Lazy load or re-check credentials if not currently initialized or if key updated."""
+        is_paid_allowed = os.getenv("ALLOW_PAID_GENERATION", "false").strip().lower() in ("true", "1", "yes")
+        if not is_paid_allowed:
+            logger.warning("Cost safety: Paid text generation is disabled (ALLOW_PAID_GENERATION=false).")
+            raise RuntimeError("Generation is disabled in this environment")
+
         try:
             from services.admin_service import get_ai_credentials
             creds = get_ai_credentials()
@@ -140,17 +145,40 @@ Return valid JSON strictly matching this structure:
         website_data: str,
         last_posts_history: List[Dict[str, Any]],
         decided_strategy: Dict[str, Any],
-        learning_context: Optional[str] = None
+        learning_context: Optional[str] = None,
+        selected_platforms: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Generate complete content for all platforms based on brand, session, strategy, and learning context."""
+        """Generate captions only for the platforms the user selected and that are connected."""
         self.ensure_configured()
         if not self.model:
             return {}
 
         learning_section = f"\n{learning_context}\n" if learning_context else ""
 
-        prompt = f"""Create high-converting social media content for multiple platforms based on this SAVED BRAND KIT, check-in answers, and decided content strategy.
+        # Filter strictly to requested platforms
+        platform_fields = []
+        clean_selected = [p.lower().strip() for p in (selected_platforms or [])]
+        if not clean_selected:
+            # Default fallback if unspecified
+            clean_selected = ["instagram", "facebook", "linkedin"]
+
+        if "instagram" in clean_selected:
+            platform_fields.append('"instagram_post": { "caption": "...", "hashtags": [], "best_time": "...", "best_day": "...", "call_to_action": "..." }')
+            platform_fields.append('"instagram_story": { "text": "...", "cta": "...", "poll_question": "..." }')
+        if "linkedin" in clean_selected:
+            platform_fields.append('"linkedin_post": { "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }')
+        if "facebook" in clean_selected:
+            platform_fields.append('"facebook_post": { "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }')
+        if "twitter" in clean_selected or "x" in clean_selected:
+            platform_fields.append('"twitter_post": { "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }')
+        if "tiktok" in clean_selected:
+            platform_fields.append('"tiktok": { "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }')
+
+        schema_snippet = ",\n  ".join(platform_fields)
+
+        prompt = f"""Create high-converting social media content for selected platforms based on this SAVED BRAND KIT, check-in answers, and decided content strategy.
 Strictly adhere to the brand kit's tone, voice, target audience, and core content pillars.
+ONLY generate content for the following active target platforms: {', '.join(clean_selected)}.
 
 SAVED BRAND KIT:
 - Business: {brand_profile.get('business_name')}
@@ -181,12 +209,7 @@ Today's Session Answers:
 Generate JSON strictly matching this structure:
 {{
   "session_theme": "Theme of the post",
-  "instagram_post": {{ "caption": "...", "hashtags": [], "best_time": "...", "best_day": "...", "call_to_action": "..." }},
-  "instagram_story": {{ "text": "...", "cta": "...", "poll_question": "..." }},
-  "linkedin_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
-  "facebook_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
-  "twitter_post": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
-  "tiktok": {{ "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }},
+  {schema_snippet},
   "guidance": {{ "tip_of_day": "...", "this_week_suggestion": "...", "best_performing_type": "..." }}
 }}"""
 
@@ -197,7 +220,7 @@ Generate JSON strictly matching this structure:
                 generation_config={"response_mime_type": "application/json"}
             )
             result = self.safe_parse_json(response.text)
-            ensured = self._ensure_all_platforms(result)
+            ensured = self._ensure_all_platforms(result, clean_selected)
             if ensured:
                 ensured["_source"] = "ai"
             elapsed = time.time() - t0
@@ -214,25 +237,34 @@ Generate JSON strictly matching this structure:
             logger.error(f"❌ [Gemini Text Generation Error] {e}\n{traceback.format_exc()}")
             return {"_source": "fallback", "_error": self.last_error_message}
 
-    def _ensure_all_platforms(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Guarantee all 4 platform keys exist; synthesize fallbacks from instagram_post."""
+    def _ensure_all_platforms(self, data: Dict[str, Any], selected_platforms: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Guarantee only the selected platform keys exist; synthesize fallbacks if missing."""
         if not data:
             return data
 
-        ig_post = data.get("instagram_post") or {}
-        base_caption = ig_post.get("caption", "")
-        base_hashtags = ig_post.get("hashtags", [])
+        clean_selected = [p.lower().strip() for p in (selected_platforms or [])]
+        if not clean_selected:
+            clean_selected = ["instagram", "facebook", "linkedin", "twitter", "x", "tiktok"]
+
+        # Derive base caption
+        base_caption = ""
+        base_hashtags = []
+        for k in ("instagram_post", "facebook_post", "linkedin_post", "twitter_post", "tiktok"):
+            if data.get(k) and data[k].get("caption"):
+                base_caption = data[k]["caption"]
+                base_hashtags = data[k].get("hashtags", [])
+                break
 
         # --- instagram_story fallback ---
-        if not data.get("instagram_story"):
+        if "instagram" in clean_selected and not data.get("instagram_story"):
             data["instagram_story"] = {
                 "text": base_caption[:120] if base_caption else "Stay tuned for more!",
-                "cta": ig_post.get("call_to_action", "DM us for more!"),
+                "cta": "DM us for more!",
                 "poll_question": "Would you like to know more?"
             }
 
         # --- linkedin_post fallback ---
-        if not data.get("linkedin_post"):
+        if "linkedin" in clean_selected and not data.get("linkedin_post"):
             linkedin_caption = (
                 f"Excited to share an update with our professional network!\n\n{base_caption}"
                 if base_caption else "Sharing insights from our brand journey."
@@ -245,7 +277,7 @@ Generate JSON strictly matching this structure:
             }
 
         # --- facebook_post fallback ---
-        if not data.get("facebook_post"):
+        if "facebook" in clean_selected and not data.get("facebook_post"):
             facebook_caption = (
                 f"Hey friends! 👋\n\n{base_caption}"
                 if base_caption else "We have something exciting to share with our community!"
@@ -259,7 +291,7 @@ Generate JSON strictly matching this structure:
             }
 
         # --- twitter_post fallback ---
-        if not data.get("twitter_post"):
+        if ("twitter" in clean_selected or "x" in clean_selected) and not data.get("twitter_post"):
             twitter_caption = base_caption[:240] if base_caption else "Fresh updates from our team. Stay tuned!"
             data["twitter_post"] = {
                 "caption": twitter_caption,
@@ -270,7 +302,7 @@ Generate JSON strictly matching this structure:
             }
 
         # --- tiktok fallback ---
-        if not data.get("tiktok"):
+        if "tiktok" in clean_selected and not data.get("tiktok"):
             first_line = (base_caption.split('\n')[0] if base_caption else "Fresh brand perspectives").strip()
             tiktok_caption = f"{first_line} 👀 Drop your thoughts below! 👇"
             data["tiktok"] = {
@@ -281,8 +313,8 @@ Generate JSON strictly matching this structure:
                 "call_to_action": "Follow for daily tips!"
             }
 
-        # --- instagram_post fallback (shouldn't happen but guard anyway) ---
-        if not data.get("instagram_post"):
+        # --- instagram_post fallback ---
+        if ("instagram" in clean_selected or not selected_platforms) and not data.get("instagram_post"):
             data["instagram_post"] = {
                 "caption": base_caption or "Exciting content coming your way! Stay tuned.",
                 "hashtags": base_hashtags,
@@ -290,6 +322,25 @@ Generate JSON strictly matching this structure:
                 "best_day": "Wednesday",
                 "call_to_action": "Follow for more!"
             }
+
+        # Filter down to ONLY selected platforms if selected_platforms was explicitly specified
+        if selected_platforms:
+            allowed_keys = set()
+            for p in clean_selected:
+                if p in ("instagram", "instagram_post"):
+                    allowed_keys.add("instagram_post")
+                    allowed_keys.add("instagram_story")
+                elif p in ("facebook", "facebook_post"):
+                    allowed_keys.add("facebook_post")
+                elif p in ("linkedin", "linkedin_post"):
+                    allowed_keys.add("linkedin_post")
+                elif p in ("twitter", "x", "twitter_post"):
+                    allowed_keys.add("twitter_post")
+                elif p in ("tiktok",):
+                    allowed_keys.add("tiktok")
+            
+            meta_keys = {"session_theme", "angle", "strategic_hook", "reasoning", "_source"}
+            data = {k: v for k, v in data.items() if k in allowed_keys or k in meta_keys}
 
         return data
 

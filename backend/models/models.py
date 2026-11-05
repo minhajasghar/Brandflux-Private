@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Integer, Boolean, Text, ForeignKey, Date, DateTime, JSON, Float
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from database import Base
 import uuid
 
@@ -30,7 +30,24 @@ class User(Base):
     verification_token = Column(String(255), nullable=True, index=True)
     verification_token_expires_at = Column(DateTime, nullable=True)
     welcome_sent = Column(Boolean, default=False, nullable=False)
+    pending_email = Column(String(255), nullable=True)
+    email_change_token = Column(String(255), nullable=True, index=True)
+    email_change_expires_at = Column(DateTime, nullable=True)
     notification_preferences = Column(JSON, nullable=True)
+    
+    # Trial & Quota Limits
+    trial_started_at = Column(DateTime, nullable=True)
+    trial_ends_at = Column(DateTime, nullable=True)
+    trial_credits_allocated = Column(Integer, default=15, nullable=False)
+    rerolls_used_this_month = Column(Integer, default=0, nullable=False)
+    x_posts_used_this_month = Column(Integer, default=0, nullable=False)
+    upgrade_requested_plan = Column(String(50), nullable=True)
+    upgrade_requested_at = Column(DateTime, nullable=True)
+    registration_ip = Column(String(45), nullable=True)
+    trial_day10_email_sent = Column(Boolean, default=False, nullable=False)
+    trial_day13_email_sent = Column(Boolean, default=False, nullable=False)
+    trial_expired_email_sent = Column(Boolean, default=False, nullable=False)
+    
     created_at = Column(DateTime, default=func.now())
 
     # Relationships
@@ -390,8 +407,13 @@ class ScheduledPost(Base):
     platform = Column(String(50), nullable=False)  # instagram, linkedin, facebook, twitter, tiktok
     caption = Column(Text, nullable=True)
     media_url = Column(Text, nullable=True)
+    variant_image_url = Column(Text, nullable=True)  # Alternate image variant for fast swapping
+    topic = Column(Text, nullable=True)
+    headline = Column(Text, nullable=True)
+    platform_copies = Column(JSON, nullable=True)  # Dict of per-platform captions & hashtags
+    edit_prompt = Column(Text, nullable=True)
     scheduled_at = Column(DateTime, nullable=False)
-    status = Column(String(50), default="Draft")  # Draft, Pending Approval, Scheduled, Publishing, Published, Failed
+    status = Column(String(50), default="Draft")  # Draft, Pending Approval, Scheduled, Publishing, Published, Failed, Skipped
     external_post_id = Column(String(255), nullable=True)
     permalink = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
@@ -459,15 +481,20 @@ class AutopilotConfig(Base):
     
     enabled = Column(Boolean, default=True)
     kill_switch = Column(Boolean, default=False)  # Master emergency stop
-    mode = Column(String(20), default="approval")  # "approval" (creates Pending Approval) or "autopilot" (creates Scheduled)
+    mode = Column(String(50), default="weekly_plan")  # "weekly_plan" (Plan my whole week) or "ask_before_each" (Ask me before each post)
+    frequency = Column(String(50), default="daily")  # "daily", "every_2_days", "every_3_days", "weekly", "custom"
+    custom_weekdays = Column(JSON, default=lambda: ["Tue", "Thu"])  # ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    posting_time = Column(String(10), default="07:00")
+    timezone = Column(String(100), default="Asia/Karachi")
     max_posts_per_day = Column(Integer, default=2)
     
     banned_topics = Column(JSON, default=list)  # e.g. ["politics", "unverified medical claims", "gambling"]
     allowed_prices_discounts = Column(JSON, default=list)  # Verified prices/discounts from daily check-ins
-    target_platforms = Column(JSON, default=lambda: ["instagram_post", "linkedin", "facebook"])
-    posting_times = Column(JSON, default=lambda: {"morning": "09:00", "afternoon": "13:30", "evening": "18:00"})
+    target_platforms = Column(JSON, default=lambda: ["facebook", "linkedin", "tiktok"])
+    posting_times = Column(JSON, default=lambda: {"morning": "07:00"})
     notification_email = Column(String(255), nullable=True)
     
+    last_event_prompt_response = Column(Text, nullable=True)
     last_run_at = Column(DateTime, nullable=True)
     last_run_id = Column(String(36), nullable=True)
     last_run_summary = Column(Text, nullable=True)
@@ -550,6 +577,23 @@ class Usage(Base):
     # Relationships
     user = relationship("User", back_populates="usages")
     brand = relationship("Brand", back_populates="usages")
+
+
+# ═══════════════════════════════════════════════════════════
+# CREDIT LEDGER — Authoritative post credits ledger
+# ═══════════════════════════════════════════════════════════
+class CreditLedger(Base):
+    __tablename__ = "credit_ledger"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    delta = Column(Float, nullable=False)  # positive for grants/refunds, negative for usage
+    reason = Column(String(100), nullable=False)  # "monthly_grant", "post_generation", "generation_refund", "credit_pack", "admin_adjustment"
+    reference_id = Column(String(100), nullable=True, index=True)  # session_id, parent_post_id, idempotency key
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+    # Relationships
+    user = relationship("User", backref=backref("credit_ledger_entries", cascade="all, delete-orphan", lazy="dynamic"))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -687,5 +731,29 @@ class Notification(Base):
     created_at = Column(DateTime, default=func.now(), index=True)
 
     user = relationship("User", back_populates="notifications")
-    brand = relationship("Brand", foreign_keys=[brand_id])
+
+
+# ═══════════════════════════════════════════════════════════
+# PLANS — Database-backed dynamic subscription plans & limits
+# ═══════════════════════════════════════════════════════════
+class Plan(Base):
+    __tablename__ = "plans"
+
+    id = Column(String(50), primary_key=True)  # trial, starter, growth, pro
+    name = Column(String(100), nullable=False)
+    price_usd = Column(Integer, default=0, nullable=False)
+    price_annual_usd = Column(Integer, default=0, nullable=False)
+    price_local = Column(String(50), nullable=True)
+    credits = Column(Integer, default=15, nullable=False)
+    brands = Column(Integer, default=1, nullable=False)
+    platforms = Column(Integer, default=2, nullable=False)
+    max_posts_per_day = Column(Integer, default=5, nullable=False)
+    daily_generation_cap = Column(Integer, default=5, nullable=False)
+    reroll_pool = Column(Integer, default=3, nullable=False)  # Monthly re-roll allowance
+    x_allowed = Column(Boolean, default=False, nullable=False)
+    x_monthly_allowance = Column(Integer, default=0, nullable=False)
+    features = Column(JSON, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

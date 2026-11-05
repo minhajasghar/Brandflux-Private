@@ -89,6 +89,71 @@ def publish_scheduled_post(self: Task, post_id: str):
         return {"status": "error", "error": str(exc)}
     finally:
         db.close()
+
+
+@celery_app.task
+def check_trial_notifications_daily():
+    """
+    Daily periodic task to send trial reminder and expiration emails:
+    - Day 10 (4 days remaining)
+    - Day 13 (1 day remaining)
+    - Expiry day
+    """
+    from models.models import User
+    from services.plan_service import get_user_plan_limits
+    from services.email.email_service import send_email
+
+    db = SessionLocal()
+    try:
+        trial_users = db.query(User).filter(
+            User.plan.in_(["trial", "free"]),
+            User.is_deleted == False
+        ).all()
+
+        for u in trial_users:
+            limits = get_user_plan_limits(db, u)
+            days_left = limits.get("trial_days_left", 0)
+            is_expired = limits.get("trial_is_expired", False)
+            credits_left = limits.get("credits_remaining", 0)
+
+            # Day 10 notification (<= 4 days left)
+            if days_left <= 4 and days_left > 1 and not u.trial_day10_email_sent and not is_expired:
+                u.trial_day10_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_day10",
+                    data={"full_name": u.full_name or "there", "credits_left": credits_left},
+                    user_id=u.id
+                ))
+
+            # Day 13 notification (<= 1 day left)
+            elif days_left <= 1 and not is_expired and not u.trial_day13_email_sent:
+                u.trial_day13_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_day13",
+                    data={"full_name": u.full_name or "there", "credits_left": credits_left},
+                    user_id=u.id
+                ))
+
+            # Expiration notification
+            elif is_expired and not u.trial_expired_email_sent:
+                u.trial_expired_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_expired",
+                    data={"full_name": u.full_name or "there"},
+                    user_id=u.id
+                ))
+
+    except Exception as e:
+        logger.error(f"[TrialReminder] Error running daily trial check: {e}")
+    finally:
+        db.close()
+
         db.close()
 
 
@@ -109,7 +174,18 @@ def check_and_publish_due_posts():
 
         if due_posts:
             logger.info(f"[Scheduler] Found {len(due_posts)} posts due now for publication.")
+            from services.plan_service import get_user_plan_limits
             for post in due_posts:
+                # Check if user's trial is expired -> pause post
+                user = post.user
+                if user and (user.plan or "trial").lower() in ("trial", "free"):
+                    limits = get_user_plan_limits(db, user)
+                    if limits.get("trial_is_expired"):
+                        post.status = "Paused"
+                        db.commit()
+                        logger.warning(f"[Scheduler] Pausing scheduled post {post.id} for user {user.email}: trial expired.")
+                        continue
+
                 # Dispatch async Celery worker task
                 publish_scheduled_post.delay(post.id)
         return len(due_posts)
@@ -118,6 +194,71 @@ def check_and_publish_due_posts():
         return 0
     finally:
         db.close()
+
+
+@celery_app.task
+def check_trial_notifications_daily():
+    """
+    Daily periodic task to send trial reminder and expiration emails:
+    - Day 10 (4 days remaining)
+    - Day 13 (1 day remaining)
+    - Expiry day
+    """
+    from models.models import User
+    from services.plan_service import get_user_plan_limits
+    from services.email.email_service import send_email
+
+    db = SessionLocal()
+    try:
+        trial_users = db.query(User).filter(
+            User.plan.in_(["trial", "free"]),
+            User.is_deleted == False
+        ).all()
+
+        for u in trial_users:
+            limits = get_user_plan_limits(db, u)
+            days_left = limits.get("trial_days_left", 0)
+            is_expired = limits.get("trial_is_expired", False)
+            credits_left = limits.get("credits_remaining", 0)
+
+            # Day 10 notification (<= 4 days left)
+            if days_left <= 4 and days_left > 1 and not u.trial_day10_email_sent and not is_expired:
+                u.trial_day10_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_day10",
+                    data={"full_name": u.full_name or "there", "credits_left": credits_left},
+                    user_id=u.id
+                ))
+
+            # Day 13 notification (<= 1 day left)
+            elif days_left <= 1 and not is_expired and not u.trial_day13_email_sent:
+                u.trial_day13_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_day13",
+                    data={"full_name": u.full_name or "there", "credits_left": credits_left},
+                    user_id=u.id
+                ))
+
+            # Expiration notification
+            elif is_expired and not u.trial_expired_email_sent:
+                u.trial_expired_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_expired",
+                    data={"full_name": u.full_name or "there"},
+                    user_id=u.id
+                ))
+
+    except Exception as e:
+        logger.error(f"[TrialReminder] Error running daily trial check: {e}")
+    finally:
+        db.close()
+
 
 
 @celery_app.task
@@ -148,6 +289,71 @@ def check_token_expiry_alerts():
 
 
 @celery_app.task
+def check_trial_notifications_daily():
+    """
+    Daily periodic task to send trial reminder and expiration emails:
+    - Day 10 (4 days remaining)
+    - Day 13 (1 day remaining)
+    - Expiry day
+    """
+    from models.models import User
+    from services.plan_service import get_user_plan_limits
+    from services.email.email_service import send_email
+
+    db = SessionLocal()
+    try:
+        trial_users = db.query(User).filter(
+            User.plan.in_(["trial", "free"]),
+            User.is_deleted == False
+        ).all()
+
+        for u in trial_users:
+            limits = get_user_plan_limits(db, u)
+            days_left = limits.get("trial_days_left", 0)
+            is_expired = limits.get("trial_is_expired", False)
+            credits_left = limits.get("credits_remaining", 0)
+
+            # Day 10 notification (<= 4 days left)
+            if days_left <= 4 and days_left > 1 and not u.trial_day10_email_sent and not is_expired:
+                u.trial_day10_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_day10",
+                    data={"full_name": u.full_name or "there", "credits_left": credits_left},
+                    user_id=u.id
+                ))
+
+            # Day 13 notification (<= 1 day left)
+            elif days_left <= 1 and not is_expired and not u.trial_day13_email_sent:
+                u.trial_day13_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_day13",
+                    data={"full_name": u.full_name or "there", "credits_left": credits_left},
+                    user_id=u.id
+                ))
+
+            # Expiration notification
+            elif is_expired and not u.trial_expired_email_sent:
+                u.trial_expired_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_expired",
+                    data={"full_name": u.full_name or "there"},
+                    user_id=u.id
+                ))
+
+    except Exception as e:
+        logger.error(f"[TrialReminder] Error running daily trial check: {e}")
+    finally:
+        db.close()
+
+
+
+@celery_app.task
 def sync_daily_post_metrics_task(days: int = 30):
     """
     Daily periodic Celery task pulling post metrics (likes, comments, shares, reach, impressions)
@@ -165,5 +371,70 @@ def sync_daily_post_metrics_task(days: int = 30):
         return {"error": str(e)}
     finally:
         db.close()
+
+
+@celery_app.task
+def check_trial_notifications_daily():
+    """
+    Daily periodic task to send trial reminder and expiration emails:
+    - Day 10 (4 days remaining)
+    - Day 13 (1 day remaining)
+    - Expiry day
+    """
+    from models.models import User
+    from services.plan_service import get_user_plan_limits
+    from services.email.email_service import send_email
+
+    db = SessionLocal()
+    try:
+        trial_users = db.query(User).filter(
+            User.plan.in_(["trial", "free"]),
+            User.is_deleted == False
+        ).all()
+
+        for u in trial_users:
+            limits = get_user_plan_limits(db, u)
+            days_left = limits.get("trial_days_left", 0)
+            is_expired = limits.get("trial_is_expired", False)
+            credits_left = limits.get("credits_remaining", 0)
+
+            # Day 10 notification (<= 4 days left)
+            if days_left <= 4 and days_left > 1 and not u.trial_day10_email_sent and not is_expired:
+                u.trial_day10_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_day10",
+                    data={"full_name": u.full_name or "there", "credits_left": credits_left},
+                    user_id=u.id
+                ))
+
+            # Day 13 notification (<= 1 day left)
+            elif days_left <= 1 and not is_expired and not u.trial_day13_email_sent:
+                u.trial_day13_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_day13",
+                    data={"full_name": u.full_name or "there", "credits_left": credits_left},
+                    user_id=u.id
+                ))
+
+            # Expiration notification
+            elif is_expired and not u.trial_expired_email_sent:
+                u.trial_expired_email_sent = True
+                db.commit()
+                run_async(send_email(
+                    to=u.email,
+                    template="trial_expired",
+                    data={"full_name": u.full_name or "there"},
+                    user_id=u.id
+                ))
+
+    except Exception as e:
+        logger.error(f"[TrialReminder] Error running daily trial check: {e}")
+    finally:
+        db.close()
+
 
 

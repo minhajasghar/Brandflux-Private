@@ -13,6 +13,7 @@ export function middleware(request: NextRequest) {
     pathname === '/login' ||
     pathname === '/signup' ||
     pathname === '/pricing' ||
+    pathname === '/brand-preview' ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/static')

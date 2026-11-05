@@ -596,6 +596,151 @@ Admin portal: {admin_url}
     return subject, html, plain
 
 
+def render_email_change_verification(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    """
+    Template: email_change_verification
+    data: { "verification_url": str, "full_name": str, "new_email": str }
+    """
+    full_name = data.get("full_name") or "there"
+    url = data.get("verification_url", f"{APP_BASE_URL}/verify-email-change")
+    new_email = data.get("new_email", "your new address")
+    subject = "Verify your new email address for Brandflux"
+    preheader = f"Confirm {new_email} as your new login address."
+
+    body_html = f"""
+    <p>Hi {full_name},</p>
+    <p>You requested to update your Brandflux account login email to <strong>{new_email}</strong>.</p>
+    <p>Please click the button below to verify this email address and complete the update.</p>
+    <p style="font-size: 13px; color: {TEXT_SUB};">This verification link will expire in 24 hours. If you did not request this change, please ignore this email.</p>
+    """
+
+    action_btn = {
+        "label": "Confirm New Email",
+        "url": url
+    }
+
+    html = wrap_email_html(
+        title="Verify New Email Address",
+        preheader=preheader,
+        body_html=body_html,
+        action_button=action_btn,
+        footer_note="If you did not request this, no changes have been made to your account."
+    )
+
+    plain = f"""Hi {full_name},
+
+You requested to change your Brandflux login email to {new_email}.
+Confirm your new email here: {url}
+
+Link expires in 24 hours.
+"""
+    return subject, html, plain
+
+
+def render_email_change_notice(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    """
+    Template: email_change_notice
+    data: { "full_name": str, "new_email": str }
+    """
+    full_name = data.get("full_name") or "there"
+    new_email = data.get("new_email", "a new address")
+    subject = "Security Alert: Email change requested for your Brandflux account"
+    preheader = f"A request was submitted to change your account email to {new_email}."
+
+    body_html = f"""
+    <p>Hi {full_name},</p>
+    <p>This is a security alert to inform you that a request was made to update the login email address for your Brandflux account to <strong>{new_email}</strong>.</p>
+    <p>A verification link has been sent to the new email address. Your account email will NOT change until that link is clicked.</p>
+    <p style="font-size: 13px; color: {TEXT_SUB};">If you made this change, you can safely ignore this notification. If you did <strong>NOT</strong> request this change, please change your password immediately and contact support.</p>
+    """
+
+    html = wrap_email_html(
+        title="Security Notice: Email Change Requested",
+        preheader=preheader,
+        body_html=body_html,
+        footer_note="For account security, we notify your existing address whenever an email change is initiated."
+    )
+
+    plain = f"""Hi {full_name},
+
+A request was made to update your Brandflux login email to {new_email}.
+If you did make this request, no action is needed.
+If you did not authorize this, please reset your password immediately.
+"""
+    return subject, html, plain
+
+
+def render_trial_day10(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    full_name = data.get("full_name") or "there"
+    credits_left = data.get("credits_left", 6)
+    upgrade_url = data.get("upgrade_url") or "http://localhost:3000/pricing"
+    subject = "Your Brandflux trial ends in 4 days"
+    content_html = f"""
+    <h2 style="color: #F4F5F7; margin-bottom: 12px; font-size: 20px;">4 days left in your Brandflux trial</h2>
+    <p style="color: #A0A5B5; line-height: 1.6; font-size: 14px;">
+      Hi {full_name}, you have <strong>4 days</strong> and <strong>{credits_left} post credits</strong> remaining on your free trial.
+    </p>
+    <p style="color: #A0A5B5; line-height: 1.6; font-size: 14px;">
+      Upgrade to Starter or Growth to ensure your scheduled social posts publish uninterrupted.
+    </p>
+    <div style="margin: 24px 0;">
+      <a href="{upgrade_url}" style="background-color: #D4FF24; color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block;">
+        View Plans &amp; Upgrade &rarr;
+      </a>
+    </div>
+    """
+    html = base_layout(content_html, "Trial Ending Soon")
+    plain = f"Hi {full_name},\n\nYou have 4 days and {credits_left} post credits left on your free trial.\nUpgrade to continue: {upgrade_url}"
+    return subject, html, plain
+
+
+def render_trial_day13(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    full_name = data.get("full_name") or "there"
+    credits_left = data.get("credits_left", 2)
+    upgrade_url = data.get("upgrade_url") or "http://localhost:3000/pricing"
+    subject = "Your Brandflux trial ends tomorrow"
+    content_html = f"""
+    <h2 style="color: #F4F5F7; margin-bottom: 12px; font-size: 20px;">Your trial expires tomorrow</h2>
+    <p style="color: #A0A5B5; line-height: 1.6; font-size: 14px;">
+      Hi {full_name}, tomorrow is your final day of full trial access. You have <strong>{credits_left} post credits</strong> left.
+    </p>
+    <p style="color: #A0A5B5; line-height: 1.6; font-size: 14px;">
+      Choose your plan today to keep your brand assets active and unlock higher generation caps.
+    </p>
+    <div style="margin: 24px 0;">
+      <a href="{upgrade_url}" style="background-color: #D4FF24; color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block;">
+        Upgrade Now &rarr;
+      </a>
+    </div>
+    """
+    html = base_layout(content_html, "Final Day of Trial")
+    plain = f"Hi {full_name},\n\nYour Brandflux trial ends tomorrow. Choose your plan to keep publishing: {upgrade_url}"
+    return subject, html, plain
+
+
+def render_trial_expired(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    full_name = data.get("full_name") or "there"
+    upgrade_url = data.get("upgrade_url") or "http://localhost:3000/pricing"
+    subject = "Your Brandflux trial has expired - keep your content growing"
+    content_html = f"""
+    <h2 style="color: #F4F5F7; margin-bottom: 12px; font-size: 20px;">Your trial has concluded</h2>
+    <p style="color: #A0A5B5; line-height: 1.6; font-size: 14px;">
+      Hi {full_name}, your 14-day free trial has expired. Your generated content and history will remain safely stored for 60 days.
+    </p>
+    <p style="color: #A0A5B5; line-height: 1.6; font-size: 14px;">
+      New generations and automated publishing are now paused. Upgrade anytime to resume creating high-converting multi-platform posts.
+    </p>
+    <div style="margin: 24px 0;">
+      <a href="{upgrade_url}" style="background-color: #D4FF24; color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block;">
+        Reactivate with a Plan &rarr;
+      </a>
+    </div>
+    """
+    html = base_layout(content_html, "Trial Expired")
+    plain = f"Hi {full_name},\n\nYour Brandflux trial has expired. Upgrade to resume publishing: {upgrade_url}"
+    return subject, html, plain
+
+
 # Registry of templates
 TEMPLATE_REGISTRY = {
     "verify_email": render_verify_email,
@@ -607,6 +752,11 @@ TEMPLATE_REGISTRY = {
     "password_reset": render_password_reset,
     "reconnect_needed": render_reconnect_needed,
     "admin_alert": render_admin_alert,
+    "email_change_verification": render_email_change_verification,
+    "email_change_notice": render_email_change_notice,
+    "trial_day10": render_trial_day10,
+    "trial_day13": render_trial_day13,
+    "trial_expired": render_trial_expired,
 }
 
 def render_template(template_name: str, data: Dict[str, Any]) -> Tuple[str, str, str]:

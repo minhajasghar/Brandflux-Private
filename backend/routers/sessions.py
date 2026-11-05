@@ -61,18 +61,11 @@ def get_max_variants_for_user(user: User) -> int:
     norm_plan = (user.plan or "starter").lower().strip()
     return PLAN_VARIANT_LIMITS.get(norm_plan, 3)
 
+from services import credit_service
+
 def get_credits_remaining_for_user(user: User, db: Session) -> int:
-    # Monthly plan caps: Starter 60, Growth 150, Pro 300, Agency 1000
-    plan_monthly_credits = {
-        "free": 30,
-        "starter": 60,
-        "growth": 150,
-        "pro": 300,
-        "agency": 1000
-    }
-    cap = plan_monthly_credits.get((user.plan or "starter").lower(), 60)
-    used = user.posts_used_this_month or 0
-    return max(0, cap - used)
+    balance_info = credit_service.get_user_credit_balance(user.id, db)
+    return balance_info["balance"]
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 gemini = GeminiService()
@@ -118,6 +111,10 @@ async def start_session(
     brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
+
+    # Server-side plan & limits enforcement (trial expiry, daily cap, credit balance)
+    from services.plan_service import enforce_can_generate_post
+    enforce_can_generate_post(db, user)
 
     # Check if session already exists for today
     existing_session = db.query(DailySession).filter(
@@ -419,6 +416,10 @@ async def get_today_session(
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
 
+    # Server-side plan & limits enforcement (trial expiry, daily cap, credit balance)
+    from services.plan_service import enforce_can_generate_post
+    enforce_can_generate_post(db, user)
+
     session = db.query(DailySession).filter(
         DailySession.user_id == user.id,
         DailySession.brand_id == brand.id,
@@ -692,6 +693,10 @@ async def generate_session_variants(
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
 
+    # Server-side plan & limits enforcement (trial expiry, daily cap, credit balance)
+    from services.plan_service import enforce_can_generate_post
+    enforce_can_generate_post(db, user)
+
     if not session:
         # Resolve today's session or create an active one for the brand
         session = db.query(DailySession).filter(
@@ -768,13 +773,33 @@ async def generate_session_variants(
         "context_text": req.context_text or ""
     }
 
+    # Generate captions only for the platforms the user selected and that are connected
+    from models.models import SocialAccount
+    connected_rows = db.query(SocialAccount.platform).filter(
+        SocialAccount.user_id == user.id,
+        SocialAccount.is_connected == True
+    ).all()
+    connected_plat_names = [r[0].lower().strip() for r in connected_rows]
+
+    user_selected = req.target_platforms or ([req.target_platform] if req.target_platform else [])
+    user_selected_clean = [p.lower().strip() for p in user_selected if p]
+
+    # Intersection: platforms selected AND connected (if any accounts are connected)
+    if connected_plat_names:
+        active_target_platforms = [p for p in user_selected_clean if p in connected_plat_names]
+        if not active_target_platforms:
+            active_target_platforms = connected_plat_names[:2]
+    else:
+        active_target_platforms = user_selected_clean if user_selected_clean else ["facebook", "linkedin"]
+
     content_data = gemini.generate_multi_platform_content(
         brand_profile=brand_profile,
         session_answers=answers,
         website_data=brand.tagline or brand.business_name,
         last_posts_history=[],
         decided_strategy=decided_strategy,
-        learning_context=learning_context
+        learning_context=learning_context,
+        selected_platforms=active_target_platforms
     ) or {}
 
     platform_key_map = {
@@ -1124,10 +1149,16 @@ def select_session_variant(
             detail="The selected variant image is not verified or reachable in storage. Please click 'Regenerate this variant' to generate a fresh image before saving."
         )
 
-    # Increment user monthly posts counter ONLY after image verification succeeds and ONLY IF NOT FALLBACK
+    # Deduct 1 post credit ONLY after image reachability verification succeeds and ONLY IF NOT FALLBACK
     is_fallback = getattr(variant, "source", "ai") == "fallback"
+    credit_deducted = False
     if not is_fallback:
-        user.posts_used_this_month = (user.posts_used_this_month or 0) + 1
+        credit_deducted = credit_service.deduct_post_credit(
+            user_id=user.id,
+            reference_id=parent_post.id,
+            db=db,
+            reason="post_generation"
+        )
     db.commit()
 
     return {
@@ -1140,7 +1171,7 @@ def select_session_variant(
         "image_url": variant.image_url,
         "caption": final_caption,
         "hashtags": final_hashtags,
-        "credit_deducted": not is_fallback,
+        "credit_deducted": credit_deducted,
         "source": getattr(variant, "source", "ai")
     }
 
@@ -1169,6 +1200,10 @@ async def regenerate_single_variant_endpoint(
     brand = resolve_user_brand(user, db, brand_id=session.brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+
+    # Consume re-roll allowance (free from pool, or 0.5 credit after pool exhausted)
+    from services.plan_service import consume_reroll_allowance
+    reroll_info = consume_reroll_allowance(db, user, reference_id=req.session_id)
 
     brand_profile = {
         "business_name": brand.business_name,

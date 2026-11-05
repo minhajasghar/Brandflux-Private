@@ -3,6 +3,7 @@ from services.publishing.base import PlatformPublisher
 from services.publishing.meta_adapter import MetaPublisher
 from services.publishing.linkedin_adapter import LinkedInPublisher
 from services.publishing.tiktok_adapter import TikTokPublisher
+from services.publishing.x_adapter import XPublisher
 from services.publishing.aggregator_adapter import AyrshareAggregatorPublisher
 
 
@@ -20,6 +21,9 @@ def get_publisher(platform: str) -> PlatformPublisher:
     
     if "tiktok" in plat:
         return TikTokPublisher()
+
+    if plat in ("twitter", "x"):
+        return XPublisher()
 
     # Meta covers Instagram and Facebook
     return MetaPublisher()

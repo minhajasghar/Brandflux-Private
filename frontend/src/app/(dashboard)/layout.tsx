@@ -18,7 +18,7 @@ import {
   ShieldAlert
 } from 'lucide-react'
 import Cookies from 'js-cookie'
-import { getProfile } from '@/lib/api'
+import { getProfile, getUserCredits } from '@/lib/api'
 import BottomNav from '@/components/shared/BottomNav'
 import BrandSwitcher from '@/components/layout/BrandSwitcher'
 import NotificationBell from '@/components/notifications/NotificationBell'
@@ -34,6 +34,8 @@ export default function DashboardLayout({
   const [userEmail, setUserEmail] = useState('')
   const [userPlan, setUserPlan] = useState('FREE')
   const [userRole, setUserRole] = useState('user')
+  const [creditBalance, setCreditBalance] = useState<number | null>(null)
+  const [isLowBalance, setIsLowBalance] = useState(false)
   
   const isOnboarding = pathname === '/onboarding'
 
@@ -82,6 +84,17 @@ export default function DashboardLayout({
             document.cookie = 'brandflux_onboarding_complete=true; path=/; max-age=604800;'
             router.push('/dashboard')
           }
+
+          // Fetch authoritative credit ledger balance
+          try {
+            const credData = await getUserCredits()
+            if (credData && typeof credData.balance === 'number') {
+              setCreditBalance(credData.balance)
+              setIsLowBalance(Boolean(credData.is_low_balance))
+            }
+          } catch (credErr) {
+            console.error('Failed to load credit balance:', credErr)
+          }
         }
       } catch (err: any) {
         console.error('Auth verification failed in layout:', err)
@@ -96,6 +109,19 @@ export default function DashboardLayout({
     }
 
     verifyAuth()
+
+    const handleCreditsEvent = () => {
+      getUserCredits().then((c) => {
+        if (c && typeof c.balance === 'number') {
+          setCreditBalance(c.balance)
+          setIsLowBalance(Boolean(c.is_low_balance))
+        }
+      }).catch(() => {})
+    }
+    window.addEventListener('brandflux:credits_updated', handleCreditsEvent)
+    return () => {
+      window.removeEventListener('brandflux:credits_updated', handleCreditsEvent)
+    }
   }, [pathname, router])
 
   const handleLogout = () => {
@@ -227,6 +253,22 @@ export default function DashboardLayout({
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Post Credits Pill */}
+            <Link
+              href="/settings?tab=billing"
+              className={`px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition ${
+                creditBalance !== null && creditBalance <= 0
+                  ? 'bg-danger/10 border-danger/30 text-danger hover:bg-danger/20'
+                  : isLowBalance
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                  : 'bg-surface-secondary border-border text-text hover:border-accent/40'
+              }`}
+              title="Your remaining post credits"
+            >
+              <Zap className={`h-3 w-3 ${creditBalance !== null && creditBalance <= 0 ? 'text-danger' : isLowBalance ? 'text-amber-400' : 'text-accent'}`} />
+              <span>{creditBalance !== null ? `${creditBalance} post credits` : '...'}</span>
+            </Link>
+
             {/* In-App Notification Center Bell */}
             <NotificationBell />
 

@@ -21,9 +21,10 @@ import {
   X,
   RotateCcw,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  Zap
 } from 'lucide-react'
-import api from '@/lib/api'
+import api, { getUserCredits } from '@/lib/api'
 import { toast } from 'react-hot-toast'
 import Skeleton from '@/components/ui/Skeleton'
 import StreakWidget from '@/components/dashboard/StreakWidget'
@@ -89,18 +90,30 @@ export default function DashboardPage() {
   const [isPublishing, setIsPublishing] = useState<string | null>(null)
   const [schedulingCopyId, setSchedulingCopyId] = useState<string | null>(null)
   const [scheduledDateTime, setScheduledDateTime] = useState<string>('')
+  const [creditsData, setCreditsData] = useState<{
+    balance: number
+    quota: number
+    used_this_period: number
+    percentage_remaining: number
+    is_low_balance: boolean
+    is_zero_balance: boolean
+  } | null>(null)
 
   // Fetch all dashboard data
   const fetchDashboardData = async () => {
     try {
-      const [brandRes, sessionRes, statsRes, historyRes] = await Promise.all([
+      const [brandRes, sessionRes, statsRes, historyRes, credRes] = await Promise.all([
         api.get('/brand/profile'),
         api.get('/sessions/today'),
         api.get('/brand/stats'),
-        api.get('/content/history?page=1&limit=5')
+        api.get('/content/history?page=1&limit=5'),
+        getUserCredits().catch(() => null)
       ])
 
       setBrand(brandRes.data)
+      if (credRes && typeof credRes.balance === 'number') {
+        setCreditsData(credRes)
+      }
       
       // Check if session has answers filled in (daily session complete)
       if (sessionRes.data && sessionRes.data.answer_1 && sessionRes.data.answer_2 && sessionRes.data.answer_3) {
@@ -402,6 +415,49 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
 
+      {/* ─── LOW CREDITS OR ZERO CREDITS ALERT BANNER ─── */}
+      {creditsData?.is_zero_balance && (
+        <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-surface border border-accent/60 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-accent/20 border border-accent/40 flex items-center justify-center shrink-0">
+              <Sparkles className="h-4 w-4 text-accent" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-text">You&apos;ve used all your post credits</h4>
+              <p className="text-xs text-muted mt-0.5">
+                Ready for more high-converting content? Upgrade your monthly plan or grab a credit pack.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => router.push('/settings?tab=billing')}
+            className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-black text-xs font-extrabold transition shadow-accent-glow shrink-0"
+          >
+            Get Post Credits
+          </button>
+        </div>
+      )}
+
+      {!creditsData?.is_zero_balance && creditsData?.is_low_balance && (
+        <div className="flex items-center justify-between gap-4 p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-text shadow-sm">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+            <div>
+              <h4 className="font-bold text-xs sm:text-sm text-text">Low Post Credits Warning</h4>
+              <p className="text-xs text-muted mt-0.5">
+                You have <span className="font-bold text-amber-400">{creditsData.balance} post credits</span> remaining ({creditsData.percentage_remaining}% of monthly allowance).
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => router.push('/settings?tab=billing')}
+            className="px-3.5 py-1.5 rounded-xl bg-surface-secondary border border-border hover:border-amber-500/50 text-xs font-bold transition text-text shrink-0"
+          >
+            Manage Credits
+          </button>
+        </div>
+      )}
+
       {/* ─── SECTION 1: BRAND STATUS BAR ─── */}
       <section className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
         <div className="flex flex-wrap items-center gap-4 sm:gap-5">
@@ -533,6 +589,12 @@ export default function DashboardPage() {
               <p className="text-muted text-xs sm:text-sm max-w-lg leading-relaxed font-medium">
                 Answer three quick context questions to craft high-converting, tailored posts for Instagram, LinkedIn, and Facebook for <span className="text-text font-bold">{getCurrentFormattedDate()}</span>.
               </p>
+              <div className="flex items-center gap-2 pt-1">
+                <span className="px-2.5 py-1 rounded-md bg-surface-secondary border border-border text-[11px] font-bold text-accent flex items-center gap-1.5">
+                  <Zap className="h-3 w-3" />
+                  This uses 1 credit, {creditsData?.balance ?? 0} left
+                </span>
+              </div>
             </div>
             
             <button
@@ -549,17 +611,17 @@ export default function DashboardPage() {
       {/* ─── SECTION 3: STATS ROW ─── */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
-        {/* Stat Card 1 */}
+        {/* Stat Card 1: Post Credits */}
         <div className="bg-surface border border-border rounded-2xl p-4 sm:p-5 hover:border-border-light transition-colors">
           <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-xl bg-surface-secondary border border-border flex items-center justify-center text-accent mb-3 sm:mb-4">
-            <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <Zap className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </div>
-          <p className="text-[9px] sm:text-[10px] font-bold text-muted uppercase tracking-wider">Created This Month</p>
+          <p className="text-[9px] sm:text-[10px] font-bold text-muted uppercase tracking-wider">Post Credits</p>
           <p className="text-2xl sm:text-3xl font-extrabold text-text tracking-tight mt-1">
-            {stats?.posts_created_this_month || 0}
+            {creditsData?.balance ?? 0}
           </p>
           <span className="text-[10px] sm:text-[11px] font-medium text-muted">
-            across {stats?.total_platform_copies_this_month || ((stats?.posts_created_this_month || 0) * 4)} platform copies
+            {creditsData?.used_this_period ?? 0} used of {creditsData?.quota ?? 30} monthly
           </span>
         </div>
 

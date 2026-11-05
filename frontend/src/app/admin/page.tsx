@@ -71,11 +71,13 @@ import {
   getAdminSystemHealth,
   getAdminTeam,
   adminCreateAdmin,
-  adminUpdateAdminRole
+  adminUpdateAdminRole,
+  api
 } from '@/lib/api'
 import AdminEmailsTab from '@/components/admin/AdminEmailsTab'
+import AdminIntegrationsTab from '@/components/admin/AdminIntegrationsTab'
 
-type AdminTab = 'overview' | 'users' | 'emails' | 'usage' | 'credentials' | 'scans' | 'publishing' | 'plans' | 'audit' | 'health' | 'admins'
+type AdminTab = 'overview' | 'integrations' | 'users' | 'emails' | 'usage' | 'credentials' | 'scans' | 'publishing' | 'plans' | 'audit' | 'health' | 'admins'
 
 function AdminPortalContent() {
   const searchParams = useSearchParams()
@@ -109,7 +111,7 @@ function AdminPortalContent() {
   // Action Modals State
   const [actionTargetUser, setActionTargetUser] = useState<any>(null)
   const [modalType, setModalType] = useState<
-    'suspend' | 'reactivate' | 'change_plan' | 'adjust_limits' | 'reset_usage' | 'force_logout' | 'reset_password' | 'delete' | 'restore' | 'purge' | null
+    'suspend' | 'reactivate' | 'change_plan' | 'grant_credits' | 'extend_trial' | 'adjust_limits' | 'reset_usage' | 'force_logout' | 'reset_password' | 'delete' | 'restore' | 'purge' | null
   >(null)
   const [actionReason, setActionReason] = useState('')
   const [confirmEmailInput, setConfirmEmailInput] = useState('')
@@ -551,8 +553,23 @@ function AdminPortalContent() {
         await adminReactivateUser(actionTargetUser.id, actionReason)
         toast.success(`User ${actionTargetUser.email} reactivated`)
       } else if (modalType === 'change_plan') {
-        await adminChangeUserPlan(actionTargetUser.id, selectedNewPlan)
+        await api.post(`/admin/users/${actionTargetUser.id}/activate-plan`, {
+          plan_id: selectedNewPlan,
+          reason: actionReason || 'Plan activated by admin'
+        })
         toast.success(`Plan updated to ${selectedNewPlan}`)
+      } else if (modalType === 'grant_credits') {
+        await api.post(`/admin/users/${actionTargetUser.id}/grant-credits`, {
+          amount: newPostsLimit || 20,
+          reason: actionReason || 'Manual grant by admin'
+        })
+        toast.success(`Granted credits to ${actionTargetUser.email}`)
+      } else if (modalType === 'extend_trial') {
+        await api.post(`/admin/users/${actionTargetUser.id}/extend-trial`, {
+          days: newPostsLimit || 14,
+          reason: actionReason || 'Trial extended by admin'
+        })
+        toast.success(`Extended trial for ${actionTargetUser.email}`)
       } else if (modalType === 'adjust_limits') {
         await adminAdjustUserLimits(actionTargetUser.id, {
           posts_used_this_month: newPostsLimit,
@@ -676,6 +693,9 @@ function AdminPortalContent() {
         </div>
       )}
 
+      {/* ─── TAB: PLATFORM INTEGRATIONS ─── */}
+      {activeTab === 'integrations' && <AdminIntegrationsTab />}
+
       {/* ─── TAB 2: USERS & ACCOUNTS ─── */}
       {activeTab === 'users' && (
         <div className="space-y-4">
@@ -734,10 +754,11 @@ function AdminPortalContent() {
                 <tr className="border-b border-border text-muted uppercase text-[10px] tracking-wider font-extrabold">
                   <th className="py-3 px-3">User</th>
                   <th className="py-3 px-3">Plan</th>
-                  <th className="py-3 px-3">Brands</th>
-                  <th className="py-3 px-3">Posts Used</th>
+                  <th className="py-3 px-3">Credits</th>
+                  <th className="py-3 px-3">Cost to Us</th>
+                  <th className="py-3 px-3">Margin</th>
+                  <th className="py-3 px-3">Abuse Flags</th>
                   <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Last Active</th>
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -745,20 +766,53 @@ function AdminPortalContent() {
                 {users.map(u => (
                   <tr key={u.id} className="hover:bg-surface-secondary/50 transition">
                     <td className="py-3 px-3">
-                      <div className="font-bold text-text">{u.email}</div>
-                      <div className="text-[11px] text-muted">{u.full_name || 'No name'}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-text">{u.email}</span>
+                        {u.upgrade_requested_plan && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-accent text-black animate-pulse">
+                            Req: {u.upgrade_requested_plan}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted">{u.full_name || 'No name'} &bull; {u.brands_count} brand(s)</div>
                     </td>
                     <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded-md font-extrabold text-[10px] bg-primary/15 text-primary-light border border-primary/30">
-                        {u.plan}
+                      <div className="flex flex-col gap-0.5">
+                        <span className="px-2 py-0.5 rounded-md font-extrabold text-[10px] bg-primary/15 text-primary-light border border-primary/30 w-fit">
+                          {u.plan}
+                        </span>
+                        {u.trial_days_left !== null && u.trial_days_left !== undefined && (
+                          <span className="text-[9px] text-amber-400 font-bold">
+                            {u.trial_days_left}d trial left
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 font-semibold text-text">
+                      <div className="text-xs font-bold text-text">{u.credits_balance ?? 0} left</div>
+                      <div className="text-[10px] text-muted">{u.credits_used ?? u.posts_used_this_month ?? 0} used</div>
+                    </td>
+                    <td className="py-3 px-3 font-mono font-bold text-text">
+                      ${u.cost_to_us?.toFixed(2) ?? '0.00'}
+                    </td>
+                    <td className="py-3 px-3 font-mono font-bold">
+                      <span className={u.margin_pct >= 55 ? 'text-emerald-400' : u.margin_pct > 0 ? 'text-amber-400' : 'text-muted'}>
+                        {u.margin_pct !== undefined ? `${u.margin_pct}%` : '—'}
                       </span>
                     </td>
-                    <td className="py-3 px-3 font-semibold text-text">{u.brands_count}</td>
-                    <td className="py-3 px-3 font-semibold text-text">{u.posts_used_this_month}</td>
+                    <td className="py-3 px-3">
+                      {u.abuse_flags && u.abuse_flags.length > 0 ? (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-danger/20 text-danger border border-danger/40">
+                          {u.abuse_flags.length} Flag(s)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-emerald-400 font-bold">✓ Clean</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3">
                       {u.is_deleted ? (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                          Soft Deleted (30d Grace)
+                          Soft Deleted
                         </span>
                       ) : u.is_suspended ? (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-danger/20 text-danger border border-danger/40">Suspended</span>
@@ -766,17 +820,49 @@ function AdminPortalContent() {
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-muted">
-                      {u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : 'Never'}
-                    </td>
                     <td className="py-3 px-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => handleOpenUserDetail(u.id)}
-                          className="px-2.5 py-1 rounded-lg bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold text-[11px]"
+                          className="px-2 py-1 rounded-lg bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold text-[10px]"
                         >
                           View
                         </button>
+                        <button
+                          onClick={() => {
+                            setActionTargetUser(u)
+                            setSelectedNewPlan(u.plan?.toLowerCase() || 'starter')
+                            setModalType('change_plan')
+                          }}
+                          className="px-2 py-1 rounded-lg bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25 font-bold text-[10px]"
+                          title="Activate / Change Plan"
+                        >
+                          Plan
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActionTargetUser(u)
+                            setNewPostsLimit(20)
+                            setModalType('grant_credits')
+                          }}
+                          className="px-2 py-1 rounded-lg bg-surface-secondary hover:bg-surface-hover border border-border text-primary-light font-bold text-[10px]"
+                          title="Grant Credits"
+                        >
+                          +Credits
+                        </button>
+                        {u.trial_days_left !== null && (
+                          <button
+                            onClick={() => {
+                              setActionTargetUser(u)
+                              setNewPostsLimit(14)
+                              setModalType('extend_trial')
+                            }}
+                            className="px-2 py-1 rounded-lg bg-surface-secondary hover:bg-surface-hover border border-border text-amber-400 font-bold text-[10px]"
+                            title="Extend Trial"
+                          >
+                            +Trial
+                          </button>
+                        )}
                         {u.is_deleted ? (
                           <>
                             <button
@@ -1398,60 +1484,155 @@ function AdminPortalContent() {
                 const plan = plansConfig[planKey]
                 return (
                   <div key={planKey} className="p-4 rounded-2xl bg-surface-secondary border border-border space-y-3">
-                    <span className="text-sm font-extrabold text-primary-light uppercase tracking-wider block">
-                      {plan.label || planKey}
-                    </span>
-
-                    <div className="space-y-1.5 text-xs">
-                      <label className="text-[10px] font-bold text-muted uppercase">Price ($/mo)</label>
-                      <input
-                        type="number"
-                        value={plan.price}
-                        onChange={e => setPlansConfig({
-                          ...plansConfig,
-                          [planKey]: { ...plan, price: parseInt(e.target.value) || 0 }
-                        })}
-                        className="w-full bg-surface border border-border rounded-xl px-3 py-1.5 text-xs font-bold text-text"
-                      />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-extrabold text-primary-light uppercase tracking-wider block">
+                        {plan.label || plan.name || planKey}
+                      </span>
+                      {plan.x_allowed && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold uppercase">
+                          X Enabled
+                        </span>
+                      )}
                     </div>
 
-                    <div className="space-y-1.5 text-xs">
-                      <label className="text-[10px] font-bold text-muted uppercase">Brands Limit</label>
-                      <input
-                        type="number"
-                        value={plan.brands_limit}
-                        onChange={e => setPlansConfig({
-                          ...plansConfig,
-                          [planKey]: { ...plan, brands_limit: parseInt(e.target.value) || 1 }
-                        })}
-                        className="w-full bg-surface border border-border rounded-xl px-3 py-1.5 text-xs font-bold text-text"
-                      />
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Price ($/mo)</label>
+                        <input
+                          type="number"
+                          value={plan.price ?? plan.price_usd ?? 0}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, price: parseInt(e.target.value) || 0, price_usd: parseInt(e.target.value) || 0 }
+                          })}
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Annual ($/yr)</label>
+                        <input
+                          type="number"
+                          value={plan.price_annual_usd ?? 0}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, price_annual_usd: parseInt(e.target.value) || 0 }
+                          })}
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text"
+                        />
+                      </div>
                     </div>
 
-                    <div className="space-y-1.5 text-xs">
-                      <label className="text-[10px] font-bold text-muted uppercase">Generations / Month</label>
-                      <input
-                        type="number"
-                        value={plan.generations_per_month}
-                        onChange={e => setPlansConfig({
-                          ...plansConfig,
-                          [planKey]: { ...plan, generations_per_month: parseInt(e.target.value) || 0 }
-                        })}
-                        className="w-full bg-surface border border-border rounded-xl px-3 py-1.5 text-xs font-bold text-text"
-                      />
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Post Credits</label>
+                        <input
+                          type="number"
+                          value={plan.credits ?? 30}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, credits: parseInt(e.target.value) || 0 }
+                          })}
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Re-roll Pool</label>
+                        <input
+                          type="number"
+                          value={plan.reroll_pool ?? 15}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, reroll_pool: parseInt(e.target.value) || 0 }
+                          })}
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text"
+                        />
+                      </div>
                     </div>
 
-                    <div className="space-y-1.5 text-xs">
-                      <label className="text-[10px] font-bold text-muted uppercase">Image Variants</label>
-                      <input
-                        type="number"
-                        value={plan.variants_per_request}
-                        onChange={e => setPlansConfig({
-                          ...plansConfig,
-                          [planKey]: { ...plan, variants_per_request: parseInt(e.target.value) || 2 }
-                        })}
-                        className="w-full bg-surface border border-border rounded-xl px-3 py-1.5 text-xs font-bold text-text"
-                      />
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Brands Limit</label>
+                        <input
+                          type="number"
+                          value={plan.brands_limit ?? 1}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, brands_limit: parseInt(e.target.value) || 1 }
+                          })}
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Platforms Limit</label>
+                        <input
+                          type="number"
+                          value={plan.platforms_limit ?? 3}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, platforms_limit: parseInt(e.target.value) || 1 }
+                          })}
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Daily Cap</label>
+                        <input
+                          type="number"
+                          value={plan.daily_generation_cap ?? 10}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, daily_generation_cap: parseInt(e.target.value) || 1 }
+                          })}
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Max Posts / Day</label>
+                        <input
+                          type="number"
+                          value={plan.max_posts_per_day ?? 2}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, max_posts_per_day: parseInt(e.target.value) || 1 }
+                          })}
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-border flex items-center justify-between text-xs">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(plan.x_allowed)}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, x_allowed: e.target.checked }
+                          })}
+                          className="h-3.5 w-3.5 rounded accent-accent"
+                        />
+                        <span className="text-[10px] font-bold text-text">Allow X (Twitter)</span>
+                      </label>
+                      {plan.x_allowed && (
+                        <input
+                          type="number"
+                          placeholder="Monthly X"
+                          value={plan.x_monthly_allowance ?? 50}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, x_monthly_allowance: parseInt(e.target.value) || 0 }
+                          })}
+                          className="w-16 bg-surface border border-border rounded-lg px-2 py-1 text-[10px] font-bold text-text text-right"
+                          title="Monthly X posts allowance"
+                        />
+                      )}
                     </div>
                   </div>
                 )
@@ -1826,11 +2007,37 @@ function AdminPortalContent() {
                     onChange={e => setSelectedNewPlan(e.target.value)}
                     className="w-full bg-surface-secondary border border-border rounded-xl px-3 py-2 text-xs font-bold text-text"
                   >
-                    <option value="free">Free</option>
-                    <option value="starter">Starter</option>
-                    <option value="growth">Growth</option>
-                    <option value="pro">Pro</option>
+                    <option value="trial">14-Day Free Trial</option>
+                    <option value="starter">Starter Plan ($19/mo)</option>
+                    <option value="growth">Growth Plan ($39/mo)</option>
+                    <option value="pro">Pro Plan ($89/mo)</option>
                   </select>
+                </div>
+              )}
+
+              {modalType === 'grant_credits' && (
+                <div className="space-y-1 text-xs">
+                  <label className="font-bold text-muted">Credits to Grant</label>
+                  <input
+                    type="number"
+                    value={newPostsLimit}
+                    onChange={e => setNewPostsLimit(parseInt(e.target.value) || 0)}
+                    placeholder="e.g. 20"
+                    className="w-full bg-surface-secondary border border-border rounded-xl px-3 py-2 text-xs font-bold text-text"
+                  />
+                </div>
+              )}
+
+              {modalType === 'extend_trial' && (
+                <div className="space-y-1 text-xs">
+                  <label className="font-bold text-muted">Days to Extend Trial</label>
+                  <input
+                    type="number"
+                    value={newPostsLimit}
+                    onChange={e => setNewPostsLimit(parseInt(e.target.value) || 0)}
+                    placeholder="e.g. 14"
+                    className="w-full bg-surface-secondary border border-border rounded-xl px-3 py-2 text-xs font-bold text-text"
+                  />
                 </div>
               )}
 

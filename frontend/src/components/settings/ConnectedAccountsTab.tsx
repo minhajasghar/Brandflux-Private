@@ -9,11 +9,8 @@ import {
   AlertTriangle,
   ExternalLink,
   ChevronDown,
-  Info,
   Check,
-  X,
-  HelpCircle,
-  Sparkles
+  X
 } from 'lucide-react'
 import {
   getConnectedSocialAccounts,
@@ -35,6 +32,123 @@ interface SocialAccountItem {
   needs_reconnect: boolean
   metadata_json?: any
   avatar_url?: string
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OFFICIAL BRAND SVG ICONS
+// ─────────────────────────────────────────────────────────────────────────────
+function FacebookIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none">
+      <rect width="24" height="24" rx="6" fill="#1877F2" />
+      <path
+        d="M15.1 13.2l.5-3.3h-3.1V7.8c0-.9.4-1.7 1.8-1.7H15.7V3.3s-1.3-.2-2.5-.2c-2.5 0-4.2 1.5-4.2 4.3v2.5H6.2v3.3H9v8.2a12.5 12.5 0 003.5 0v-8.2h2.6z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  )
+}
+
+function InstagramIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none">
+      <defs>
+        <radialGradient id="igGradient" cx="20%" cy="105%" r="130%">
+          <stop offset="0%" stopColor="#ffdb58" />
+          <stop offset="25%" stopColor="#f58529" />
+          <stop offset="50%" stopColor="#dd2a7b" />
+          <stop offset="75%" stopColor="#8134af" />
+          <stop offset="100%" stopColor="#515bd4" />
+        </radialGradient>
+      </defs>
+      <rect width="24" height="24" rx="6" fill="url(#igGradient)" />
+      <path
+        d="M12 7.2a4.8 4.8 0 100 9.6 4.8 4.8 0 000-9.6zm0 7.9a3.1 3.1 0 110-6.2 3.1 3.1 0 010 6.2zm5.9-8a1.1 1.1 0 11-2.2 0 1.1 1.1 0 012.2 0zm2.3 2.3c-.1-1.5-.4-2.8-1.5-3.9s-2.4-1.4-3.9-1.5c-1.5-.1-6.1-.1-7.6 0-1.5.1-2.8.4-3.9 1.5S1.9 7.9 1.8 9.4c-.1 1.5-.1 6.1 0 7.6.1 1.5.4 2.8 1.5 3.9s2.4 1.4 3.9 1.5c1.5.1 6.1.1 7.6 0 1.5-.1 2.8-.4 3.9-1.5s1.4-2.4 1.5-3.9c.1-1.5.1-6.1 0-7.6zm-1.8 9.2c-.3.8-.9 1.4-1.7 1.7-1.2.5-4.1.4-4.7.4s-3.5.1-4.7-.4c-.8-.3-1.4-.9-1.7-1.7-.5-1.2-.4-4.1-.4-4.7s-.1-3.5.4-4.7c.3-.8.9-1.4 1.7-1.7 1.2-.5 4.1-.4 4.7-.4s3.5-.1 4.7.4c.8.3 1.4.9 1.7 1.7.5 1.2.4 4.1.4 4.7s.1 3.5-.4 4.7z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  )
+}
+
+function LinkedInIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none">
+      <rect width="24" height="24" rx="6" fill="#0A66C2" />
+      <path
+        d="M7.1 6.1a1.8 1.8 0 11-3.6 0 1.8 1.8 0 013.6 0zM3.8 9.5h3.1V20H3.8V9.5zm5.1 0H12v1.4h.1c.4-.8 1.5-1.6 3-1.6 3.2 0 3.8 2.1 3.8 4.9V20h-3.1v-5.1c0-1.2 0-2.8-1.7-2.8s-2 1.3-2 2.7V20H8.9V9.5z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  )
+}
+
+function TikTokIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none">
+      <rect width="24" height="24" rx="6" fill="#000000" />
+      <path
+        d="M16.5 8.3a4.5 4.5 0 01-2.9-1.6v6.9a4.8 4.8 0 11-4.8-4.8c.4 0 .8 0 1.2.1v2.5a2.4 2.4 0 101.4 2.2V3.5h2.5a4.5 4.5 0 004.1 3.9v2.4a6.7 6.7 0 01-1.5-.1v-1.4z"
+        fill="#25F4EE"
+        transform="translate(-0.5, -0.5)"
+      />
+      <path
+        d="M16.5 8.3a4.5 4.5 0 01-2.9-1.6v6.9a4.8 4.8 0 11-4.8-4.8c.4 0 .8 0 1.2.1v2.5a2.4 2.4 0 101.4 2.2V3.5h2.5a4.5 4.5 0 004.1 3.9v2.4a6.7 6.7 0 01-1.5-.1v-1.4z"
+        fill="#FE2C55"
+        transform="translate(0.5, 0.5)"
+      />
+      <path
+        d="M16.5 8.3a4.5 4.5 0 01-2.9-1.6v6.9a4.8 4.8 0 11-4.8-4.8c.4 0 .8 0 1.2.1v2.5a2.4 2.4 0 101.4 2.2V3.5h2.5a4.5 4.5 0 004.1 3.9v2.4a6.7 6.7 0 01-1.5-.1v-1.4z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  )
+}
+
+function XTwitterIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none">
+      <rect width="24" height="24" rx="6" fill="#000000" />
+      <path
+        d="M17.3 4h2.4l-5.3 6.1 6.3 8.3h-4.9l-3.8-5-4.4 5H5.1l5.7-6.5L4.8 4h5l3.5 4.6L17.3 4zm-.9 13h1.3L8.6 5.3H7.2L16.4 17z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  )
+}
+
+// Resilient Avatar component that falls back cleanly if image load fails
+function AccountAvatar({
+  avatarUrl,
+  name,
+  fallbackBg,
+  fallbackTextColor,
+  fallbackText
+}: {
+  avatarUrl?: string
+  name: string
+  fallbackBg: string
+  fallbackTextColor: string
+  fallbackText: string
+}) {
+  const [imgError, setImgError] = useState(false)
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        referrerPolicy="no-referrer"
+        onError={() => setImgError(true)}
+        className="h-10 w-10 rounded-full object-cover border border-border shrink-0 shadow-sm"
+      />
+    )
+  }
+
+  return (
+    <div className={`h-10 w-10 rounded-full ${fallbackBg} border flex items-center justify-center text-sm font-black ${fallbackTextColor} shrink-0`}>
+      {fallbackText}
+    </div>
+  )
 }
 
 // Friendly error translation map (replaces all technical codes with plain human language)
@@ -251,7 +365,7 @@ export default function ConnectedAccountsTab() {
         <div className="p-5 rounded-2xl bg-surface-secondary border border-primary/40 space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <span className="text-2xl">📸</span>
+              <InstagramIcon className="h-7 w-7 rounded-lg shrink-0" />
               <div>
                 <h4 className="text-sm font-bold text-text">Instagram Account Setup Notice</h4>
                 <p className="text-xs text-muted">
@@ -305,8 +419,8 @@ export default function ConnectedAccountsTab() {
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-xl">
-                  📘
+                <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
+                  <FacebookIcon className="h-10 w-10" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-text">Facebook Page</h3>
@@ -327,12 +441,27 @@ export default function ConnectedAccountsTab() {
               <div className="space-y-3 pt-1">
                 <div className="p-3 rounded-xl bg-surface-secondary border border-border flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-9 w-9 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-sm font-black text-blue-400 shrink-0">
-                      {activeFb.account_name ? activeFb.account_name[0].toUpperCase() : 'F'}
-                    </div>
+                    <AccountAvatar
+                      avatarUrl={activeFb.avatar_url}
+                      name={activeFb.account_name}
+                      fallbackBg="bg-blue-600/20 border-blue-500/40"
+                      fallbackTextColor="text-blue-400"
+                      fallbackText={activeFb.account_name ? activeFb.account_name[0].toUpperCase() : 'F'}
+                    />
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-text truncate">{activeFb.account_name}</p>
-                      <p className="text-[10px] text-muted flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs font-bold text-text truncate">
+                          {activeFb.metadata_json?.username
+                            ? (activeFb.metadata_json.username.startsWith('@') ? activeFb.metadata_json.username : `@${activeFb.metadata_json.username}`)
+                            : activeFb.account_name}
+                        </p>
+                        {activeFb.metadata_json?.username && (
+                          <span className="text-[10px] text-muted truncate">
+                            ({activeFb.account_name})
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted flex items-center gap-1.5 mt-0.5">
                         <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                         <span>Active for auto-publishing</span>
                       </p>
@@ -366,7 +495,9 @@ export default function ConnectedAccountsTab() {
                           }`}
                         >
                           {p.id === activeFb.id && <Check className="h-3 w-3 text-primary-light" />}
-                          <span className="truncate max-w-[140px]">{p.account_name}</span>
+                          <span className="truncate max-w-[140px]">
+                            {p.metadata_json?.username ? `@${p.metadata_json.username}` : p.account_name}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -420,8 +551,8 @@ export default function ConnectedAccountsTab() {
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-pink-600/15 border border-pink-500/30 flex items-center justify-center text-xl">
-                  📸
+                <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
+                  <InstagramIcon className="h-10 w-10" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-text">Instagram Business</h3>
@@ -441,20 +572,18 @@ export default function ConnectedAccountsTab() {
             {activeIg ? (
               <div className="p-3 rounded-xl bg-surface-secondary border border-border flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
-                  {activeIg.avatar_url ? (
-                    <img
-                      src={activeIg.avatar_url}
-                      alt={activeIg.account_name}
-                      className="h-9 w-9 rounded-full object-cover border border-border shrink-0"
-                    />
-                  ) : (
-                    <div className="h-9 w-9 rounded-full bg-pink-600/20 border border-pink-500/40 flex items-center justify-center text-sm font-black text-pink-400 shrink-0">
-                      IG
-                    </div>
-                  )}
+                  <AccountAvatar
+                    avatarUrl={activeIg.avatar_url}
+                    name={activeIg.account_name}
+                    fallbackBg="bg-pink-600/20 border-pink-500/40"
+                    fallbackTextColor="text-pink-400"
+                    fallbackText="IG"
+                  />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-text truncate">{activeIg.account_name}</p>
-                    <p className="text-[10px] text-muted flex items-center gap-1.5">
+                    <p className="text-xs font-bold text-text truncate">
+                      {activeIg.account_name.startsWith('@') ? activeIg.account_name : `@${activeIg.account_name}`}
+                    </p>
+                    <p className="text-[10px] text-muted flex items-center gap-1.5 mt-0.5">
                       <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                       <span>Professional Creator/Business Account</span>
                     </p>
@@ -516,8 +645,8 @@ export default function ConnectedAccountsTab() {
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-sky-600/15 border border-sky-500/30 flex items-center justify-center text-xl">
-                  💼
+                <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
+                  <LinkedInIcon className="h-10 w-10" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-text">LinkedIn</h3>
@@ -538,20 +667,16 @@ export default function ConnectedAccountsTab() {
               <div className="space-y-3 pt-1">
                 <div className="p-3 rounded-xl bg-surface-secondary border border-border flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0">
-                    {activeLi.avatar_url ? (
-                      <img
-                        src={activeLi.avatar_url}
-                        alt={activeLi.account_name}
-                        className="h-9 w-9 rounded-full object-cover border border-border shrink-0"
-                      />
-                    ) : (
-                      <div className="h-9 w-9 rounded-full bg-sky-600/20 border border-sky-500/40 flex items-center justify-center text-sm font-black text-sky-400 shrink-0">
-                        {activeLi.account_name ? activeLi.account_name[0].toUpperCase() : 'L'}
-                      </div>
-                    )}
+                    <AccountAvatar
+                      avatarUrl={activeLi.avatar_url}
+                      name={activeLi.account_name}
+                      fallbackBg="bg-sky-600/20 border-sky-500/40"
+                      fallbackTextColor="text-sky-400"
+                      fallbackText={activeLi.account_name ? activeLi.account_name[0].toUpperCase() : 'L'}
+                    />
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-text truncate">{activeLi.account_name}</p>
-                      <p className="text-[10px] text-muted flex items-center gap-1.5">
+                      <p className="text-[10px] text-muted flex items-center gap-1.5 mt-0.5">
                         <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                         <span>{activeLi.metadata_json?.is_organization ? 'Company Page' : 'Personal Profile'}</span>
                       </p>
@@ -639,8 +764,8 @@ export default function ConnectedAccountsTab() {
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-purple-600/15 border border-purple-500/30 flex items-center justify-center text-xl">
-                  🎵
+                <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
+                  <TikTokIcon className="h-10 w-10" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-text">TikTok</h3>
@@ -660,20 +785,18 @@ export default function ConnectedAccountsTab() {
             {activeTt ? (
               <div className="p-3 rounded-xl bg-surface-secondary border border-border flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
-                  {activeTt.avatar_url ? (
-                    <img
-                      src={activeTt.avatar_url}
-                      alt={activeTt.account_name}
-                      className="h-9 w-9 rounded-full object-cover border border-border shrink-0"
-                    />
-                  ) : (
-                    <div className="h-9 w-9 rounded-full bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-sm font-black text-purple-400 shrink-0">
-                      TT
-                    </div>
-                  )}
+                  <AccountAvatar
+                    avatarUrl={activeTt.avatar_url}
+                    name={activeTt.account_name}
+                    fallbackBg="bg-purple-600/20 border-purple-500/40"
+                    fallbackTextColor="text-purple-400"
+                    fallbackText="TT"
+                  />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-text truncate">{activeTt.account_name}</p>
-                    <p className="text-[10px] text-muted flex items-center gap-1.5">
+                    <p className="text-xs font-bold text-text truncate">
+                      {activeTt.account_name.startsWith('@') ? activeTt.account_name : `@${activeTt.account_name}`}
+                    </p>
+                    <p className="text-[10px] text-muted flex items-center gap-1.5 mt-0.5">
                       <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                       <span>Creator Publishing Active</span>
                     </p>
@@ -735,8 +858,8 @@ export default function ConnectedAccountsTab() {
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xl font-black text-white">
-                  𝕏
+                <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
+                  <XTwitterIcon className="h-10 w-10" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-text">X (Twitter)</h3>
@@ -756,12 +879,20 @@ export default function ConnectedAccountsTab() {
             {activeTw ? (
               <div className="p-3 rounded-xl bg-surface-secondary border border-border flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-9 w-9 rounded-full bg-neutral-700 border border-neutral-600 flex items-center justify-center text-sm font-black text-white shrink-0">
-                    𝕏
-                  </div>
+                  <AccountAvatar
+                    avatarUrl={activeTw.avatar_url}
+                    name={activeTw.account_name}
+                    fallbackBg="bg-neutral-800 border-neutral-700"
+                    fallbackTextColor="text-white"
+                    fallbackText="𝕏"
+                  />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-text truncate">{activeTw.account_name}</p>
-                    <p className="text-[10px] text-muted flex items-center gap-1.5">
+                    <p className="text-xs font-bold text-text truncate">
+                      {activeTw.metadata_json?.username
+                        ? (activeTw.metadata_json.username.startsWith('@') ? activeTw.metadata_json.username : `@${activeTw.metadata_json.username}`)
+                        : (activeTw.account_name.startsWith('@') ? activeTw.account_name : `@${activeTw.account_name}`)}
+                    </p>
+                    <p className="text-[10px] text-muted flex items-center gap-1.5 mt-0.5">
                       <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                       <span>Connected</span>
                     </p>
@@ -818,4 +949,3 @@ export default function ConnectedAccountsTab() {
     </div>
   )
 }
-

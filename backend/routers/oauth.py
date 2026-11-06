@@ -199,6 +199,7 @@ def get_authorization_url(
             "response_type": "code",
             "redirect_uri": redirect_uri,
             "state": state,
+            "disable_auto_auth": 1
         }
         auth_url = f"https://www.tiktok.com/v2/auth/authorize/?{urlencode(params)}"
         return {"authorization_url": auth_url, "auth_url": auth_url, "state": state}
@@ -296,7 +297,7 @@ async def meta_oauth_callback(
             pages_url,
             params={
                 "access_token": long_token,
-                "fields": "id,name,access_token,instagram_business_account{id,username,profile_picture_url}"
+                "fields": "id,name,username,picture{url},access_token,instagram_business_account{id,username,profile_picture_url}"
             }
         )
         pages_json = pages_res.json()
@@ -370,7 +371,13 @@ async def meta_oauth_callback(
             existing_fb.access_token_encrypted = encrypt_token(page_token)
             existing_fb.token_expires_at = expires_at
             existing_fb.is_active = True
-            existing_fb.metadata_json = {"type": "facebook_page", "page_name": page_name}
+            fb_pic = page.get("picture", {}).get("data", {}).get("url") if isinstance(page.get("picture"), dict) else None
+            existing_fb.metadata_json = {
+                "type": "facebook_page",
+                "page_name": page_name,
+                "username": page.get("username"),
+                "avatar_url": fb_pic
+            }
 
             # Check linked Instagram Business Account
             ig_data = page.get("instagram_business_account")
@@ -759,6 +766,7 @@ async def twitter_oauth_callback(
         existing_tw.metadata_json = {
             "account_id": account_id,
             "username": username,
+            "avatar_url": me_data.get("profile_image_url"),
             "refresh_token_encrypted": encrypt_token(refresh_token) if refresh_token else None
         }
 
@@ -794,11 +802,16 @@ def get_connected_accounts(
     for acc in accounts:
         days_left = None
         needs_reconnect = False
+        has_refresh_token = bool(acc.metadata_json and acc.metadata_json.get("refresh_token_encrypted"))
         if acc.token_expires_at:
             delta = acc.token_expires_at - now
             days_left = delta.days
-            if days_left <= 7:
-                needs_reconnect = True
+            if has_refresh_token:
+                # Platforms with auto-refresh tokens (Twitter, TikTok) do not need reconnect for normal short-lived expiries
+                needs_reconnect = delta.total_seconds() < -86400
+            else:
+                if days_left <= 7:
+                    needs_reconnect = True
 
         avatar = None
         if acc.metadata_json and isinstance(acc.metadata_json, dict):

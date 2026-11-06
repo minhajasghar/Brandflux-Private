@@ -18,6 +18,7 @@ import {
   MessageSquare,
   CheckCircle2
 } from 'lucide-react'
+import BrandfluxLogo from '@/components/shared/BrandfluxLogo'
 
 export default function Home() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
@@ -78,9 +79,7 @@ export default function Home() {
       {/* Sticky Header Navigation */}
       <nav className="z-50 flex justify-between items-center px-6 md:px-10 py-4 border-b border-border backdrop-blur-md bg-bg/85 sticky top-0">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center font-bold text-white shadow-glow">
-            <Zap className="h-4.5 w-4.5 text-white" />
-          </div>
+          <BrandfluxLogo size={32} />
           <span className="text-xl font-extrabold tracking-tight text-text">Brandflux</span>
         </div>
         <div className="hidden md:flex space-x-8 text-sm font-medium text-muted">
@@ -508,8 +507,8 @@ export default function Home() {
       {/* Footer */}
       <footer className="z-10 border-t border-border py-12 bg-surface">
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center text-muted text-xs">
-          <div className="flex items-center gap-2 mb-6 md:mb-0">
-            <div className="h-6 w-6 rounded bg-primary flex items-center justify-center font-bold text-white text-xs shadow-glow">B</div>
+          <div className="flex items-center gap-2.5 mb-6 md:mb-0">
+            <BrandfluxLogo size={24} />
             <span className="font-bold text-text">Brandflux</span>
             <span className="ml-3">© 2026. All rights reserved.</span>
           </div>

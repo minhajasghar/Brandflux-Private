@@ -53,19 +53,21 @@ function InstagramIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none">
       <defs>
-        <radialGradient id="igGradient" cx="20%" cy="105%" r="130%">
-          <stop offset="0%" stopColor="#ffdb58" />
-          <stop offset="25%" stopColor="#f58529" />
-          <stop offset="50%" stopColor="#dd2a7b" />
-          <stop offset="75%" stopColor="#8134af" />
-          <stop offset="100%" stopColor="#515bd4" />
+        <radialGradient id="instagramIconGradient" cx="20%" cy="115%" r="140%">
+          <stop offset="0%" stopColor="#FFDC80" />
+          <stop offset="10%" stopColor="#FCAF45" />
+          <stop offset="30%" stopColor="#F77737" />
+          <stop offset="50%" stopColor="#F56040" />
+          <stop offset="70%" stopColor="#FD1D1D" />
+          <stop offset="85%" stopColor="#E1306C" />
+          <stop offset="95%" stopColor="#C13584" />
+          <stop offset="100%" stopColor="#833AB4" />
         </radialGradient>
       </defs>
-      <rect width="24" height="24" rx="6" fill="url(#igGradient)" />
-      <path
-        d="M12 7.2a4.8 4.8 0 100 9.6 4.8 4.8 0 000-9.6zm0 7.9a3.1 3.1 0 110-6.2 3.1 3.1 0 010 6.2zm5.9-8a1.1 1.1 0 11-2.2 0 1.1 1.1 0 012.2 0zm2.3 2.3c-.1-1.5-.4-2.8-1.5-3.9s-2.4-1.4-3.9-1.5c-1.5-.1-6.1-.1-7.6 0-1.5.1-2.8.4-3.9 1.5S1.9 7.9 1.8 9.4c-.1 1.5-.1 6.1 0 7.6.1 1.5.4 2.8 1.5 3.9s2.4 1.4 3.9 1.5c1.5.1 6.1.1 7.6 0 1.5-.1 2.8-.4 3.9-1.5s1.4-2.4 1.5-3.9c.1-1.5.1-6.1 0-7.6zm-1.8 9.2c-.3.8-.9 1.4-1.7 1.7-1.2.5-4.1.4-4.7.4s-3.5.1-4.7-.4c-.8-.3-1.4-.9-1.7-1.7-.5-1.2-.4-4.1-.4-4.7s-.1-3.5.4-4.7c.3-.8.9-1.4 1.7-1.7 1.2-.5 4.1-.4 4.7-.4s3.5-.1 4.7.4c.8.3 1.4.9 1.7 1.7.5 1.2.4 4.1.4 4.7s.1 3.5-.4 4.7z"
-        fill="#FFFFFF"
-      />
+      <rect width="24" height="24" rx="6" fill="url(#instagramIconGradient)" />
+      <rect x="4.5" y="4.5" width="15" height="15" rx="4.2" stroke="#FFFFFF" strokeWidth="1.8" fill="none" />
+      <circle cx="12" cy="12" r="3.6" stroke="#FFFFFF" strokeWidth="1.8" fill="none" />
+      <circle cx="16.5" cy="7.5" r="1.1" fill="#FFFFFF" />
     </svg>
   )
 }

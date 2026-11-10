@@ -426,9 +426,10 @@ async def update_brand_website(
             if brand_data.get("business_name"):
                 brand.business_name = brand_data["business_name"]
                 brand.name = brand_data["business_name"]
-            if brand_data.get("colors"): brand.colors = brand_data["colors"]
-            if brand_data.get("primary_color"): brand.primary_color = brand_data["primary_color"]
-            if brand_data.get("secondary_color"): brand.secondary_color = brand_data["secondary_color"]
+            is_fallback = brand_data.get("color_palette", {}).get("extraction_method") == "universal_fallback"
+            if brand_data.get("colors") and not is_fallback: brand.colors = brand_data["colors"]
+            if brand_data.get("primary_color") and not is_fallback: brand.primary_color = brand_data["primary_color"]
+            if brand_data.get("secondary_color") and not is_fallback: brand.secondary_color = brand_data["secondary_color"]
             if brand_data.get("logo_url"): brand.logo_url = brand_data["logo_url"]
             if brand_data.get("products_services"): brand.products_services = brand_data["products_services"]
             if brand_data.get("tagline"): brand.tagline = brand_data["tagline"]
@@ -468,9 +469,10 @@ async def rescan_brand(
         brand.business_name = new_data["business_name"]
         brand.name = new_data["business_name"]
     if new_data.get("products_services"): brand.products_services = new_data["products_services"]
-    if new_data.get("colors"): brand.colors = new_data["colors"]
-    if new_data.get("primary_color"): brand.primary_color = new_data["primary_color"]
-    if new_data.get("secondary_color"): brand.secondary_color = new_data["secondary_color"]
+    is_fallback = new_data.get("color_palette", {}).get("extraction_method") == "universal_fallback"
+    if new_data.get("colors") and not is_fallback: brand.colors = new_data["colors"]
+    if new_data.get("primary_color") and not is_fallback: brand.primary_color = new_data["primary_color"]
+    if new_data.get("secondary_color") and not is_fallback: brand.secondary_color = new_data["secondary_color"]
     if new_data.get("logo_url"): brand.logo_url = new_data["logo_url"]
     if new_data.get("tagline"): brand.tagline = new_data["tagline"]
     if new_data.get("brand_tone"): brand.brand_tone = new_data["brand_tone"]

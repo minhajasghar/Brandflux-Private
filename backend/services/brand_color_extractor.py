@@ -493,19 +493,36 @@ class BrandColorExtractor:
                     full_manifest = urljoin(self.url, manifest_link["href"])
                     await self._fetch_manifest_colors(full_manifest)
 
-                # Regex search for CSS variables in inline styles or script tags
-                var_matches = re.findall(r"--(?:primary|brand|accent)[a-zA-Z0-9_-]*\s*:\s*(#[0-9a-fA-F]{3,6}|rgba?\([^)]+\))", html)
+                # Fetch external linked stylesheets to capture CSS variables and brand rules
+                combined_css = html
+                try:
+                    stylesheet_links = soup.find_all("link", rel=lambda r: r and "stylesheet" in r)
+                    css_urls = [urljoin(self.url, l.get("href")) for l in stylesheet_links if l.get("href")][:4]
+                    for css_u in css_urls:
+                        try:
+                            css_res = await client.get(css_u, timeout=5.0)
+                            if css_res.status_code == 200:
+                                combined_css += "\n" + css_res.text
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                # Regex search for CSS variables in inline styles and stylesheets
+                var_matches = re.findall(r"--(?:primary|brand|accent)[a-zA-Z0-9_-]*\s*:\s*(#[0-9a-fA-F]{3,6}|rgba?\([^)]+\))", combined_css)
                 for val in var_matches:
                     hex_val = parse_css_color(val)
                     if hex_val:
                         self.candidates.append(ColorCandidate(hex_val, weight=45.0, source="html_css_var"))
 
                 # General HTML / CSS hex color parsing for fallback resilience
-                hex_matches = re.findall(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b", html)
+                hex_matches = re.findall(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b", combined_css)
                 for color in hex_matches:
                     hex_val = parse_css_color(color)
                     if hex_val:
-                        self.candidates.append(ColorCandidate(hex_val, weight=8.0, source="html_static"))
+                        # Give non-neutral brand colors higher weight
+                        w = 20.0 if not is_neutral(hex_val) else 5.0
+                        self.candidates.append(ColorCandidate(hex_val, weight=w, source="css_static"))
 
                 # Logo detection
                 if not self.logo_url:
@@ -555,6 +572,19 @@ class BrandColorExtractor:
             async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
                 res = await client.get(full_logo_url)
                 if res.status_code != 200 or not res.content:
+                    return
+
+                # If SVG logo, extract fill & stroke colors directly from XML text
+                if full_logo_url.lower().endswith(".svg") or "svg" in full_logo_url.lower() or b"<svg" in res.content[:200]:
+                    svg_text = res.text
+                    svg_hexes = re.findall(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b", svg_text)
+                    for hx in svg_hexes:
+                        hx_norm = parse_css_color(hx)
+                        if hx_norm:
+                            if is_neutral(hx_norm):
+                                self.candidates.append(ColorCandidate(hx_norm, weight=15.0, source="logo_svg_neutral"))
+                            else:
+                                self.candidates.append(ColorCandidate(hx_norm, weight=60.0, source="logo_svg_brand"))
                     return
 
                 image_bytes = res.content
@@ -756,15 +786,21 @@ class BrandColorExtractor:
             for c in neutral_clusters[:4]
         ]
 
-        # Consolidate overall colors array
+        # Consolidate overall colors array: prioritize genuine brand clusters first
         palette_colors: List[str] = [primary["hex"]]
         if secondary and secondary["hex"] not in palette_colors:
             palette_colors.append(secondary["hex"])
         if accent and accent["hex"] not in palette_colors:
             palette_colors.append(accent["hex"])
-        for n in neutrals_out:
-            if n["hex"] not in palette_colors:
-                palette_colors.append(n["hex"])
+        # Add any other distinct brand colors before adding neutrals
+        for bc in brand_clusters:
+            if bc["hex"] not in palette_colors and len(palette_colors) < 5:
+                palette_colors.append(bc["hex"])
+        # Only add neutrals if palette still has room (< 4 colors)
+        if len(palette_colors) < 4:
+            for n in neutrals_out:
+                if n["hex"] not in palette_colors and len(palette_colors) < 5:
+                    palette_colors.append(n["hex"])
 
         return {
             "primary": primary,

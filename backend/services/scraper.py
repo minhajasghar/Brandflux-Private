@@ -46,17 +46,17 @@ class BrandScraper:
             fallback_colors = await self._fetch_and_extract_css_colors(soup, html)
             palette_data = {
                 "primary": {"hex": fallback_colors[0] if fallback_colors else "#F97316", "confidence": 0.65, "source": "static_css_regex"},
-                "secondary": {"hex": fallback_colors[1] if len(fallback_colors) > 1 else "#111827", "confidence": 0.60, "source": "static_css_regex"},
-                "accent": {"hex": fallback_colors[2] if len(fallback_colors) > 2 else "#1F2937", "confidence": 0.55, "source": "static_css_regex"},
+                "secondary": {"hex": fallback_colors[1] if len(fallback_colors) > 1 else "#F48C25", "confidence": 0.60, "source": "static_css_regex"},
+                "accent": {"hex": fallback_colors[2] if len(fallback_colors) > 2 else "#FCCC94", "confidence": 0.55, "source": "static_css_regex"},
                 "neutrals": [],
-                "colors": fallback_colors or ["#F97316", "#111827", "#1F2937", "#FFFFFF", "#6B7280"],
+                "colors": fallback_colors or ["#F97316", "#F48C25", "#FCCC94"],
                 "extraction_method": "static_css_fallback"
             }
 
-        colors = palette_data.get("colors") or ["#2563EB", "#64748B"]
+        colors = palette_data.get("colors") or ["#F97316", "#F48C25"]
         primary_color = palette_data.get("primary", {}).get("hex") if palette_data.get("primary") else colors[0]
-        secondary_color = palette_data.get("secondary", {}).get("hex") if palette_data.get("secondary") else (colors[1] if len(colors) > 1 else "#64748B")
-        accent_color = palette_data.get("accent", {}).get("hex") if palette_data.get("accent") else (colors[2] if len(colors) > 2 else "#38BDF8")
+        secondary_color = palette_data.get("secondary", {}).get("hex") if palette_data.get("secondary") else (colors[1] if len(colors) > 1 else "#F48C25")
+        accent_color = palette_data.get("accent", {}).get("hex") if palette_data.get("accent") else (colors[2] if len(colors) > 2 else "#FCCC94")
         neutrals = palette_data.get("neutrals", [])
         
         # Detect brand attributes
@@ -184,25 +184,36 @@ class BrandScraper:
         return self._extract_colors(css_text)
 
     def _extract_colors(self, html: str) -> List[str]:
-        """Extract hex colors from HTML/CSS."""
+        """Extract hex colors from HTML/CSS, prioritizing vibrant brand colors over UI neutrals."""
+        from services.brand_color_extractor import is_neutral
         hex_pattern = r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b"
         matches = re.findall(hex_pattern, html)
         
-        color_counts = {}
+        brand_counts = {}
+        neutral_counts = {}
         for color in matches:
             c = color.upper()
-            if len(c) == 4: # #FFF -> #FFFFFF
-                c = "#" + "".join([x*2 for x in c[1:]])
+            if len(c) == 4:  # #FFF -> #FFFFFF
+                c = "#" + "".join([x * 2 for x in c[1:]])
             
-            # Filter out black and white
+            # Filter out pure black and white
             if c in ["#FFFFFF", "#000000", "#FFF", "#000"]:
                 continue
-                
-            color_counts[c] = color_counts.get(c, 0) + 1
+            
+            if is_neutral(c):
+                neutral_counts[c] = neutral_counts.get(c, 0) + 1
+            else:
+                brand_counts[c] = brand_counts.get(c, 0) + 1
 
-        # Sort by usage and return top 5
-        sorted_colors = sorted(color_counts.items(), key=lambda x: x[1], reverse=True)
-        return [c[0] for c in sorted_colors[:5]]
+        # Sort vibrant brand colors first by frequency
+        sorted_brand = sorted(brand_counts.items(), key=lambda x: x[1], reverse=True)
+        sorted_neutral = sorted(neutral_counts.items(), key=lambda x: x[1], reverse=True)
+        
+        result = [c[0] for c in sorted_brand]
+        for c in sorted_neutral:
+            if c[0] not in result and len(result) < 5:
+                result.append(c[0])
+        return result[:5]
 
     def _extract_logo(self, soup: BeautifulSoup) -> Optional[str]:
         """Find logo URL."""

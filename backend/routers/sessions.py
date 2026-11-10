@@ -958,6 +958,67 @@ async def generate_session_variants(
         }
     }
 
+    # 7. Guaranteed Immediate Persistence to Content History (/ideas)
+    try:
+        from models.models import Post, PlatformCopy
+        norm_theme = content_data.get("session_theme") or headline or "Daily Post"
+        chosen_img = first_valid.image_url if variant_results else None
+
+        # Check if parent post exists for this session
+        gen_post = db.query(Post).filter(Post.session_id == session.id, Post.user_id == user.id).first()
+        if not gen_post:
+            gen_post = Post(
+                id=str(uuid.uuid4()),
+                brand_id=brand.id,
+                user_id=user.id,
+                title=norm_theme,
+                topic=norm_theme,
+                credits_used=1,
+                session_id=session.id,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(gen_post)
+            db.flush()
+        else:
+            gen_post.title = norm_theme
+            gen_post.topic = norm_theme
+            gen_post.updated_at = datetime.utcnow()
+
+        # Ensure all generated platform copies exist in Content History
+        for p_key, p_val in platform_posts.items():
+            norm_p = p_key.replace("_post", "").replace("x", "twitter").strip().lower()
+            existing_copy = db.query(PlatformCopy).filter(
+                PlatformCopy.post_id == gen_post.id,
+                PlatformCopy.platform == norm_p
+            ).first()
+
+            if not existing_copy:
+                db.add(PlatformCopy(
+                    id=str(uuid.uuid4()),
+                    post_id=gen_post.id,
+                    platform=norm_p,
+                    caption=p_val.get("caption") or caption,
+                    hashtags=p_val.get("hashtags") or hashtags,
+                    image_url=chosen_img,
+                    aspect_ratio="9:16" if norm_p in ("tiktok", "story") else "1:1",
+                    status="draft",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                ))
+            else:
+                existing_copy.caption = p_val.get("caption") or caption
+                existing_copy.hashtags = p_val.get("hashtags") or hashtags
+                if chosen_img:
+                    existing_copy.image_url = chosen_img
+                existing_copy.updated_at = datetime.utcnow()
+
+        db.commit()
+        logger.info(f"✓ [Content History Saved] Successfully archived generation '{norm_theme}' (post_id: {gen_post.id})")
+    except Exception as hist_err:
+        logger.error(f"Failed to auto-archive to Content History: {hist_err}")
+        db.rollback()
+
     return MultiVariantSessionResponse(
         session_id=session.id,
         session_theme=content_data.get("session_theme", "Daily Content"),
@@ -1030,38 +1091,61 @@ def select_session_variant(
             return "tiktok"
         return pl or "instagram"
 
-    # 1. Create Parent Post (Generation)
-    parent_post = Post(
-        id=str(uuid.uuid4()),
-        brand_id=variant.brand_id,
-        user_id=user.id,
-        title=variant.headline or "Daily Post",
-        topic=variant.headline or "Daily Post",
-        credits_used=1,
-        session_id=req.session_id,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
-    )
-    db.add(parent_post)
-    db.flush()
+    # 1. Resolve or Create Parent Post (Generation)
+    parent_post = db.query(Post).filter(
+        Post.session_id == req.session_id,
+        Post.user_id == user.id
+    ).first()
 
-    # 2. Add Selected Platform Copy
+    if not parent_post:
+        parent_post = Post(
+            id=str(uuid.uuid4()),
+            brand_id=variant.brand_id,
+            user_id=user.id,
+            title=variant.headline or "Daily Post",
+            topic=variant.headline or "Daily Post",
+            credits_used=1,
+            session_id=req.session_id,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(parent_post)
+        db.flush()
+    else:
+        parent_post.title = variant.headline or parent_post.title
+        parent_post.topic = variant.headline or parent_post.topic
+        parent_post.updated_at = datetime.utcnow()
+
+    # Helper to upsert platform copies
+    def _upsert_copy(plat: str, cap: str, tags: list):
+        existing = db.query(PlatformCopy).filter(
+            PlatformCopy.post_id == parent_post.id,
+            PlatformCopy.platform == plat
+        ).first()
+        if existing:
+            existing.caption = cap
+            existing.hashtags = tags
+            existing.image_url = variant.image_url
+            existing.updated_at = datetime.utcnow()
+        else:
+            db.add(PlatformCopy(
+                id=str(uuid.uuid4()),
+                post_id=parent_post.id,
+                platform=plat,
+                caption=cap,
+                hashtags=tags,
+                image_url=variant.image_url,
+                aspect_ratio="9:16" if plat in ("tiktok", "story") else "1:1",
+                status="draft",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            ))
+
+    # 2. Add or update Selected Platform Copy
     norm_sel = norm_platform_name(selected_platform)
-    sel_copy = PlatformCopy(
-        id=str(uuid.uuid4()),
-        post_id=parent_post.id,
-        platform=norm_sel,
-        caption=final_caption,
-        hashtags=final_hashtags,
-        image_url=variant.image_url,
-        aspect_ratio="9:16" if norm_sel in ("tiktok", "story") else "1:1",
-        status="draft",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
-    )
-    db.add(sel_copy)
+    _upsert_copy(norm_sel, final_caption, final_hashtags)
 
-    # 3. Add all other Platform Copies
+    # 3. Add or update all other Platform Copies
     handled_platforms = {norm_sel}
     if req.platform_copies and isinstance(req.platform_copies, dict):
         for plat, copy_data in req.platform_copies.items():
@@ -1070,19 +1154,7 @@ def select_session_variant(
                 handled_platforms.add(norm_p)
                 plat_caption = copy_data.get("caption") or final_caption
                 plat_hashtags = copy_data.get("hashtags") or final_hashtags
-                other_copy = PlatformCopy(
-                    id=str(uuid.uuid4()),
-                    post_id=parent_post.id,
-                    platform=norm_p,
-                    caption=plat_caption,
-                    hashtags=plat_hashtags,
-                    image_url=variant.image_url,
-                    aspect_ratio="9:16" if norm_p in ("tiktok", "story") else "1:1",
-                    status="draft",
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-                db.add(other_copy)
+                _upsert_copy(norm_p, plat_caption, plat_hashtags)
 
     # 4. If selected_platforms was specified, ensure all selected platforms exist in this one post
     if req.selected_platforms and isinstance(req.selected_platforms, list):
@@ -1090,18 +1162,7 @@ def select_session_variant(
             norm_p = norm_platform_name(p)
             if norm_p not in handled_platforms:
                 handled_platforms.add(norm_p)
-                db.add(PlatformCopy(
-                    id=str(uuid.uuid4()),
-                    post_id=parent_post.id,
-                    platform=norm_p,
-                    caption=final_caption,
-                    hashtags=final_hashtags,
-                    image_url=variant.image_url,
-                    aspect_ratio="9:16" if norm_p in ("tiktok", "story") else "1:1",
-                    status="draft",
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                ))
+                _upsert_copy(norm_p, final_caption, final_hashtags)
 
     # Legacy ContentIdea & GeneratedPost for backwards compatibility
     idea = ContentIdea(

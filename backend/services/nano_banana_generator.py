@@ -370,7 +370,7 @@ class NanoBananaGenerator:
             image_bytes = await self.generate_background_with_retry(prompt, norm_ratio)
 
             # Composite the user's authentic Brand Kit logo onto the post image
-            image_bytes = await self._composite_brand_logo(image_bytes, brand_profile)
+            image_bytes = await self._composite_brand_logo(image_bytes, brand_profile, brand_id=brand_id)
 
             # Upload to Cloudflare R2
             filename = f"bg_banana_{uuid.uuid4().hex[:10]}.png"
@@ -442,81 +442,103 @@ class NanoBananaGenerator:
             )
             return None
 
-    async def _composite_brand_logo(self, image_bytes: bytes, brand_profile: Dict[str, Any]) -> bytes:
+    async def _composite_brand_logo(self, image_bytes: bytes, brand_profile: Dict[str, Any], brand_id: Optional[str] = None) -> bytes:
         """
         Overlay the brand's authentic uploaded logo from Brand Kit onto the generated image.
-        Uses PIL to gracefully composite RGBA logo with high quality lanczos resampling.
+        Uses PIL to gracefully composite transparent RGBA logo with soft ambient backing.
         """
         if not image_bytes or not brand_profile:
             return image_bytes
 
-        logo_url = brand_profile.get("clean_logo_url") or brand_profile.get("logo_url")
-        if not logo_url:
-            return image_bytes
-
         try:
             import io
-            from PIL import Image
+            from PIL import Image, ImageFilter
 
-            # Step 1: Retrieve logo bytes
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            resolved_brand_id = brand_id or brand_profile.get("id") or brand_profile.get("brand_id")
             logo_bytes = None
 
-            # Check if it's a local file URL or filename
-            if "localhost" in logo_url or "/api/media/" in logo_url or not logo_url.startswith("http"):
-                filename = os.path.basename(logo_url.split("?")[0])
-                backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                candidate_paths = [
-                    os.path.join(backend_dir, "processed_images", filename),
-                    os.path.join(backend_dir, "posts", filename),
-                    os.path.join(backend_dir, "static", filename),
-                ]
-                for cp in candidate_paths:
-                    if os.path.exists(cp):
-                        with open(cp, "rb") as f:
-                            logo_bytes = f.read()
+            # 1. Prefer local original high-res transparent PNG if saved
+            if resolved_brand_id:
+                orig_path = os.path.join(backend_dir, "processed_images", f"{resolved_brand_id}_original.png")
+                if os.path.exists(orig_path):
+                    with open(orig_path, "rb") as f:
+                        logo_bytes = f.read()
+
+            # 2. Check clean_logo_url and logo_url
+            if not logo_bytes:
+                raw_logo = brand_profile.get("logo_url") or ""
+                clean_logo = brand_profile.get("clean_logo_url") or ""
+                
+                # Check candidate URLs/filenames (prioritize PNG for transparency)
+                candidates = []
+                for u in [clean_logo, raw_logo]:
+                    if u and u.lower().endswith(".png"):
+                        candidates.append(u)
+                for u in [clean_logo, raw_logo]:
+                    if u and u not in candidates:
+                        candidates.append(u)
+
+                for target_url in candidates:
+                    if not target_url:
+                        continue
+                    # Check local files first
+                    filename = os.path.basename(target_url.split("?")[0])
+                    candidate_paths = [
+                        os.path.join(backend_dir, "processed_images", filename),
+                        os.path.join(backend_dir, "posts", filename),
+                        os.path.join(backend_dir, "static", filename),
+                    ]
+                    for cp in candidate_paths:
+                        if os.path.exists(cp):
+                            with open(cp, "rb") as f:
+                                logo_bytes = f.read()
+                            break
+                    if logo_bytes:
                         break
 
-            # If not found locally, fetch via HTTP
-            if not logo_bytes and logo_url.startswith("http"):
-                try:
-                    async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
-                        resp = await client.get(logo_url)
-                        if resp.status_code == 200 and len(resp.content) > 100:
-                            logo_bytes = resp.content
-                except Exception as dl_err:
-                    logger.warning(f"Could not download brand logo from {logo_url}: {dl_err}")
-
-            if not logo_bytes:
-                # If clean_logo_url was unresolvable, try raw logo_url fallback
-                alt_url = brand_profile.get("logo_url")
-                if alt_url and alt_url != logo_url and alt_url.startswith("http"):
-                    try:
-                        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
-                            resp = await client.get(alt_url)
-                            if resp.status_code == 200 and len(resp.content) > 100:
-                                logo_bytes = resp.content
-                    except Exception:
-                        pass
+                    # Check HTTP download
+                    if target_url.startswith("http"):
+                        try:
+                            async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+                                resp = await client.get(target_url)
+                                if resp.status_code == 200 and len(resp.content) > 100:
+                                    logo_bytes = resp.content
+                                    break
+                        except Exception as dl_err:
+                            logger.warning(f"Could not download logo from {target_url}: {dl_err}")
 
             if not logo_bytes:
                 logger.info("No brand logo bytes found to composite.")
                 return image_bytes
 
-            # Step 2: Open and composite using PIL
+            # 3. Open images
             base_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
-            logo_img = Image.open(io.BytesIO(logo_bytes)).convert("RGBA")
+            logo_raw = Image.open(io.BytesIO(logo_bytes))
 
+            # Auto-clean solid black background on JPG logos if needed
+            if logo_raw.mode != "RGBA":
+                logo_raw = logo_raw.convert("RGBA")
+                datas = logo_raw.getdata()
+                new_data = []
+                for item in datas:
+                    if item[0] < 30 and item[1] < 30 and item[2] < 30:
+                        new_data.append((0, 0, 0, 0))
+                    else:
+                        new_data.append(item)
+                logo_raw.putdata(new_data)
+
+            logo_img = logo_raw
             bw, bh = base_img.size
             lw, lh = logo_img.size
 
             if lw == 0 or lh == 0:
                 return image_bytes
 
-            # Target logo size: proportional width ~15% of canvas width, max height ~12%
-            target_w = max(80, int(bw * 0.15))
-            target_max_h = max(60, int(bh * 0.12))
+            # Target logo size: proportional width ~18% of canvas width, max height ~14%
+            target_w = max(110, int(bw * 0.18))
+            target_max_h = max(75, int(bh * 0.14))
 
-            # Maintain aspect ratio
             scale = min(target_w / float(lw), target_max_h / float(lh))
             new_w = max(1, int(lw * scale))
             new_h = max(1, int(lh * scale))
@@ -527,7 +549,16 @@ class NanoBananaGenerator:
             pad_x = int(bw * 0.045)
             pad_y = int(bh * 0.045)
 
-            # Create destination layer and composite
+            # 4. Soft drop shadow so logo is crisp against any background texture
+            if logo_resized.mode == "RGBA":
+                alpha = logo_resized.split()[3]
+                shadow = Image.new("RGBA", (new_w + 16, new_h + 16), (0, 0, 0, 0))
+                shadow_solid = Image.new("RGBA", (new_w, new_h), (0, 0, 0, 160))
+                shadow.paste(shadow_solid, (8, 8), mask=alpha)
+                shadow = shadow.filter(ImageFilter.GaussianBlur(6))
+                base_img.paste(shadow, (pad_x - 8, pad_y - 8), mask=shadow)
+
+            # 5. Composite the logo
             base_img.paste(logo_resized, (pad_x, pad_y), mask=logo_resized)
 
             output = io.BytesIO()

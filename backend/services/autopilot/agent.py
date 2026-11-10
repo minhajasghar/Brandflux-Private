@@ -433,39 +433,65 @@ Return JSON strictly:
         candidate: Dict[str, Any],
         brand_profile: Dict[str, Any]
     ) -> (str, str):
-        """Render 2 distinct visual variants for a post card."""
+        """Render 2 distinct visual variants for a post card using real AI generation."""
         platform = plan_item.get("platform", "facebook")
-        headline = candidate.get("headline", plan_item["topic"])
+        headline = candidate.get("headline", plan_item.get("topic", "Brand Highlight"))
         subtext = candidate.get("subtext", "Insights for modern growth")
         cta = candidate.get("cta", "Learn More")
+        topic = plan_item.get("topic", headline)
 
-        # Variant 1: Clean Bold Studio Card
+        from services.nano_banana_generator import nano_banana_generator
+        aspect_ratio, _ = nano_banana_generator.normalize_aspect_ratio(platform)
+
+        # Variant 1: Real AI Generated Picture
         url_1 = f"http://localhost:8000/static/fallback_{platform}.png"
         try:
-            png_bytes_1 = await image_generator.create_branded_post_async(
+            bg_1 = await nano_banana_generator.generate_background(
                 brand_profile=brand_profile,
-                post_text=f"{headline}\n{subtext}",
-                platform=platform,
-                cta=cta,
-                template_style="quote"
+                daily_context={"topic": topic, "focus": headline, "special_message": subtext},
+                aspect_ratio=aspect_ratio,
+                variant_style="cinematic photorealistic commercial studio photography, premium visual depth",
+                db=self.db
             )
-            fn_1 = f"auto_v1_{uuid.uuid4().hex[:10]}.png"
-            url_1 = storage_service.upload_image(png_bytes_1, fn_1)
+            if bg_1:
+                url_1 = bg_1
+            else:
+                # Fallback to branded post only if AI generation returns None
+                png_bytes_1 = await image_generator.create_branded_post_async(
+                    brand_profile=brand_profile,
+                    post_text=f"{headline}\n{subtext}",
+                    platform=platform,
+                    cta=cta,
+                    template_style="quote"
+                )
+                fn_1 = f"auto_v1_{uuid.uuid4().hex[:10]}.png"
+                url_1 = storage_service.upload_image(png_bytes_1, fn_1)
         except Exception as e:
             logger.warning(f"Error rendering variant 1: {e}")
 
-        # Variant 2: Minimalist Impact / Stat Card
+        # Variant 2: Real AI Generated Picture (Alternative dynamic angle)
         url_2 = f"http://localhost:8000/static/fallback_{platform}.png"
         try:
-            png_bytes_2 = await image_generator.create_branded_post_async(
+            bg_2 = await nano_banana_generator.generate_background(
                 brand_profile=brand_profile,
-                post_text=f"{headline}\n{subtext}",
-                platform=platform,
-                cta=cta,
-                template_style="stat"
+                daily_context={"topic": topic, "focus": headline, "special_message": subtext},
+                aspect_ratio=aspect_ratio,
+                variant_style="bold dynamic perspective with dramatic lighting, modern commercial aesthetic",
+                db=self.db
             )
-            fn_2 = f"auto_v2_{uuid.uuid4().hex[:10]}.png"
-            url_2 = storage_service.upload_image(png_bytes_2, fn_2)
+            if bg_2:
+                url_2 = bg_2
+            else:
+                # Fallback to branded post only if AI generation returns None
+                png_bytes_2 = await image_generator.create_branded_post_async(
+                    brand_profile=brand_profile,
+                    post_text=f"{headline}\n{subtext}",
+                    platform=platform,
+                    cta=cta,
+                    template_style="stat"
+                )
+                fn_2 = f"auto_v2_{uuid.uuid4().hex[:10]}.png"
+                url_2 = storage_service.upload_image(png_bytes_2, fn_2)
         except Exception as e:
             logger.warning(f"Error rendering variant 2: {e}")
 

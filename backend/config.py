@@ -61,7 +61,7 @@ PROCESSED_IMAGES_DIR = os.path.join(BASE_DIR, "processed_images")
 os.makedirs(PROCESSED_IMAGES_DIR, exist_ok=True)
 
 # ─── Gemini AI & Image Generation ─────────────────────────
-ALLOW_PAID_GENERATION = os.getenv("ALLOW_PAID_GENERATION", "false").strip().lower() in ("true", "1", "yes")
+ALLOW_PAID_GENERATION = os.getenv("ALLOW_PAID_GENERATION", "true").strip().lower() in ("true", "1", "yes")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash").strip()
 IMAGE_MODEL = os.getenv("IMAGE_MODEL", "models/gemini-nano-banana-2.1").strip()

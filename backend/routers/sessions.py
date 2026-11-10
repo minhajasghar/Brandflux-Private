@@ -41,19 +41,19 @@ PLAN_VARIANT_LIMITS = {
 VARIANT_STYLES = [
     {
         "label": "Hero Studio Glow",
-        "direction": "clean centered studio product lighting with dramatic cobalt blue and electric lime ambient back-rim lighting, high depth of field"
+        "direction": "clean centered commercial studio photography with dramatic ambient back-rim lighting, crisp focus, high depth of field"
     },
     {
         "label": "Dynamic Low-Angle",
-        "direction": "bold architectural low-angle perspective, dynamic diagonal volumetric shadows, atmospheric futuristic studio render"
+        "direction": "bold architectural low-angle perspective, dynamic diagonal volumetric shadows, atmospheric modern render"
     },
     {
         "label": "Minimalist High-Key",
         "direction": "modern minimalist negative space composition, soft overhead diffuse daylight, clean editorial aesthetic"
     },
     {
-        "label": "Cinematic Neon Rim",
-        "direction": "cinematic dark-mode commercial aesthetic with luminous accent edge lighting, dark brushed metal textures"
+        "label": "Cinematic Commercial Rim",
+        "direction": "cinematic commercial aesthetic with luminous accent edge lighting, dark brushed metallic textures, award-winning photography"
     }
 ]
 

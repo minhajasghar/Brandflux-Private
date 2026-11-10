@@ -51,7 +51,7 @@ class GeminiService:
 
     def ensure_configured(self):
         """Lazy load or re-check credentials if not currently initialized or if key updated."""
-        is_paid_allowed = os.getenv("ALLOW_PAID_GENERATION", "false").strip().lower() in ("true", "1", "yes")
+        is_paid_allowed = os.getenv("ALLOW_PAID_GENERATION", "true").strip().lower() in ("true", "1", "yes")
         if not is_paid_allowed:
             logger.warning("Cost safety: Paid text generation is disabled (ALLOW_PAID_GENERATION=false).")
             raise RuntimeError("Generation is disabled in this environment")

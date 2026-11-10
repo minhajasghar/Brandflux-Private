@@ -262,6 +262,7 @@ class SessionGenerationRequest(BaseModel):
     variant_count: Optional[int] = None
     target_platform: Optional[str] = "instagram_post"
     selected_platforms: Optional[List[str]] = None
+    target_platforms: Optional[List[str]] = None
 
 class SelectVariantRequest(BaseModel):
     variant_id: str

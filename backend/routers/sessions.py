@@ -774,7 +774,12 @@ async def generate_session_variants(
     }
 
     # Generate captions for the platforms the user selected (or active connected platforms)
-    user_selected = req.target_platforms or ([req.target_platform] if req.target_platform else [])
+    selected_list = (
+        getattr(req, "selected_platforms", None)
+        or getattr(req, "target_platforms", None)
+        or []
+    )
+    user_selected = selected_list or ([req.target_platform] if getattr(req, "target_platform", None) else [])
     active_target_platforms = [p.lower().strip() for p in user_selected if p]
     if not active_target_platforms:
         from models.models import SocialAccount
@@ -806,7 +811,7 @@ async def generate_session_variants(
         "twitter_post": "twitter_post",
         "tiktok": "tiktok"
     }
-    raw_platform = req.target_platform or (req.target_platforms[0] if req.target_platforms else "instagram_post")
+    raw_platform = getattr(req, "target_platform", None) or (selected_list[0] if selected_list else "instagram_post")
     platform_key = platform_key_map.get(raw_platform.lower(), "instagram_post")
     platform = platform_key
     p_data = content_data.get(platform_key, {}) or content_data.get("instagram_post", {})

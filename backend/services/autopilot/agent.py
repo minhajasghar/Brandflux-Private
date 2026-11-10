@@ -78,8 +78,9 @@ class AutopilotAgent:
             if p == "meta":
                 if "facebook" not in platforms: platforms.append("facebook")
                 if "instagram" not in platforms: platforms.append("instagram")
-            elif p in ("facebook", "linkedin", "tiktok", "twitter"):
-                if p not in platforms: platforms.append(p)
+            elif p in ("facebook", "instagram", "linkedin", "tiktok", "twitter", "x"):
+                norm = "twitter" if p == "x" else p
+                if norm not in platforms: platforms.append(norm)
         return platforms or ["facebook", "linkedin", "tiktok"]
 
     async def run_weekly_autopilot(

@@ -658,6 +658,8 @@ async def tiktok_oauth_callback(
             db.add(existing_tt)
 
         existing_tt.access_token_encrypted = encrypt_token(access_token)
+        if refresh_token:
+            existing_tt.refresh_token_encrypted = encrypt_token(refresh_token)
         existing_tt.token_expires_at = expires_at
         existing_tt.is_active = True
         existing_tt.account_name = clean_name
@@ -760,6 +762,8 @@ async def twitter_oauth_callback(
             db.add(existing_tw)
 
         existing_tw.access_token_encrypted = encrypt_token(access_token)
+        if refresh_token:
+            existing_tw.refresh_token_encrypted = encrypt_token(refresh_token)
         existing_tw.token_expires_at = expires_at
         existing_tw.is_active = True
         existing_tw.account_name = clean_name
@@ -802,15 +806,15 @@ def get_connected_accounts(
     for acc in accounts:
         days_left = None
         needs_reconnect = False
-        has_refresh_token = bool(acc.metadata_json and acc.metadata_json.get("refresh_token_encrypted"))
+        has_refresh_token = bool(acc.refresh_token_encrypted or (acc.metadata_json and acc.metadata_json.get("refresh_token_encrypted")))
         if acc.token_expires_at:
             delta = acc.token_expires_at - now
-            days_left = delta.days
+            days_left = max(0, delta.days)
             if has_refresh_token:
-                # Platforms with auto-refresh tokens (Twitter, TikTok) do not need reconnect for normal short-lived expiries
-                needs_reconnect = delta.total_seconds() < -86400
+                # Platforms with auto-refresh tokens (Twitter, TikTok) silently refresh upon publishing and do not require manual reconnect
+                needs_reconnect = False
             else:
-                if days_left <= 7:
+                if delta.days <= 7:
                     needs_reconnect = True
 
         avatar = None

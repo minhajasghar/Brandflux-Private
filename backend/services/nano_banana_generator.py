@@ -181,12 +181,13 @@ class NanoBananaGenerator:
         prompt = (
             f"A stunning professional social media graphic and commercial visual masterpiece for {business_name}, "
             f"a brand in the {industry} industry with a {tone} aesthetic. "
-            f"Subject & Core Focus: '{display_headline}'. Visual context: {context_str}. "
+            f"Central Subject & Core Message: '{display_headline}'. Visual context: {context_str}. "
             f"{ref_section} "
             f"Style & Composition: {variant_angle}, {ratio_desc}. "
             f"Color palette: Dynamic visual contrast with subtle luminous accents in {primary_color} and {secondary_color}, rich depth, and clean negative space. "
             f"1K resolution, ultra-high definition, photorealistic, cinematic commercial studio lighting, "
-            f"crisp details, depth of field, premium award-winning product and lifestyle presentation."
+            f"crisp details, depth of field, premium award-winning product and lifestyle presentation. "
+            f"STRICT LOGO RULE: Absolutely DO NOT draw, paint, simulate, or render ANY logo, emblem, brand icon, monogram, or watermark anywhere in the image canvas. The official authentic brand logo is overlaid separately by our system. Keep the top header and top corners completely clean and empty of all logos, emblems, and header text. Focus all visual artistry and headline typography strictly in the central canvas area."
         )
         return prompt
 
@@ -453,7 +454,7 @@ class NanoBananaGenerator:
 
         try:
             import io
-            from PIL import Image, ImageFilter
+            from PIL import Image, ImageFilter, ImageDraw
 
             backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             resolved_brand_id = brand_id or brand_profile.get("id") or brand_profile.get("brand_id")
@@ -550,16 +551,25 @@ class NanoBananaGenerator:
             pad_x = int(bw * 0.045)
             pad_y = int(bh * 0.045)
 
-            # 4. Soft drop shadow so logo is crisp against any background texture
+            # 4. Clean backdrop & shadow so authentic logo is pristine and occludes any stray artifacts
+            pill_pad = 10
+            pill_w = new_w + pill_pad * 2
+            pill_h = new_h + pill_pad * 2
+            pill = Image.new("RGBA", (pill_w, pill_h), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(pill)
+            draw.rounded_rectangle([0, 0, pill_w - 1, pill_h - 1], radius=14, fill=(10, 14, 23, 215))
+            pill = pill.filter(ImageFilter.GaussianBlur(3))
+            base_img.paste(pill, (pad_x - pill_pad, pad_y - pill_pad), mask=pill)
+
             if logo_resized.mode == "RGBA":
                 alpha = logo_resized.split()[3]
                 shadow = Image.new("RGBA", (new_w + 16, new_h + 16), (0, 0, 0, 0))
-                shadow_solid = Image.new("RGBA", (new_w, new_h), (0, 0, 0, 160))
+                shadow_solid = Image.new("RGBA", (new_w, new_h), (0, 0, 0, 180))
                 shadow.paste(shadow_solid, (8, 8), mask=alpha)
-                shadow = shadow.filter(ImageFilter.GaussianBlur(6))
+                shadow = shadow.filter(ImageFilter.GaussianBlur(4))
                 base_img.paste(shadow, (pad_x - 8, pad_y - 8), mask=shadow)
 
-            # 5. Composite the logo
+            # 5. Composite the official authentic brand logo
             base_img.paste(logo_resized, (pad_x, pad_y), mask=logo_resized)
 
             output = io.BytesIO()

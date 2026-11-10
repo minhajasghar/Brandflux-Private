@@ -176,16 +176,17 @@ class NanoBananaGenerator:
 
         context_str = "; ".join(context_clues) if context_clues else f"Theme: {theme}"
 
+        display_headline = daily_context.get("headline") or daily_context.get("theme") or theme
+
         prompt = (
-            f"A stunning professional commercial photograph and visual masterpiece for {business_name}, "
+            f"A stunning professional social media graphic and commercial visual masterpiece for {business_name}, "
             f"a brand in the {industry} industry with a {tone} aesthetic. "
-            f"Subject & Focus: {theme}. Visual context: {context_str}. "
+            f"Subject & Core Focus: '{display_headline}'. Visual context: {context_str}. "
             f"{ref_section} "
             f"Style & Composition: {variant_angle}, {ratio_desc}. "
             f"Color palette: Dynamic visual contrast with subtle luminous accents in {primary_color} and {secondary_color}, rich depth, and clean negative space. "
             f"1K resolution, ultra-high definition, photorealistic, cinematic commercial studio lighting, "
-            f"crisp details, depth of field, premium award-winning product and lifestyle presentation. "
-            f"STRICT NEGATIVE CONSTRAINT: Absolutely DO NOT render, paint, or print ANY text, letters, words, slogans, fake typography, or simulated logos into the image canvas. The canvas must be completely clean of all lettering, branding, and typography."
+            f"crisp details, depth of field, premium award-winning product and lifestyle presentation."
         )
         return prompt
 

@@ -309,7 +309,9 @@ async def generate_session_content(
         "answer_2": req.answer_2,
         "answer_3": req.answer_3,
         "theme": content_data.get("session_theme", "Daily Content"),
-        "special_message": special_message
+        "special_message": special_message,
+        "headline": headline,
+        "cta": overlay_cta
     }
 
     instagram_task = generate_image(
@@ -839,7 +841,9 @@ async def generate_session_variants(
         "answer_2": req.answer_2,
         "answer_3": req.answer_3,
         "theme": content_data.get("session_theme", "Daily Content"),
-        "special_message": special_message
+        "special_message": special_message,
+        "headline": headline,
+        "cta": overlay_cta
     }
 
     ref_imgs = [r.dict() for r in (req.reference_images or [])]

@@ -148,67 +148,85 @@ Return valid JSON strictly matching this structure:
         learning_context: Optional[str] = None,
         selected_platforms: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Generate captions only for the platforms the user selected and that are connected."""
+        """Generate platform-tailored, high-converting social media copy for all selected channels."""
         self.ensure_configured()
         if not self.model:
             return {}
 
         learning_section = f"\n{learning_context}\n" if learning_context else ""
 
-        # Filter strictly to requested platforms
-        platform_fields = []
-        clean_selected = [p.lower().strip() for p in (selected_platforms or [])]
-        if not clean_selected:
-            # Default fallback if unspecified
-            clean_selected = ["instagram", "facebook", "linkedin"]
+        # Normalize selected platforms to canonical set
+        raw_list = selected_platforms or []
+        canonical_platforms = set()
+        for p in raw_list:
+            p_lower = str(p).lower().strip()
+            if "insta" in p_lower:
+                canonical_platforms.add("instagram")
+            elif "link" in p_lower:
+                canonical_platforms.add("linkedin")
+            elif "face" in p_lower or p_lower == "fb":
+                canonical_platforms.add("facebook")
+            elif "twit" in p_lower or p_lower == "x":
+                canonical_platforms.add("twitter")
+            elif "tik" in p_lower:
+                canonical_platforms.add("tiktok")
 
+        # If empty or not specified, generate for all 5 major platforms
+        if not canonical_platforms:
+            canonical_platforms = {"instagram", "linkedin", "facebook", "twitter", "tiktok"}
+
+        clean_selected = sorted(list(canonical_platforms))
+
+        platform_fields = []
         if "instagram" in clean_selected:
-            platform_fields.append('"instagram_post": { "caption": "...", "hashtags": [], "best_time": "...", "best_day": "...", "call_to_action": "..." }')
-            platform_fields.append('"instagram_story": { "text": "...", "cta": "...", "poll_question": "..." }')
-        if "linkedin" in clean_selected:
-            platform_fields.append('"linkedin_post": { "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }')
-        if "facebook" in clean_selected:
-            platform_fields.append('"facebook_post": { "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }')
-        if "twitter" in clean_selected or "x" in clean_selected:
-            platform_fields.append('"twitter_post": { "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }')
-        if "tiktok" in clean_selected:
-            platform_fields.append('"tiktok": { "caption": "...", "hashtags": [], "best_day": "...", "best_time": "...", "call_to_action": "..." }')
+            platform_fields.append('"instagram_post": { "caption": "Story-driven caption with visual hook, paragraph breaks, emojis, and clear CTA", "hashtags": ["#8to12", "#targeted", "#hashtags"], "best_time": "7:00 PM", "best_day": "Today", "call_to_action": "Clear Instagram CTA" }')
+            platform_fields.append('"instagram_story": { "text": "Short punchy story text", "cta": "Swipe/Tap link", "poll_question": "Engaging poll question" }')
+        if "linkedin" in canonical_platforms:
+            platform_fields.append('"linkedin_post": { "caption": "Professional thought-leadership article/post with strong business insight, framework, and discussion question", "hashtags": ["#3to5", "#industry", "#hashtags"], "best_day": "Tuesday", "best_time": "9:00 AM", "call_to_action": "Share your perspective below" }')
+        if "facebook" in canonical_platforms:
+            platform_fields.append('"facebook_post": { "caption": "Friendly, community-first conversational post with welcoming tone", "hashtags": ["#2to3", "#hashtags"], "best_day": "Today", "best_time": "1:00 PM", "call_to_action": "Comment below and let us know!" }')
+        if "twitter" in canonical_platforms:
+            platform_fields.append('"twitter_post": { "caption": "Punchy high-impact tweet strictly under 240 chars with bold hook and key takeaway", "hashtags": ["#1to2hashtags"], "best_day": "Today", "best_time": "12:00 PM", "call_to_action": "RT if you agree" }')
+        if "tiktok" in canonical_platforms:
+            platform_fields.append('"tiktok": { "caption": "Snappy creator-style caption under 120 chars with quick hook", "hashtags": ["#fyp", "#trending", "#viral"], "best_day": "Today", "best_time": "8:00 PM", "call_to_action": "Follow for daily tips" }')
 
         schema_snippet = ",\n  ".join(platform_fields)
 
-        prompt = f"""Create high-converting social media content for selected platforms based on this SAVED BRAND KIT, check-in answers, and decided content strategy.
-Strictly adhere to the brand kit's tone, voice, target audience, and core content pillars.
-ONLY generate content for the following active target platforms: {', '.join(clean_selected)}.
+        prompt = f"""You are an elite multi-channel social media copywriter.
+Generate bespoke, platform-native content for each platform below based on this SAVED BRAND KIT, check-in answers, and decided content strategy.
+
+STRICT PLATFORM-SPECIFIC STYLE GUIDELINES:
+- INSTAGRAM: Hook in line 1. Visual storytelling, clean paragraph breaks, 1-2 fitting emojis per paragraph, clear CTA, and 8-12 niche hashtags.
+- LINKEDIN: Professional thought leadership and strategic industry insight. Hook statement, structured body with 2-3 value points, engaging closing question to spark thoughtful comments, and 3-5 professional hashtags. Do NOT sound casual.
+- TWITTER / X: Ultra-punchy and concise (STRICTLY UNDER 240 CHARACTERS). Bold hook, single memorable takeaway, and 1-2 focused hashtags.
+- FACEBOOK: Warm, community-first tone, conversational narrative, welcoming question to invite community discussion, and 2-3 hashtags.
+- TIKTOK: Casual creator-style hook, energetic copy under 120 characters, question to drive comments, and 4-5 trending tags.
 
 SAVED BRAND KIT:
-- Business: {brand_profile.get('business_name')}
+- Business Name: {brand_profile.get('business_name')}
 - Tagline: {brand_profile.get('tagline') or 'N/A'}
-- Industry / Type: {brand_profile.get('industry') or brand_profile.get('business_type')}
-- Target Audience: {brand_profile.get('target_audience') or 'Target audience & community'}
-- Brand Tone: {brand_profile.get('brand_tone')}
-- Brand Voice & Personality: {brand_profile.get('brand_voice') or brand_profile.get('brand_personality') or 'Professional, distinct'}
-- Voice Keywords: {', '.join(brand_profile.get('brand_keywords') or [])}
-- Content Pillars / Themes: {json.dumps(brand_profile.get('content_themes') or [])}
+- Industry / Niche: {brand_profile.get('industry') or brand_profile.get('business_type') or 'Technology & Innovation'}
+- Target Audience: {brand_profile.get('target_audience') or 'Business leaders, creators, and community'}
+- Brand Tone: {brand_profile.get('brand_tone') or 'Modern, authoritative, and engaging'}
+- Brand Voice: {brand_profile.get('brand_voice') or brand_profile.get('brand_personality') or 'Professional, innovative, inspiring'}
+- Core Themes / Pillars: {json.dumps(brand_profile.get('content_themes') or [])}
 - Products & Services: {json.dumps(brand_profile.get('products_services') or brand_profile.get('detected_products') or [])}
 
-Content Strategy Decided:
-- Focus: {decided_strategy.get('decided_focus')}
-- Theme: {decided_strategy.get('decided_theme')}  
-- Angle: {decided_strategy.get('content_angle')}
-- Reasoning: {decided_strategy.get('reasoning')}
-- Priority Platform: {decided_strategy.get('priority_platform')}
-
-IMPORTANT: Do NOT repeat these recent content types and themes: {json.dumps(last_posts_history)}
-Create something fresh, distinct, and creative!
+Content Strategy:
+- Focus: {decided_strategy.get('decided_focus') or 'Brand Value'}
+- Theme: {decided_strategy.get('decided_theme') or 'Innovation'}  
+- Angle: {decided_strategy.get('content_angle') or 'Practical insights'}
 {learning_section}
-Today's Session Answers:
-- Q1: {session_answers.get('answer_1')}
-- Q2: {session_answers.get('answer_2')}  
-- Q3: {session_answers.get('answer_3')}
+Today's Check-in Answers:
+- Question 1 (Focus): {session_answers.get('answer_1')}
+- Question 2 (Special update): {session_answers.get('answer_2')}  
+- Question 3 (Notes): {session_answers.get('answer_3')}
 
-Generate JSON strictly matching this structure:
+IMPORTANT: Each platform's caption MUST be unique, written in that platform's native tone. Never duplicate the same copy across platforms.
+
+Generate valid JSON strictly matching this structure:
 {{
-  "session_theme": "Theme of the post",
+  "session_theme": "Inspiring headline theme for today",
   {schema_snippet},
   "guidance": {{ "tip_of_day": "...", "this_week_suggestion": "...", "best_performing_type": "..." }}
 }}"""
@@ -220,7 +238,7 @@ Generate JSON strictly matching this structure:
                 generation_config={"response_mime_type": "application/json"}
             )
             result = self.safe_parse_json(response.text)
-            ensured = self._ensure_all_platforms(result, clean_selected)
+            ensured = self._ensure_all_platforms(result, clean_selected, brand_name=brand_profile.get("business_name", "Brand"))
             if ensured:
                 ensured["_source"] = "ai"
             elapsed = time.time() - t0
@@ -235,111 +253,114 @@ Generate JSON strictly matching this structure:
             else:
                 self.last_error_message = f"Gemini text generation failed: {err_str[:120]}"
             logger.error(f"❌ [Gemini Text Generation Error] {e}\n{traceback.format_exc()}")
-            return {"_source": "fallback", "_error": self.last_error_message}
+            fallback_res = self._ensure_all_platforms({}, clean_selected, brand_name=brand_profile.get("business_name", "Brand"))
+            fallback_res["_source"] = "fallback"
+            fallback_res["_error"] = self.last_error_message
+            return fallback_res
 
-    def _ensure_all_platforms(self, data: Dict[str, Any], selected_platforms: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Guarantee only the selected platform keys exist; synthesize fallbacks if missing."""
-        if not data:
-            return data
+    def _ensure_all_platforms(self, data: Dict[str, Any], selected_platforms: Optional[List[str]] = None, brand_name: str = "Brand") -> Dict[str, Any]:
+        """Guarantee all selected platforms have distinct, high quality copy; synthesize native fallbacks if missing."""
+        if data is None:
+            data = {}
 
-        clean_selected = [p.lower().strip() for p in (selected_platforms or [])]
-        if not clean_selected:
-            clean_selected = ["instagram", "facebook", "linkedin", "twitter", "x", "tiktok"]
+        # Canonicalize platform list
+        canonical = set()
+        for p in (selected_platforms or []):
+            p_low = str(p).lower().strip()
+            if "insta" in p_low: canonical.add("instagram")
+            elif "link" in p_low: canonical.add("linkedin")
+            elif "face" in p_low or p_low == "fb": canonical.add("facebook")
+            elif "twit" in p_low or p_low == "x": canonical.add("twitter")
+            elif "tik" in p_low: canonical.add("tiktok")
+            else: canonical.add(p_low)
 
-        # Derive base caption
+        if not canonical:
+            canonical = {"instagram", "linkedin", "facebook", "twitter", "tiktok"}
+
+        # Derive base caption if present
         base_caption = ""
         base_hashtags = []
         for k in ("instagram_post", "facebook_post", "linkedin_post", "twitter_post", "tiktok"):
-            if data.get(k) and data[k].get("caption"):
+            if data.get(k) and isinstance(data[k], dict) and data[k].get("caption"):
                 base_caption = data[k]["caption"]
                 base_hashtags = data[k].get("hashtags", [])
                 break
 
-        # --- instagram_story fallback ---
-        if "instagram" in clean_selected and not data.get("instagram_story"):
+        # --- instagram_post ---
+        if "instagram" in canonical and not data.get("instagram_post"):
+            data["instagram_post"] = {
+                "caption": f"✨ Elevating our vision at {brand_name}.\n\nWhen you focus on genuine craft and modern solutions, the results speak for themselves. Every single project is built with care, intention, and an obsession with quality.\n\nDrop a comment if you're building something exciting this week! 👇",
+                "hashtags": ["#BrandVision", "#CreativeProcess", "#Innovation", "#ModernBrand", "#QualityFirst", "#DesignInspiration", "#GrowthMindset", "#DigitalCraft"],
+                "best_day": "Today",
+                "best_time": "7:00 PM",
+                "call_to_action": "Save this post & visit the link in bio"
+            }
+
+        # --- instagram_story ---
+        if "instagram" in canonical and not data.get("instagram_story"):
             data["instagram_story"] = {
-                "text": base_caption[:120] if base_caption else "Stay tuned for more!",
-                "cta": "DM us for more!",
-                "poll_question": "Would you like to know more?"
+                "text": f"Behind the scenes at {brand_name}. Tap to see our latest work!",
+                "cta": "Tap Link",
+                "poll_question": "Ready to level up?"
             }
 
-        # --- linkedin_post fallback ---
-        if "linkedin" in clean_selected and not data.get("linkedin_post"):
-            linkedin_caption = (
-                f"Excited to share an update with our professional network!\n\n{base_caption}"
-                if base_caption else "Sharing insights from our brand journey."
-            )
+        # --- linkedin_post ---
+        if "linkedin" in canonical and not data.get("linkedin_post"):
             data["linkedin_post"] = {
-                "caption": linkedin_caption,
-                "hashtags": [h for h in base_hashtags if h][:5],
+                "caption": f"At {brand_name}, we believe true innovation comes from mastering the fundamentals while relentlessly exploring new boundaries.\n\n3 key takeaways shaping our approach right now:\n1. Execution consistently beats over-deliberation.\n2. Sustainable growth is built on client trust and measurable value.\n3. Consistent branding turns fleeting impressions into enduring loyalty.\n\nHow is your organization approaching growth this quarter? I'd love to hear your perspectives below.",
+                "hashtags": ["#Leadership", "#Innovation", "#BusinessGrowth", "#Strategy", "#FutureOfWork"],
                 "best_day": "Tuesday",
-                "best_time": "9:00 AM"
+                "best_time": "9:00 AM",
+                "call_to_action": "Join the conversation in the comments"
             }
 
-        # --- facebook_post fallback ---
-        if "facebook" in clean_selected and not data.get("facebook_post"):
-            facebook_caption = (
-                f"Hey friends! 👋\n\n{base_caption}"
-                if base_caption else "We have something exciting to share with our community!"
-            )
+        # --- facebook_post ---
+        if "facebook" in canonical and not data.get("facebook_post"):
             data["facebook_post"] = {
-                "caption": facebook_caption,
-                "hashtags": [h for h in base_hashtags if h][:3],
+                "caption": f"Hello everyone! 👋 We're so excited to share what we've been working on at {brand_name}.\n\nOur team is dedicated to bringing fresh ideas and reliable solutions to our community. Thank you all for being part of this incredible journey with us.\n\nWhat are you most excited to accomplish this week? Let us know below!",
+                "hashtags": ["#Community", "#BrandStory", "#Motivation"],
                 "best_day": "Today",
                 "best_time": "1:00 PM",
-                "call_to_action": "Let us know your thoughts in the comments!"
+                "call_to_action": "Leave a comment below!"
             }
 
-        # --- twitter_post fallback ---
-        if ("twitter" in clean_selected or "x" in clean_selected) and not data.get("twitter_post"):
-            twitter_caption = base_caption[:240] if base_caption else "Fresh updates from our team. Stay tuned!"
+        # --- twitter_post ---
+        if "twitter" in canonical and not data.get("twitter_post"):
             data["twitter_post"] = {
-                "caption": twitter_caption,
-                "hashtags": [h for h in base_hashtags if h][:2],
+                "caption": f"Precision and consistency compound faster than you think. Keep building the future with {brand_name}. 🚀",
+                "hashtags": ["#Innovation", "#BuildInPublic"],
                 "best_day": "Today",
                 "best_time": "12:00 PM",
-                "call_to_action": "RT & share if you agree!"
+                "call_to_action": "Retweet to inspire a builder"
             }
 
-        # --- tiktok fallback ---
-        if "tiktok" in clean_selected and not data.get("tiktok"):
-            first_line = (base_caption.split('\n')[0] if base_caption else "Fresh brand perspectives").strip()
-            tiktok_caption = f"{first_line} 👀 Drop your thoughts below! 👇"
+        # --- tiktok ---
+        if "tiktok" in canonical and not data.get("tiktok"):
             data["tiktok"] = {
-                "caption": tiktok_caption,
-                "hashtags": ["#fyp", "#trending", "#viral", "#growth"] + [h for h in base_hashtags if h][:2],
+                "caption": f"This is your reminder to keep creating at the highest level 🔥 {brand_name}",
+                "hashtags": ["#fyp", "#trending", "#tech", "#creative", "#entrepreneur"],
                 "best_day": "Today",
                 "best_time": "8:00 PM",
-                "call_to_action": "Follow for daily tips!"
-            }
-
-        # --- instagram_post fallback ---
-        if ("instagram" in clean_selected or not selected_platforms) and not data.get("instagram_post"):
-            data["instagram_post"] = {
-                "caption": base_caption or "Exciting content coming your way! Stay tuned.",
-                "hashtags": base_hashtags,
-                "best_time": "7:00 PM",
-                "best_day": "Wednesday",
-                "call_to_action": "Follow for more!"
+                "call_to_action": "Follow for daily inspiration"
             }
 
         # Filter down to ONLY selected platforms if selected_platforms was explicitly specified
         if selected_platforms:
             allowed_keys = set()
-            for p in clean_selected:
-                if p in ("instagram", "instagram_post"):
+            for p in canonical:
+                if p == "instagram":
                     allowed_keys.add("instagram_post")
                     allowed_keys.add("instagram_story")
-                elif p in ("facebook", "facebook_post"):
+                elif p == "facebook":
                     allowed_keys.add("facebook_post")
-                elif p in ("linkedin", "linkedin_post"):
+                elif p == "linkedin":
                     allowed_keys.add("linkedin_post")
-                elif p in ("twitter", "x", "twitter_post"):
+                elif p == "twitter":
                     allowed_keys.add("twitter_post")
-                elif p in ("tiktok",):
+                elif p == "tiktok":
                     allowed_keys.add("tiktok")
             
-            meta_keys = {"session_theme", "angle", "strategic_hook", "reasoning", "_source"}
+            meta_keys = {"session_theme", "angle", "strategic_hook", "reasoning", "_source", "_error", "guidance"}
             data = {k: v for k, v in data.items() if k in allowed_keys or k in meta_keys}
 
         return data

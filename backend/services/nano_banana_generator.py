@@ -184,7 +184,8 @@ class NanoBananaGenerator:
             f"Style & Composition: {variant_angle}, {ratio_desc}. "
             f"Color palette: Dynamic visual contrast with subtle luminous accents in {primary_color} and {secondary_color}, rich depth, and clean negative space. "
             f"1K resolution, ultra-high definition, photorealistic, cinematic commercial studio lighting, "
-            f"crisp details, depth of field, premium award-winning product and lifestyle presentation."
+            f"crisp details, depth of field, premium award-winning product and lifestyle presentation. "
+            f"STRICT NEGATIVE CONSTRAINT: Absolutely DO NOT render, paint, or print ANY text, letters, words, slogans, fake typography, or simulated logos into the image canvas. The canvas must be completely clean of all lettering, branding, and typography."
         )
         return prompt
 
@@ -368,6 +369,9 @@ class NanoBananaGenerator:
             # Generate background visual
             image_bytes = await self.generate_background_with_retry(prompt, norm_ratio)
 
+            # Composite the user's authentic Brand Kit logo onto the post image
+            image_bytes = await self._composite_brand_logo(image_bytes, brand_profile)
+
             # Upload to Cloudflare R2
             filename = f"bg_banana_{uuid.uuid4().hex[:10]}.png"
             public_url = storage_service.upload_image(image_bytes, filename)
@@ -437,6 +441,104 @@ class NanoBananaGenerator:
                 db=db
             )
             return None
+
+    async def _composite_brand_logo(self, image_bytes: bytes, brand_profile: Dict[str, Any]) -> bytes:
+        """
+        Overlay the brand's authentic uploaded logo from Brand Kit onto the generated image.
+        Uses PIL to gracefully composite RGBA logo with high quality lanczos resampling.
+        """
+        if not image_bytes or not brand_profile:
+            return image_bytes
+
+        logo_url = brand_profile.get("clean_logo_url") or brand_profile.get("logo_url")
+        if not logo_url:
+            return image_bytes
+
+        try:
+            import io
+            from PIL import Image
+
+            # Step 1: Retrieve logo bytes
+            logo_bytes = None
+
+            # Check if it's a local file URL or filename
+            if "localhost" in logo_url or "/api/media/" in logo_url or not logo_url.startswith("http"):
+                filename = os.path.basename(logo_url.split("?")[0])
+                backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                candidate_paths = [
+                    os.path.join(backend_dir, "processed_images", filename),
+                    os.path.join(backend_dir, "posts", filename),
+                    os.path.join(backend_dir, "static", filename),
+                ]
+                for cp in candidate_paths:
+                    if os.path.exists(cp):
+                        with open(cp, "rb") as f:
+                            logo_bytes = f.read()
+                        break
+
+            # If not found locally, fetch via HTTP
+            if not logo_bytes and logo_url.startswith("http"):
+                try:
+                    async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+                        resp = await client.get(logo_url)
+                        if resp.status_code == 200 and len(resp.content) > 100:
+                            logo_bytes = resp.content
+                except Exception as dl_err:
+                    logger.warning(f"Could not download brand logo from {logo_url}: {dl_err}")
+
+            if not logo_bytes:
+                # If clean_logo_url was unresolvable, try raw logo_url fallback
+                alt_url = brand_profile.get("logo_url")
+                if alt_url and alt_url != logo_url and alt_url.startswith("http"):
+                    try:
+                        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+                            resp = await client.get(alt_url)
+                            if resp.status_code == 200 and len(resp.content) > 100:
+                                logo_bytes = resp.content
+                    except Exception:
+                        pass
+
+            if not logo_bytes:
+                logger.info("No brand logo bytes found to composite.")
+                return image_bytes
+
+            # Step 2: Open and composite using PIL
+            base_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+            logo_img = Image.open(io.BytesIO(logo_bytes)).convert("RGBA")
+
+            bw, bh = base_img.size
+            lw, lh = logo_img.size
+
+            if lw == 0 or lh == 0:
+                return image_bytes
+
+            # Target logo size: proportional width ~15% of canvas width, max height ~12%
+            target_w = max(80, int(bw * 0.15))
+            target_max_h = max(60, int(bh * 0.12))
+
+            # Maintain aspect ratio
+            scale = min(target_w / float(lw), target_max_h / float(lh))
+            new_w = max(1, int(lw * scale))
+            new_h = max(1, int(lh * scale))
+
+            logo_resized = logo_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+            # Padding: 4.5% of canvas width from top and left
+            pad_x = int(bw * 0.045)
+            pad_y = int(bh * 0.045)
+
+            # Create destination layer and composite
+            base_img.paste(logo_resized, (pad_x, pad_y), mask=logo_resized)
+
+            output = io.BytesIO()
+            base_img.save(output, format="PNG", quality=95)
+            composited_bytes = output.getvalue()
+            logger.info(f"✓ Successfully composited brand kit logo onto post image ({new_w}x{new_h} at {pad_x},{pad_y})")
+            return composited_bytes
+
+        except Exception as comp_err:
+            logger.warning(f"Logo compositing encountered an error, keeping original background: {comp_err}")
+            return image_bytes
 
     async def render_post_with_background(
         self,

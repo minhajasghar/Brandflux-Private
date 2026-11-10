@@ -905,42 +905,56 @@ async def generate_session_variants(
         gen_status = "partial"
         gen_error = content_data.get("_error") or "AI copywriting failed; emergency branded copy used."
 
-    # Multi-platform structured copy for all channels
+    # Multi-platform structured copy for all channels (distinct per platform)
+    ig_data = content_data.get("instagram_post", {})
+    li_data = content_data.get("linkedin_post", {})
+    fb_data = content_data.get("facebook_post", {})
+    tw_data = content_data.get("twitter_post", {})
+    tt_data = content_data.get("tiktok", {})
+
+    b_name = brand.business_name or "our team"
+
     platform_posts = {
         "instagram_post": {
             "platform_name": "Instagram",
-            "caption": content_data.get("instagram_post", {}).get("caption") or caption,
-            "hashtags": content_data.get("instagram_post", {}).get("hashtags") or hashtags,
-            "call_to_action": content_data.get("instagram_post", {}).get("call_to_action") or overlay_cta,
-            "best_time": f"{content_data.get('instagram_post', {}).get('best_day', 'Today')} {content_data.get('instagram_post', {}).get('best_time', '7:00 PM')}".strip()
+            "caption": ig_data.get("caption") or caption,
+            "hashtags": ig_data.get("hashtags") or hashtags,
+            "call_to_action": ig_data.get("call_to_action") or overlay_cta or "Link in bio to discover more",
+            "best_time": f"{ig_data.get('best_day', 'Today')} {ig_data.get('best_time', '7:00 PM')}".strip()
         },
         "linkedin_post": {
             "platform_name": "LinkedIn",
-            "caption": content_data.get("linkedin_post", {}).get("caption") or caption,
-            "hashtags": content_data.get("linkedin_post", {}).get("hashtags") or [h for h in hashtags[:5]],
-            "call_to_action": content_data.get("linkedin_post", {}).get("call_to_action") or "Share your thoughts below",
-            "best_time": f"{content_data.get('linkedin_post', {}).get('best_day', 'Tuesday')} {content_data.get('linkedin_post', {}).get('best_time', '9:00 AM')}".strip()
+            "caption": li_data.get("caption") or (
+                f"At {b_name}, we focus on high-impact execution and measurable value.\n\n"
+                f"Key insight for today: Consistency and innovation compound over time. How is your team approaching growth this quarter?"
+            ),
+            "hashtags": li_data.get("hashtags") or ["#Leadership", "#Innovation", "#BusinessGrowth", "#Strategy"],
+            "call_to_action": li_data.get("call_to_action") or "Share your perspectives below",
+            "best_time": f"{li_data.get('best_day', 'Tuesday')} {li_data.get('best_time', '9:00 AM')}".strip()
         },
         "facebook_post": {
             "platform_name": "Facebook",
-            "caption": content_data.get("facebook_post", {}).get("caption") or caption,
-            "hashtags": content_data.get("facebook_post", {}).get("hashtags") or [h for h in hashtags[:3]],
-            "call_to_action": content_data.get("facebook_post", {}).get("call_to_action") or "Comment below!",
-            "best_time": f"{content_data.get('facebook_post', {}).get('best_day', 'Today')} {content_data.get('facebook_post', {}).get('best_time', '1:00 PM')}".strip()
+            "caption": fb_data.get("caption") or (
+                f"Hello community! 👋 We're proud to share our latest updates from {b_name}. "
+                f"Thank you all for being part of our story. What are you building this week?"
+            ),
+            "hashtags": fb_data.get("hashtags") or ["#Community", "#BrandUpdates", "#Innovation"],
+            "call_to_action": fb_data.get("call_to_action") or "Leave a comment below!",
+            "best_time": f"{fb_data.get('best_day', 'Today')} {fb_data.get('best_time', '1:00 PM')}".strip()
         },
         "twitter_post": {
             "platform_name": "Twitter / X",
-            "caption": content_data.get("twitter_post", {}).get("caption") or (caption[:240] if caption else ""),
-            "hashtags": content_data.get("twitter_post", {}).get("hashtags") or [h for h in hashtags[:2]],
-            "call_to_action": content_data.get("twitter_post", {}).get("call_to_action") or "RT if you agree",
-            "best_time": f"{content_data.get('twitter_post', {}).get('best_day', 'Today')} {content_data.get('twitter_post', {}).get('best_time', '12:00 PM')}".strip()
+            "caption": tw_data.get("caption") or f"Precision, craft, and consistency compound faster than you think. Build the future with {b_name}. 🚀",
+            "hashtags": tw_data.get("hashtags") or ["#Innovation", "#Tech"],
+            "call_to_action": tw_data.get("call_to_action") or "RT if you agree",
+            "best_time": f"{tw_data.get('best_day', 'Today')} {tw_data.get('best_time', '12:00 PM')}".strip()
         },
         "tiktok": {
             "platform_name": "TikTok",
-            "caption": content_data.get("tiktok", {}).get("caption") or (caption[:150] if caption else ""),
-            "hashtags": content_data.get("tiktok", {}).get("hashtags") or ["#fyp", "#trending", "#innovation"],
-            "call_to_action": content_data.get("tiktok", {}).get("call_to_action") or "Follow for more daily tips",
-            "best_time": f"{content_data.get('tiktok', {}).get('best_day', 'Today')} {content_data.get('tiktok', {}).get('best_time', '8:00 PM')}".strip()
+            "caption": tt_data.get("caption") or f"Never stop building at the highest level 🔥 {b_name} #fyp #trends",
+            "hashtags": tt_data.get("hashtags") or ["#fyp", "#trending", "#innovation", "#creative"],
+            "call_to_action": tt_data.get("call_to_action") or "Follow for daily tips",
+            "best_time": f"{tt_data.get('best_day', 'Today')} {tt_data.get('best_time', '8:00 PM')}".strip()
         }
     }
 

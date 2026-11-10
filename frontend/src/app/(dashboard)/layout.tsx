@@ -155,6 +155,10 @@ export default function DashboardLayout({
         {/* Sidebar Header */}
         <div className="p-6 flex items-center justify-between border-b border-border">
           <Link href="/dashboard" className="flex items-center gap-3 group" onClick={() => setIsMobileMenuOpen(false)}>
+            <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center font-bold text-white shadow-glow group-hover:scale-105 transition-transform duration-200">
+              <Zap className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-xl font-extrabold tracking-tight text-text">
             <BrandfluxLogo size={36} />
             <span className="text-xl font-extrabold tracking-tight text-text group-hover:text-white transition-colors">
               Brandflux

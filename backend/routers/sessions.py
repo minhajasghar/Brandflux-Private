@@ -773,24 +773,16 @@ async def generate_session_variants(
         "context_text": req.context_text or ""
     }
 
-    # Generate captions only for the platforms the user selected and that are connected
-    from models.models import SocialAccount
-    connected_rows = db.query(SocialAccount.platform).filter(
-        SocialAccount.user_id == user.id,
-        SocialAccount.is_connected == True
-    ).all()
-    connected_plat_names = [r[0].lower().strip() for r in connected_rows]
-
+    # Generate captions for the platforms the user selected (or active connected platforms)
     user_selected = req.target_platforms or ([req.target_platform] if req.target_platform else [])
-    user_selected_clean = [p.lower().strip() for p in user_selected if p]
-
-    # Intersection: platforms selected AND connected (if any accounts are connected)
-    if connected_plat_names:
-        active_target_platforms = [p for p in user_selected_clean if p in connected_plat_names]
-        if not active_target_platforms:
-            active_target_platforms = connected_plat_names[:2]
-    else:
-        active_target_platforms = user_selected_clean if user_selected_clean else ["facebook", "linkedin"]
+    active_target_platforms = [p.lower().strip() for p in user_selected if p]
+    if not active_target_platforms:
+        from models.models import SocialAccount
+        connected_rows = db.query(SocialAccount.platform).filter(
+            SocialAccount.user_id == user.id,
+            SocialAccount.is_active == True
+        ).all()
+        active_target_platforms = [r[0].lower().strip() for r in connected_rows] or ["instagram", "facebook", "linkedin"]
 
     content_data = gemini.generate_multi_platform_content(
         brand_profile=brand_profile,
@@ -814,7 +806,7 @@ async def generate_session_variants(
         "twitter_post": "twitter_post",
         "tiktok": "tiktok"
     }
-    raw_platform = req.target_platform or "instagram_post"
+    raw_platform = req.target_platform or (req.target_platforms[0] if req.target_platforms else "instagram_post")
     platform_key = platform_key_map.get(raw_platform.lower(), "instagram_post")
     platform = platform_key
     p_data = content_data.get(platform_key, {}) or content_data.get("instagram_post", {})

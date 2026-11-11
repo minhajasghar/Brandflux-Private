@@ -19,13 +19,13 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "price_annual_usd": 0,
         "credits": 15,
         "brands": 1,
-        "platforms": 2,
+        "platforms": 5,
         "max_posts_per_day": 5,
         "daily_generation_cap": 5,
         "reroll_pool": 3,
-        "x_allowed": False,
-        "x_monthly_allowance": 0,
-        "max_approvers": 1
+        "x_allowed": True,
+        "x_monthly_allowance": 25,
+        "max_approvers": 2
     },
     "starter": {
         "id": "starter",
@@ -82,6 +82,13 @@ def get_plan(db: Session, plan_id: str) -> Plan:
         clean_id = "trial"
 
     plan = db.query(Plan).filter(Plan.id == clean_id).first()
+    if plan and not plan.x_allowed and clean_id == "trial":
+        plan.x_allowed = True
+        plan.platforms = max(plan.platforms, 5)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
     if not plan:
         defaults = DEFAULT_PLANS.get(clean_id, DEFAULT_PLANS["trial"])
         plan = Plan(
@@ -237,9 +244,11 @@ def enforce_can_connect_platform(db: Session, user: User, platform: str) -> None
     limits = get_user_plan_limits(db, user)
     plat_clean = platform.lower().strip()
 
-    # Rule: X posting only on Pro
+    # Rule: X posting only on Pro (allow trial users and admins to test)
     if plat_clean in ("x", "twitter"):
-        if not limits["x_allowed"]:
+        user_plan = getattr(user, "plan", "") or "trial"
+        user_role = getattr(user, "role", "") or "user"
+        if not limits["x_allowed"] and user_plan not in ("trial", "pro") and user_role != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={

@@ -270,8 +270,9 @@ export default function ConnectedAccountsTab() {
     } catch (err: any) {
       console.error(`Connect ${platformKey} error:`, err)
       const detail = err.response?.data?.detail
-      const friendly = FRIENDLY_ERRORS[detail] || 'Failed to start connection. Please check your internet connection and try again.'
-      toast.error(friendly)
+      const serverMsg = typeof detail === 'object' ? (detail?.message || detail?.code) : detail
+      const friendly = (typeof detail === 'string' && FRIENDLY_ERRORS[detail]) || serverMsg || err.message || 'Failed to start connection. Please check your internet connection and try again.'
+      toast.error(friendly, { duration: 5000 })
       setConnectingPlatform(null)
     }
   }

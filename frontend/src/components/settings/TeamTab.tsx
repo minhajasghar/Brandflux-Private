@@ -468,7 +468,7 @@ export default function TeamTab({ brandId }: { brandId?: string }) {
                 {autopilotRouting === 'approvers' && <CheckCircle2 className="h-4 w-4 text-accent" />}
               </div>
               <p className="text-xs text-muted">
-                Autopilot weekly plans queue directly into the approvers' inbox for review and sign-off.
+                Autopilot weekly plans queue directly into the approvers&apos; inbox for review and sign-off.
               </p>
             </button>
 

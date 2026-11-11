@@ -77,12 +77,14 @@ export default function IdeasPage() {
   
   // Filters State
   const [platformFilter, setPlatformFilter] = useState<'all' | 'instagram' | 'linkedin' | 'facebook' | 'twitter' | 'tiktok'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'not_posted' | 'scheduled' | 'published'>('all')
   const [dateFilter, setDateFilter] = useState<'all' | 'week' | 'month'>('all')
   const [isPublishing, setIsPublishing] = useState<string | null>(null)
   const [schedulingCopyId, setSchedulingCopyId] = useState<string | null>(null)
   const [scheduledDateTime, setScheduledDateTime] = useState<string>('')
   const [selectedCopyIdsToPublish, setSelectedCopyIdsToPublish] = useState<string[]>([])
   const [isBatchPublishing, setIsBatchPublishing] = useState(false)
+  const [isDeletingUnused, setIsDeletingUnused] = useState(false)
 
   // Templates State
   const [templates, setTemplates] = useState<SavedTemplate[]>([])
@@ -100,13 +102,13 @@ export default function IdeasPage() {
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
 
   // Fetch History Items
-  const fetchHistory = async (resetPage = false) => {
+  const fetchHistory = async (resetPage = false, currentStatus = statusFilter) => {
     const targetPage = resetPage ? 1 : page
     if (resetPage) setLoadingHistory(true)
     else setLoadingMore(true)
 
     try {
-      const res = await api.get(`/content/history?page=${targetPage}&limit=6`)
+      const res = await api.get(`/content/history?page=${targetPage}&limit=6&status=${currentStatus}`)
       if (res.data) {
         if (resetPage) {
           setHistoryItems(res.data.items || [])
@@ -265,6 +267,24 @@ export default function IdeasPage() {
       toast.error('Could not save template.')
     } finally {
       setIsSavingTemplate(false)
+    }
+  }
+
+  // Manual Delete of Unused Image Variants
+  const handleDeleteUnusedImages = async () => {
+    if (!selectedSessionId) return
+    if (!confirm('Are you sure you want to delete all unused image variants for this post? The active image will be preserved.')) return
+    try {
+      setIsDeletingUnused(true)
+      const res = await api.delete(`/content/posts/${selectedSessionId}/unused-images`)
+      toast.success(res.data.message || 'Deleted unused images.')
+      const updated = await api.get(`/content/history/${selectedSessionId}`)
+      setSessionDetail(updated.data)
+      fetchHistory(true)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to delete unused images.')
+    } finally {
+      setIsDeletingUnused(false)
     }
   }
 
@@ -463,6 +483,37 @@ export default function IdeasPage() {
 
       {activeTab === 'history' ? (
         <>
+          {/* ─── STATUS FILTER TABS (All / Not posted yet / Scheduled / Published) ─── */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+            {[
+              { id: 'all', label: 'All Posts' },
+              { id: 'not_posted', label: 'Not posted yet' },
+              { id: 'scheduled', label: 'Scheduled' },
+              { id: 'published', label: 'Published' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  const s = tab.id as 'all' | 'not_posted' | 'scheduled' | 'published'
+                  setStatusFilter(s)
+                  fetchHistory(true, s)
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 border ${
+                  statusFilter === tab.id
+                    ? 'bg-accent text-black border-accent shadow-sm'
+                    : 'bg-surface-secondary border-border text-muted hover:text-text hover:bg-surface-hover'
+                }`}
+              >
+                <span>{tab.label}</span>
+                {tab.id === 'not_posted' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/20 text-current font-extrabold">
+                    Drafts
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
           {/* ─── FILTER BAR ─── */}
           <div className="flex flex-col md:flex-row gap-4 justify-between bg-surface border border-border p-4 rounded-2xl">
             
@@ -590,21 +641,39 @@ export default function IdeasPage() {
                   </div>
 
                   {/* Actions Bar */}
-                  <div className="flex gap-2.5 mt-6 border-t border-border pt-4">
+                  <div className="flex flex-wrap items-center gap-2 mt-6 border-t border-border pt-4">
                     <button
                       onClick={() => openDetailDrawer(item.id)}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold text-xs transition active:scale-[0.98]"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold text-xs transition active:scale-[0.98]"
                     >
-                      View Full Content
-                      <ChevronRight className="h-4 w-4 text-muted" />
+                      <span>Edit / View</span>
+                      <ChevronRight className="h-3.5 w-3.5 text-muted" />
+                    </button>
+
+                    <button
+                      onClick={() => openDetailDrawer(item.id)}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-accent/15 hover:bg-accent/25 border border-accent/40 text-accent font-extrabold text-xs transition active:scale-[0.98]"
+                      title="Post Now"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                      <span>Post now</span>
+                    </button>
+
+                    <button
+                      onClick={() => openDetailDrawer(item.id)}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 font-bold text-xs transition active:scale-[0.98]"
+                      title="Schedule"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>Schedule</span>
                     </button>
                     
                     <button
                       onClick={() => triggerSaveTemplate(item.id, item.platforms_generated[0] || 'instagram_post', item.session_theme)}
-                      className="p-2.5 rounded-xl bg-surface-secondary border border-border text-muted hover:text-accent hover:border-accent/30 transition active:scale-[0.98]"
+                      className="p-2 rounded-xl bg-surface-secondary border border-border text-muted hover:text-accent hover:border-accent/30 transition active:scale-[0.98]"
                       title="Save as Template"
                     >
-                      <Bookmark className="h-4 w-4" />
+                      <Bookmark className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </motion.div>
@@ -823,6 +892,64 @@ export default function IdeasPage() {
                           <ExternalLink className="h-3.5 w-3.5" />
                           <span>View Full Image</span>
                         </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Image Variants Gallery & Unused Image Manager */}
+                  {sessionDetail.image_variants && sessionDetail.image_variants.length > 0 && (
+                    <div className="bg-surface-secondary border border-border rounded-2xl p-4 space-y-3 mt-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black uppercase tracking-wider text-text">
+                            Artwork Variants ({sessionDetail.image_variants.length})
+                          </span>
+                          <span className="text-[10px] text-muted">
+                            Saved permanently
+                          </span>
+                        </div>
+
+                        {sessionDetail.image_variants.some((v: any) => v.is_unused) && (
+                          <button
+                            type="button"
+                            onClick={handleDeleteUnusedImages}
+                            disabled={isDeletingUnused}
+                            className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-bold text-[11px] transition flex items-center gap-1"
+                          >
+                            {isDeletingUnused ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                            <span>Delete unused images</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                        {sessionDetail.image_variants.map((v: any, idx: number) => (
+                          <div 
+                            key={v.id || idx}
+                            className={`relative rounded-xl overflow-hidden aspect-square border ${
+                              v.is_selected 
+                                ? 'border-accent ring-2 ring-accent' 
+                                : 'border-border opacity-70 hover:opacity-100'
+                            }`}
+                          >
+                            <img 
+                              src={resolveMediaUrl(v.image_url)} 
+                              alt={`Variant ${idx + 1}`}
+                              className="w-full h-full object-cover" 
+                            />
+                            <div className="absolute top-1 left-1">
+                              {v.is_selected ? (
+                                <span className="px-1.5 py-0.5 rounded bg-accent text-black font-black text-[9px]">
+                                  Selected
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded bg-black/70 text-zinc-300 font-bold text-[9px]">
+                                  Unused
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

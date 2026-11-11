@@ -289,7 +289,7 @@ class PostImage(Base):
     post_id = Column(String(36), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
     image_url = Column(Text, nullable=False)
     is_selected = Column(Boolean, default=False)
-    expires_at = Column(DateTime, nullable=True)  # Unselected auto-expires after 7 days
+    expires_at = Column(DateTime, nullable=True, default=None)  # Never auto-deleted; saved permanently
     created_at = Column(DateTime, default=func.now())
 
     # Relationships
@@ -652,7 +652,7 @@ class SessionVariant(Base):
 
     is_selected = Column(Boolean, default=False)
     source = Column(String(20), default="ai")  # "ai" or "fallback"
-    expires_at = Column(DateTime, nullable=False)  # Auto-delete after 7 days if unselected
+    expires_at = Column(DateTime, nullable=True, default=None)  # Never auto-deleted; saved permanently
     created_at = Column(DateTime, default=func.now())
 
 

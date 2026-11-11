@@ -1409,7 +1409,7 @@ export default function SettingsPage() {
           {/* ═════════════════════════════════════════════════════════════ */}
           {/* TAB: TEAM & APPROVAL WORKFLOW                                 */}
           {/* ═════════════════════════════════════════════════════════════ */}
-          {activeTab === 'team' && <TeamTab brandId={brandKit?.id} />}
+          {activeTab === 'team' && <TeamTab brandId={(brandKit as any)?.id} />}
 
           {/* ═════════════════════════════════════════════════════════════ */}
           {activeTab === 'billing' && (

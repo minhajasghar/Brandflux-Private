@@ -122,7 +122,7 @@ def request_plan_upgrade(
 
     return {
         "success": True,
-        "message": f"Upgrade request for {target_plan.name} ({req.billing_cycle}) submitted successfully. Our team will activate it shortly.",
+        "message": "Payments are coming soon, we'll activate your plan.",
         "plan_id": target_plan.id
     }
 
@@ -156,27 +156,30 @@ def purchase_credit_pack(
     # Standard pack: 20 credits for $14
     pack_credits = req.amount if req.amount in (20, 40, 60) else 20
 
-    new_balance = credit_service.grant_credit_pack(
-        user_id=user.id,
-        amount=pack_credits,
-        reason="credit_pack_purchase",
-        reference_id=f"pack_{pack_credits}cr",
-        db=db
-    )
-
+    # No instant credit grant client-side without payment gateway! Log request and alert admin
     audit_entry = AuditLog(
-        action="credit_pack_purchased",
+        action="credit_pack_requested",
         target_type="user",
         target_id=user.id,
         admin_email=user.email,
-        details={"credits_added": pack_credits, "price_usd": 14 if pack_credits == 20 else (pack_credits // 20) * 14}
+        details={"requested_credits": pack_credits, "price_usd": 14 if pack_credits == 20 else (pack_credits // 20) * 14}
     )
     db.add(audit_entry)
+
+    # In-app notification for the user
+    notif = Notification(
+        user_id=user.id,
+        title="Credit Pack Request Received",
+        message=f"We received your request for {pack_credits} credits. Payments are coming soon, we'll activate your plan.",
+        type="info",
+        action_type="link",
+        action_payload={"url": "/settings?tab=billing"}
+    )
+    db.add(notif)
     db.commit()
 
     return {
         "success": True,
-        "message": f"Successfully added {pack_credits} post credits to your account!",
-        "new_balance": new_balance,
-        "credits_added": pack_credits
+        "message": "Payments are coming soon, we'll activate your plan.",
+        "requested_credits": pack_credits
     }

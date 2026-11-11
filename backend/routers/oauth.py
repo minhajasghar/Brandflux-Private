@@ -68,7 +68,7 @@ def get_twitter_credentials():
     redirect_uri = os.getenv("TWITTER_REDIRECT_URI", "http://localhost:8000/oauth/twitter/callback").strip()
     return client_id, client_secret, redirect_uri
 
-FRONTEND_SETTINGS_URL = os.getenv("FRONTEND_URL", "http://localhost:3000") + "/settings?tab=connected"
+FRONTEND_SETTINGS_URL = os.getenv("FRONTEND_URL", os.getenv("APP_BASE_URL", "http://localhost:3000")).rstrip("/") + "/settings?tab=connected"
 
 
 class SocialAccountResponse(BaseModel):

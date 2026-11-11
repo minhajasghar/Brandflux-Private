@@ -1227,7 +1227,7 @@ export default function SessionPage() {
                     )}
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted">
-                    <span>Unselected variants auto-deleted after 7 days</span>
+                    <span>All variants saved permanently to your library</span>
                     {variantSessionData.variants.find(v => v.id === selectedVariantId)?.source === 'fallback' ? (
                       <span className="text-amber-400 font-bold bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-md flex items-center gap-1">
                         <AlertTriangle className="h-3.5 w-3.5" /> 0 Credits Deducted (Fallback)

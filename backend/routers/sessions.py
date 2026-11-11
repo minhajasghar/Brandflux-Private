@@ -587,8 +587,7 @@ async def generate_single_variant(
         variant_source = "ai"
         variant_error = None
 
-        # 2. Save to session_variants with 7-day auto-expiry
-        expiry = datetime.utcnow() + timedelta(days=7)
+        # 2. Save to session_variants permanently (no auto-deletion)
         variant_record = SessionVariant(
             id=variant_id,
             session_id=session.id,
@@ -605,7 +604,7 @@ async def generate_single_variant(
             call_to_action=cta,
             is_selected=False,
             source="ai",
-            expires_at=expiry
+            expires_at=None
         )
         db.add(variant_record)
         db.commit()
@@ -631,7 +630,6 @@ async def generate_single_variant(
         public_url = ""
         status_val = "failed"
 
-        expiry = datetime.utcnow() + timedelta(days=7)
         try:
             variant_record = SessionVariant(
                 id=variant_id,
@@ -649,7 +647,7 @@ async def generate_single_variant(
                 call_to_action=cta,
                 is_selected=False,
                 source="fallback",
-                expires_at=expiry
+                expires_at=None
             )
             db.add(variant_record)
             db.commit()
@@ -762,9 +760,10 @@ async def generate_session_variants(
         "clean_logo_url": brand.clean_logo_url
     }
 
-    # 3. Determine plan limit for variants
-    max_allowed = get_max_variants_for_user(user)
-    count = min(req.variant_count or max_allowed, max_allowed)
+    # 3. Determine variant count (strictly 2 AI variants by default; 3rd only via 'Show another option')
+    default_variants = 2
+    requested_variants = req.variant_count if req.variant_count is not None else default_variants
+    count = min(max(requested_variants, 1), 3)  # strictly 2 by default, max 3 on request
     selected_styles = VARIANT_STYLES[:count]
 
     # 4. Generate copy / captions once (shared across variants)
@@ -1033,6 +1032,28 @@ async def generate_session_variants(
                     existing_copy.image_url = chosen_img
                 existing_copy.updated_at = datetime.utcnow()
 
+        # Ensure all image variants are saved permanently in post_images
+        from models.models import PostImage
+        for vr in variant_results:
+            if vr.image_url:
+                is_sel = bool(first_valid and vr.id == first_valid.id)
+                existing_img = db.query(PostImage).filter(
+                    PostImage.post_id == gen_post.id,
+                    PostImage.image_url == vr.image_url
+                ).first()
+                if not existing_img:
+                    db.add(PostImage(
+                        id=str(uuid.uuid4()),
+                        post_id=gen_post.id,
+                        image_url=vr.image_url,
+                        is_selected=is_sel,
+                        expires_at=None,
+                        created_at=datetime.utcnow()
+                    ))
+                else:
+                    existing_img.is_selected = is_sel
+                    existing_img.expires_at = None
+
         db.commit()
         logger.info(f"✓ [Content History Saved] Successfully archived generation '{norm_theme}' (post_id: {gen_post.id})")
     except Exception as hist_err:
@@ -1251,6 +1272,26 @@ def select_session_variant(
             db=db,
             reason="post_generation"
         )
+
+    # Sync selection to PostImage records
+    from models.models import PostImage
+    db.query(PostImage).filter(PostImage.post_id == parent_post.id).update({"is_selected": False})
+    sel_img = db.query(PostImage).filter(
+        PostImage.post_id == parent_post.id,
+        PostImage.image_url == variant.image_url
+    ).first()
+    if sel_img:
+        sel_img.is_selected = True
+    else:
+        db.add(PostImage(
+            id=str(uuid.uuid4()),
+            post_id=parent_post.id,
+            image_url=variant.image_url,
+            is_selected=True,
+            expires_at=None,
+            created_at=datetime.utcnow()
+        ))
+
     db.commit()
 
     return {
@@ -1333,15 +1374,9 @@ async def regenerate_single_variant_endpoint(
     }
 
 
-# ─── Cleanup Expired Unselected Variants ───────────────────────────────────
+# ─── Cleanup Expired Unselected Variants (Permanently Disabled) ───────────────
 def cleanup_expired_session_variants(db: Session) -> int:
-    """Delete unselected session variants older than 7 days."""
-    now = datetime.utcnow()
-    deleted = db.query(SessionVariant).filter(
-        SessionVariant.is_selected == False,
-        SessionVariant.expires_at <= now
-    ).delete(synchronize_session=False)
-    db.commit()
-    logger.info(f"Cleaned up {deleted} expired unselected session variants.")
-    return deleted
+    """Permanent retention policy: auto-deletion of session variants is permanently disabled."""
+    logger.info("Auto-deletion of variants is permanently disabled per persistence policy.")
+    return 0
 

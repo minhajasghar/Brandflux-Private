@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import {
   CheckCircle2,
@@ -34,7 +34,7 @@ import {
 } from '@/lib/api'
 import toast from 'react-hot-toast'
 
-export default function ApprovalsPage() {
+function ApprovalsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const initialPostId = searchParams.get('post_id')
@@ -945,5 +945,13 @@ export default function ApprovalsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function ApprovalsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-muted">Loading approvals...</div>}>
+      <ApprovalsContent />
+    </Suspense>
   )
 }

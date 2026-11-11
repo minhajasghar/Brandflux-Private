@@ -212,6 +212,7 @@ async def get_content_history(
     page: int = 1,
     limit: int = 10,
     platform: Optional[str] = None,
+    status: Optional[str] = "all",
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -220,6 +221,7 @@ async def get_content_history(
     - One row per generation.
     - Real first-line caption preview (no generic placeholders).
     - Status badges per platform.
+    - Filter by platform and publication status ("all", "not_posted", "scheduled", "published").
     """
     offset = (page - 1) * limit
 
@@ -231,6 +233,21 @@ async def get_content_history(
         post_query = post_query.join(PlatformCopy, PlatformCopy.post_id == Post.id).filter(
             PlatformCopy.platform.ilike(f"%{norm_p}%")
         ).distinct()
+
+    if status and status != "all":
+        if status == "not_posted":
+            # Drafts, unscheduled, not yet published
+            post_query = post_query.join(PlatformCopy, PlatformCopy.post_id == Post.id).filter(
+                PlatformCopy.status.in_(["draft", "in_review", "approved", "pending"])
+            ).distinct()
+        elif status == "scheduled":
+            post_query = post_query.join(PlatformCopy, PlatformCopy.post_id == Post.id).filter(
+                PlatformCopy.status == "scheduled"
+            ).distinct()
+        elif status == "published":
+            post_query = post_query.join(PlatformCopy, PlatformCopy.post_id == Post.id).filter(
+                PlatformCopy.status == "published"
+            ).distinct()
 
     total = post_query.count()
     posts = post_query.order_by(Post.created_at.desc()).offset(offset).limit(limit).all()
@@ -444,6 +461,19 @@ async def get_content_history_detail(
             elif "tiktok" in p_key:
                 content["tiktok"] = p_data
 
+        # Fetch all image variants associated with this post (both selected and unselected)
+        from models.models import PostImage
+        img_rows = db.query(PostImage).filter(PostImage.post_id == post.id).order_by(PostImage.created_at.asc()).all()
+        content["image_variants"] = [
+            {
+                "id": img.id,
+                "image_url": img.image_url,
+                "is_selected": bool(img.is_selected),
+                "is_unused": not bool(img.is_selected)
+            }
+            for img in img_rows
+        ]
+
         return content
 
     # Legacy fallback: query ContentIdea
@@ -517,6 +547,34 @@ async def get_content_history_detail(
         content["copies"].append(platform_data)
 
     return content
+
+@router.delete("/posts/{post_id}/unused-images")
+async def delete_unused_images(
+    post_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually delete unselected/unused image variants for a post.
+    Selected image is kept intact.
+    """
+    post = db.query(Post).filter(Post.id == post_id, Post.user_id == user.id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    from models.models import PostImage
+    unused_images = db.query(PostImage).filter(
+        PostImage.post_id == post.id,
+        PostImage.is_selected == False
+    ).all()
+
+    count = len(unused_images)
+    for img in unused_images:
+        storage_service.delete_file(img.image_url)
+        db.delete(img)
+
+    db.commit()
+    return {"status": "success", "deleted_count": count, "message": f"Deleted {count} unused images."}
 
 # ─── Per-Platform Actions: Publish, Schedule, Retry ────────────────────────
 from pydantic import BaseModel
@@ -885,64 +943,28 @@ async def generate_images_endpoint(
         ('facebook', 'facebook')
     ]
     
-    for platform_key, gemini_platform_name in platforms:
-        try:
-            # 1. Ask Gemini to write a high-fidelity image prompt
-            prompt_data = gemini.generate_image_prompt(
-                brand_profile=brand_profile,
-                content_theme=req.prompt,
-                platform=gemini_platform_name,
-                special_message=req.cta
-            )
-            
-            # 2. Ask Gemini to extract a high-impact short text overlay from the caption
-            overlay_data = gemini.generate_post_text_overlay(
-                caption=req.post_text,
-                platform=gemini_platform_name
-            )
-            
-            main_prompt = prompt_data.get("main_prompt", req.prompt)
-            style = prompt_data.get("style", "digital art")
-            
-            # Text lines for overlay: headline + subtext
-            headline = overlay_data.get("headline", "")
-            subtext = overlay_data.get("subtext", "")
-            cta = overlay_data.get("cta", req.cta)
-            
-            combined_overlay_text = f"{headline}\n{subtext}".strip()
-            if not combined_overlay_text:
-                combined_overlay_text = req.post_text[:80]
-                
-            # 3. Generate background bytes with correct dimensions
-            w, h = (1080, 1080)
-            if platform_key == 'instagram_story':
-                w, h = (1080, 1920)
-            elif platform_key == 'linkedin':
-                w, h = (1200, 627)
-            elif platform_key == 'facebook':
-                w, h = (1200, 630)
-                
-            # 3. Generate picture strictly via Google's Nano Banana 2.1 (Gemini API)
-            from services.nano_banana_generator import nano_banana_generator
-            aspect_ratio, (w, h) = nano_banana_generator.normalize_aspect_ratio(platform_key)
-            bg_url = await nano_banana_generator.generate_background(
-                brand_profile=brand_profile,
-                daily_context={"topic": req.prompt, "focus": req.post_text},
-                aspect_ratio=aspect_ratio,
-                user_id=user.id,
-                brand_id=brand.id,
-                db=db
-            )
+    # 1. Generate single shared AI background (1:1) once
+    from services.nano_banana_generator import nano_banana_generator
+    try:
+        shared_bg_url = await nano_banana_generator.generate_background(
+            brand_profile=brand_profile,
+            daily_context={"topic": req.prompt, "focus": req.post_text},
+            aspect_ratio="1:1",
+            user_id=user.id,
+            brand_id=brand.id,
+            db=db
+        )
+    except Exception as bg_err:
+        logger.error(f"Failed to generate shared background: {bg_err}")
+        shared_bg_url = None
 
-            if bg_url:
-                results[platform_key] = bg_url
-            else:
-                raise Exception(nano_banana_generator.last_error_message or "Nano Banana 2.1 failed to generate picture")
-            
-        except Exception as plat_err:
-            logger.error(f"Failed to generate for {platform_key}: {plat_err}")
-            results[platform_key] = ""
-            
+    if not shared_bg_url:
+        shared_bg_url = ""
+
+    # 2. Render each platform's size from the chosen single background without separate AI calls
+    for platform_key, gemini_platform_name in platforms:
+        results[platform_key] = shared_bg_url
+
     return {
         "success": True,
         "images": results

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Cookies from 'js-cookie'
@@ -16,7 +16,7 @@ import {
 import { getInviteDetails, acceptInvite } from '@/lib/api'
 import toast from 'react-hot-toast'
 
-export default function AcceptInvitePage() {
+function AcceptInviteContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const token = searchParams.get('token')
@@ -208,5 +208,13 @@ export default function AcceptInvitePage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function AcceptInvitePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-muted">Loading invite...</div>}>
+      <AcceptInviteContent />
+    </Suspense>
   )
 }

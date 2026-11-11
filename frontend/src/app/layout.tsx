@@ -14,6 +14,9 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "Brandflux — AI Brand Content Tool",
   description: "Smart brand content tool for small business owners.",
+  other: {
+    "tiktok-developers-site-verification": "itD2UYLgYa0x1zD3mbvnQzuDok5vTvTN",
+  },
 };
 
 export default function RootLayout({

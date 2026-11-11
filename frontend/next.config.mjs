@@ -19,7 +19,7 @@ const nextConfig = {
     return [
       {
         source: '/api/py/:path*',
-        destination: 'http://127.0.0.1:8000/:path*',
+        destination: process.env.INTERNAL_BACKEND_URL || 'http://127.0.0.1:8010/:path*',
       },
     ];
   },

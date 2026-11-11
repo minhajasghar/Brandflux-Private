@@ -3,8 +3,12 @@ import axios from 'axios'
 const getInitialBaseUrl = () => {
   if (typeof window !== 'undefined' && window.location.hostname) {
     const host = window.location.hostname
+    if (host.includes('brandflux') || host.includes('tntinnov')) {
+      // In production domain, all backend endpoints are routed by Apache to port 8010
+      return ''
+    }
     if (host !== 'localhost' && host !== '127.0.0.1') {
-      // Use Next.js internal proxy rewrite to bypass Windows firewall on port 8000 for LAN clients
+      // Use Next.js internal proxy rewrite for LAN clients
       return '/api/py'
     }
   }
@@ -22,7 +26,10 @@ const api = axios.create({
 // Interceptor for tokens & dynamic LAN routing
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    const host = window.location.hostname
+    if (host && (host.includes('brandflux') || host.includes('tntinnov'))) {
+      config.baseURL = ''
+    } else if (host && host !== 'localhost' && host !== '127.0.0.1') {
       config.baseURL = '/api/py'
     }
     const token = localStorage.getItem('brandflux_token') || sessionStorage.getItem('brandflux_token')
@@ -37,12 +44,14 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => {
     if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      const isProd = window.location.hostname.includes('brandflux') || window.location.hostname.includes('tntinnov')
+      const targetPrefix = isProd ? '' : '/api/py'
       const rewriteHost = (data: any): any => {
         if (!data) return data
         if (typeof data === 'string') {
           return data
-            .replace(/http:\/\/localhost:8000/g, '/api/py')
-            .replace(/http:\/\/127\.0\.0\.1:8000/g, '/api/py')
+            .replace(/http:\/\/localhost:8000/g, targetPrefix)
+            .replace(/http:\/\/127\.0\.0\.1:8000/g, targetPrefix)
         }
         if (Array.isArray(data)) {
           return data.map(rewriteHost)

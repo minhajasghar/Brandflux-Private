@@ -120,6 +120,11 @@ def get_authorization_url(
     Generate OAuth authorization dialog URL for Meta (Instagram/Facebook) or LinkedIn.
     """
     plat = platform.lower()
+    from services.brand_service import resolve_user_brand, get_user_brand_role
+    active_b = resolve_user_brand(user, db)
+    if active_b and get_user_brand_role(user, active_b.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers cannot manage social connections.")
+
     from services.plan_service import enforce_can_connect_platform
     enforce_can_connect_platform(db, user, plat)
 

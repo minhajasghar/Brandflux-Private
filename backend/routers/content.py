@@ -42,6 +42,11 @@ def generate_content(
     brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="No brand found")
+
+    from services.brand_service import get_user_brand_role
+    if get_user_brand_role(user, brand.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers cannot generate new content. Only brand creators can generate content.")
+
     if brand.scan_status != "completed":
         raise HTTPException(status_code=400, detail="Brand scan not completed yet")
 

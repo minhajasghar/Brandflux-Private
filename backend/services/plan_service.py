@@ -24,7 +24,8 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "daily_generation_cap": 5,
         "reroll_pool": 3,
         "x_allowed": False,
-        "x_monthly_allowance": 0
+        "x_monthly_allowance": 0,
+        "max_approvers": 1
     },
     "starter": {
         "id": "starter",
@@ -38,7 +39,8 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "daily_generation_cap": 10,
         "reroll_pool": 15,
         "x_allowed": False,
-        "x_monthly_allowance": 0
+        "x_monthly_allowance": 0,
+        "max_approvers": 1
     },
     "growth": {
         "id": "growth",
@@ -52,7 +54,8 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "daily_generation_cap": 25,
         "reroll_pool": 60,
         "x_allowed": False,
-        "x_monthly_allowance": 0
+        "x_monthly_allowance": 0,
+        "max_approvers": 3
     },
     "pro": {
         "id": "pro",
@@ -66,7 +69,8 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "daily_generation_cap": 100,
         "reroll_pool": 100,
         "x_allowed": True,
-        "x_monthly_allowance": 50
+        "x_monthly_allowance": 50,
+        "max_approvers": 10
     }
 }
 
@@ -93,6 +97,7 @@ def get_plan(db: Session, plan_id: str) -> Plan:
             reroll_pool=defaults["reroll_pool"],
             x_allowed=defaults["x_allowed"],
             x_monthly_allowance=defaults["x_monthly_allowance"],
+            max_approvers=defaults.get("max_approvers", 1),
             is_active=True
         )
         try:

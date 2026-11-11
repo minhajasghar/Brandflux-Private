@@ -112,6 +112,10 @@ async def start_session(
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
 
+    from services.brand_service import get_user_brand_role
+    if get_user_brand_role(user, brand.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers cannot generate new content. Only brand creators can generate content.")
+
     # Server-side plan & limits enforcement (trial expiry, daily cap, credit balance)
     from services.plan_service import enforce_can_generate_post
     enforce_can_generate_post(db, user)
@@ -200,6 +204,10 @@ async def generate_session_content(
     
     if not brand or not session:
         raise HTTPException(status_code=404, detail="Brand or Session not found")
+
+    from services.brand_service import get_user_brand_role
+    if get_user_brand_role(user, brand.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers cannot generate new content. Only brand creators can generate content.")
 
     # 2. Get latest WebsiteScan
     scan = db.query(WebsiteScan).filter(WebsiteScan.brand_id == brand.id).order_by(WebsiteScan.scanned_at.desc()).first()
@@ -417,6 +425,10 @@ async def get_today_session(
     brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
+
+    from services.brand_service import get_user_brand_role
+    if get_user_brand_role(user, brand.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers cannot generate new content. Only brand creators can generate content.")
 
     # Server-side plan & limits enforcement (trial expiry, daily cap, credit balance)
     from services.plan_service import enforce_can_generate_post
@@ -694,6 +706,10 @@ async def generate_session_variants(
 
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
+
+    from services.brand_service import get_user_brand_role
+    if get_user_brand_role(user, brand.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers cannot generate new content. Only brand creators can generate content.")
 
     # Server-side plan & limits enforcement (trial expiry, daily cap, credit balance)
     from services.plan_service import enforce_can_generate_post

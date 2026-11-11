@@ -62,7 +62,26 @@ async def execute_social_publish(
         elif copy and copy.post and copy.post.brand_id:
             brand_id = copy.post.brand_id
 
-    # ─── 1. Idempotency Guard ────────────────────────────────────────────────
+    # ─── 1. Approval & Content Hash Security Guard ───────────────────────────
+    target_post_id = None
+    if copy and copy.post_id:
+        target_post_id = copy.post_id
+    elif scheduled and scheduled.post_id:
+        target_post_id = scheduled.post_id
+
+    if target_post_id and brand_id:
+        from services.approval_service import verify_publish_security_guard
+        is_ok, reason = verify_publish_security_guard(target_post_id, brand_id, db)
+        if not is_ok:
+            logger.warning(f"[ApprovalGuardBlocked] Post {target_post_id} publish blocked: {reason}")
+            return PublishResult(
+                success=False,
+                status="failed",
+                error=f"Approval Guard Blocked: {reason}",
+                duration_ms=0
+            )
+
+    # ─── 2. Idempotency Guard ────────────────────────────────────────────────
     already_pub_copy = copy and copy.status == "published" and copy.external_post_id
     already_pub_sched = scheduled and scheduled.status in ("Published", "published") and scheduled.external_post_id
 

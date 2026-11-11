@@ -350,6 +350,7 @@ def get_plans_config(db: Session) -> Dict[str, Any]:
             "reroll_pool": p.reroll_pool,
             "x_allowed": p.x_allowed,
             "x_monthly_allowance": p.x_monthly_allowance,
+            "max_approvers": getattr(p, "max_approvers", 1),
             "features": p.features or []
         }
     return result
@@ -388,6 +389,8 @@ def update_plans_config(db: Session, plans: Dict[str, Any], admin: User) -> Dict
             p.x_allowed = bool(plan_data["x_allowed"])
         if "x_monthly_allowance" in plan_data:
             p.x_monthly_allowance = int(plan_data["x_monthly_allowance"])
+        if "max_approvers" in plan_data:
+            p.max_approvers = int(plan_data["max_approvers"])
         if "features" in plan_data:
             p.features = plan_data["features"]
 

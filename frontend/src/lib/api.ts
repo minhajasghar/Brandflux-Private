@@ -774,5 +774,110 @@ export async function purchaseCreditPack(amount: number = 20, packName: string =
   return response.data
 }
 
+// ─── Team & Approver Workflow ───────────────────────────────
+export async function getBrandTeam(brandId: string) {
+  const response = await api.get(`/brand/${brandId}/team`)
+  return response.data
+}
+
+export async function inviteTeamApprover(brandId: string, email: string) {
+  const response = await api.post(`/brand/${brandId}/team/invite`, { email })
+  return response.data
+}
+
+export async function resendApproverInvite(brandId: string, memberId: string) {
+  const response = await api.post(`/brand/${brandId}/team/resend-invite/${memberId}`)
+  return response.data
+}
+
+export async function removeTeamMember(brandId: string, memberId: string) {
+  const response = await api.delete(`/brand/${brandId}/team/members/${memberId}`)
+  return response.data
+}
+
+export async function updateTeamSettings(
+  brandId: string,
+  settings: {
+    require_approval?: boolean
+    approval_mode?: string
+    approval_autopilot_routing?: string
+    approval_deadline_hours?: number
+    approval_reminder_hours?: number
+  }
+) {
+  const response = await api.put(`/brand/${brandId}/team/settings`, settings)
+  return response.data
+}
+
+export async function getInviteDetails(token: string) {
+  const response = await api.get(`/brand/invite/details?token=${encodeURIComponent(token)}`)
+  return response.data
+}
+
+export async function acceptInvite(data: { token: string; password?: string; full_name?: string }) {
+  const response = await api.post('/brand/invite/accept', data)
+  return response.data
+}
+
+export async function getApprovalsInbox(status: string = 'waiting', brandId?: string) {
+  const params = new URLSearchParams({ status })
+  if (brandId) params.append('brand_id', brandId)
+  const response = await api.get(`/approvals/inbox?${params.toString()}`)
+  return response.data
+}
+
+export async function getApprovalPostDetail(postId: string) {
+  const response = await api.get(`/approvals/${postId}`)
+  return response.data
+}
+
+export async function submitPostForApproval(postId: string) {
+  const response = await api.post(`/approvals/${postId}/submit`)
+  return response.data
+}
+
+export async function approvePost(postId: string, notes?: string) {
+  const response = await api.post(`/approvals/${postId}/approve`, { notes })
+  return response.data
+}
+
+export async function editAndApprovePost(
+  postId: string,
+  payload: {
+    captions: Record<string, string>
+    hashtags?: Record<string, any>
+    image_url?: string
+    scheduled_time?: string
+    notes?: string
+  }
+) {
+  const response = await api.post(`/approvals/${postId}/edit-and-approve`, payload)
+  return response.data
+}
+
+export async function requestPostChanges(postId: string, comment: string, chips: string[] = []) {
+  const response = await api.post(`/approvals/${postId}/request-changes`, { comment, chips })
+  return response.data
+}
+
+export async function rejectPost(postId: string, reason: string) {
+  const response = await api.post(`/approvals/${postId}/reject`, { reason })
+  return response.data
+}
+
+export async function resubmitPost(
+  postId: string,
+  payload: {
+    captions?: Record<string, string>
+    hashtags?: Record<string, any>
+    image_url?: string
+    scheduled_time?: string
+    note?: string
+  }
+) {
+  const response = await api.post(`/approvals/${postId}/resubmit`, payload)
+  return response.data
+}
+
 export { api }
 export default api

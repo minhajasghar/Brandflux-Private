@@ -266,4 +266,88 @@ def _create_matching_inapp_notification(
             idempotency_key=notif_key,
             db=db
         )
+    elif template == "approver_invite":
+        create_notification(
+            user_id=user_id,
+            brand_id=brand_id,
+            title=f"Team Invite: {data.get('brand_name', 'Brandflux')}",
+            message=f"You've been invited to review and approve posts for {data.get('brand_name', 'your brand')}.",
+            type="info",
+            action_type="link",
+            action_payload={"url": data.get("invite_url", "/invite/accept")},
+            idempotency_key=notif_key,
+            db=db
+        )
+    elif template == "post_submitted":
+        create_notification(
+            user_id=user_id,
+            brand_id=brand_id,
+            title="Post awaiting your approval ⏳",
+            message=f"{data.get('creator_name', 'Creator')} submitted '{data.get('title')}' for your review.",
+            type="review",
+            action_type="review",
+            action_payload={"url": data.get("review_url", "/approvals"), "post_id": data.get("post_id")},
+            idempotency_key=notif_key,
+            db=db
+        )
+    elif template == "post_approved":
+        create_notification(
+            user_id=user_id,
+            brand_id=brand_id,
+            title="Post Approved! ✅",
+            message=f"'{data.get('title')}' was approved by {data.get('approver_name', 'an approver')}{' with minor edits' if data.get('is_edited') else ''}.",
+            type="info",
+            action_type="link",
+            action_payload={"url": data.get("post_url", "/calendar"), "post_id": data.get("post_id")},
+            idempotency_key=notif_key,
+            db=db
+        )
+    elif template == "post_changes_requested":
+        create_notification(
+            user_id=user_id,
+            brand_id=brand_id,
+            title="Revisions Requested ✏️",
+            message=f"{data.get('approver_name', 'An approver')} requested changes on '{data.get('title')}': \"{data.get('comment')}\"",
+            type="alert",
+            action_type="link",
+            action_payload={"url": data.get("edit_url", "/session"), "post_id": data.get("post_id")},
+            idempotency_key=notif_key,
+            db=db
+        )
+    elif template == "post_rejected":
+        create_notification(
+            user_id=user_id,
+            brand_id=brand_id,
+            title="Post Rejected ❌",
+            message=f"'{data.get('title')}' was rejected: {data.get('reason')}",
+            type="alert",
+            action_type="link",
+            action_payload={"url": data.get("post_url", "/ideas"), "post_id": data.get("post_id")},
+            idempotency_key=notif_key,
+            db=db
+        )
+    elif template == "approval_reminder":
+        create_notification(
+            user_id=user_id,
+            brand_id=brand_id,
+            title="Approval Reminder ⏰",
+            message=f"Post '{data.get('title')}' is awaiting your approval. Scheduled soon.",
+            type="alert",
+            action_type="review",
+            action_payload={"url": data.get("review_url", "/approvals"), "post_id": data.get("post_id")},
+            idempotency_key=notif_key,
+            db=db
+        )
+    elif template == "approval_skipped":
+        create_notification(
+            user_id=user_id,
+            brand_id=brand_id,
+            title="Post Skipped ⚠️",
+            message=f"'{data.get('title')}' was skipped because the approval deadline expired.",
+            type="alert",
+            action_type="link",
+            action_payload={"url": data.get("post_url", "/calendar"), "post_id": data.get("post_id")},
+            idempotency_key=notif_key,
+            db=db
+        )
 

@@ -507,6 +507,12 @@ def toggle_card_status(
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
 
+    if brand.require_approval:
+        raise HTTPException(
+            status_code=403,
+            detail="Team approval is enabled for this brand. Posts must be reviewed and approved by an approver."
+        )
+
     post = autopilot_agent.toggle_card_approval(post_id=card_id, db=db)
     return {"status": "success", "card": autopilot_agent.serialize_scheduled_post(post)}
 
@@ -520,6 +526,12 @@ def approve_all_cards(
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+
+    if brand.require_approval:
+        raise HTTPException(
+            status_code=403,
+            detail="Team approval is enabled for this brand. Posts must be reviewed and approved by an approver."
+        )
 
     count = autopilot_agent.approve_all_cards(brand_id=brand.id, db=db)
     return {"status": "success", "approved_count": count, "message": f"Successfully approved {count} posts into Scheduled."}

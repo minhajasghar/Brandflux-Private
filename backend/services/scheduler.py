@@ -157,6 +157,20 @@ async def purge_expired_soft_deleted_users_job():
         db.close()
 
 
+async def check_approval_deadlines_job():
+    """Check pending post approval deadlines and reminders."""
+    from services.approval_service import check_deadlines_and_reminders
+    db = SessionLocal()
+    try:
+        res = await check_deadlines_and_reminders(db)
+        if res.get("reminders_sent") or res.get("skipped_count"):
+            logger.info(f"⏰ Approval check: {res['reminders_sent']} reminders sent, {res['skipped_count']} posts skipped.")
+    except Exception as e:
+        logger.error(f"Approval deadline check error: {e}")
+    finally:
+        db.close()
+
+
 # ═══════════════════════════════════════════════════════════
 # SCHEDULER SETUP
 # ═══════════════════════════════════════════════════════════
@@ -187,6 +201,16 @@ def start_scheduler():
         id="purge_expired_users",
         replace_existing=True,
         name="Permanent Purge Expired Soft-Deleted Users (30-day grace period)"
+    )
+
+    # Periodic check for approver reminders and deadlines (every 10 minutes)
+    scheduler.add_job(
+        check_approval_deadlines_job,
+        "interval",
+        minutes=10,
+        id="check_approval_deadlines",
+        replace_existing=True,
+        name="Check Approval Deadlines and Reminders"
     )
 
     scheduler.start()

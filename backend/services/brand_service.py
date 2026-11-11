@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
-from models.models import User, Brand
+from models.models import User, Brand, BrandMember
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,31 @@ def get_plan_brand_limit(plan: Optional[str]) -> int:
     return PLAN_BRAND_LIMITS.get(norm_plan, 1)
 
 
+def get_user_brand_role(user: User, brand_id: str, db: Session) -> Optional[str]:
+    """
+    Determine the user's role for a specific brand ('creator' or 'approver').
+    Returns None if user is neither owner nor active member.
+    """
+    if not user or not brand_id:
+        return None
+
+    # Check direct brand ownership
+    brand = db.query(Brand).filter(Brand.id == brand_id).first()
+    if brand and brand.user_id == user.id:
+        return "creator"
+
+    # Check active brand membership
+    member = db.query(BrandMember).filter(
+        BrandMember.brand_id == brand_id,
+        BrandMember.user_id == user.id,
+        BrandMember.status == "active"
+    ).first()
+    if member:
+        return member.role
+
+    return None
+
+
 def resolve_user_brand(
     user: User,
     db: Session,
@@ -31,9 +56,9 @@ def resolve_user_brand(
 ) -> Optional[Brand]:
     """
     Resolve the active brand for a user:
-    1. If explicit brand_id provided, verify ownership.
-    2. Else if user.active_brand_id is set, verify ownership.
-    3. Else fallback to user's first created brand.
+    1. If explicit brand_id provided, verify ownership or active membership.
+    2. Else if user.active_brand_id is set, verify ownership or active membership.
+    3. Else fallback to user's first owned brand or first member brand.
     """
     # Guard against FastAPI Query object when endpoints are called directly in tests
     if brand_id and not isinstance(brand_id, str):
@@ -42,20 +67,52 @@ def resolve_user_brand(
             brand_id = None
 
     if brand_id:
+        # Check ownership
         brand = db.query(Brand).filter(Brand.id == brand_id, Brand.user_id == user.id).first()
         if brand:
             return brand
+        # Check active membership
+        membership = db.query(BrandMember).filter(
+            BrandMember.brand_id == brand_id,
+            BrandMember.user_id == user.id,
+            BrandMember.status == "active"
+        ).first()
+        if membership:
+            return db.query(Brand).filter(Brand.id == brand_id).first()
 
     if user.active_brand_id:
         brand = db.query(Brand).filter(Brand.id == user.active_brand_id, Brand.user_id == user.id).first()
         if brand:
             return brand
+        membership = db.query(BrandMember).filter(
+            BrandMember.brand_id == user.active_brand_id,
+            BrandMember.user_id == user.id,
+            BrandMember.status == "active"
+        ).first()
+        if membership:
+            return db.query(Brand).filter(Brand.id == user.active_brand_id).first()
 
+    # Fallback to owned brand
     brand = db.query(Brand).filter(Brand.user_id == user.id).order_by(Brand.created_at.asc()).first()
-    if brand and not user.active_brand_id:
-        user.active_brand_id = brand.id
-        db.commit()
-    return brand
+    if brand:
+        if not user.active_brand_id:
+            user.active_brand_id = brand.id
+            db.commit()
+        return brand
+
+    # Fallback to member brand (approvers who don't own any brand)
+    membership = db.query(BrandMember).filter(
+        BrandMember.user_id == user.id,
+        BrandMember.status == "active"
+    ).order_by(BrandMember.created_at.asc()).first()
+    if membership:
+        brand = db.query(Brand).filter(Brand.id == membership.brand_id).first()
+        if brand and not user.active_brand_id:
+            user.active_brand_id = brand.id
+            db.commit()
+        return brand
+
+    return None
 
 
 def build_brand_kit_dict(brand: Brand) -> Dict[str, Any]:

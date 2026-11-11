@@ -74,7 +74,7 @@ app.include_router(sessions.router)
 app.include_router(questions.router)
 app.include_router(content.router)
 app.include_router(guidance.router)
-from routers import calendar, oauth, webhooks, autopilot, analytics, admin as admin_router, notifications, admin_emails, billing
+from routers import calendar, oauth, webhooks, autopilot, analytics, admin as admin_router, notifications, admin_emails, billing, approvals
 app.include_router(calendar.router)
 app.include_router(oauth.router)
 app.include_router(webhooks.router)
@@ -84,6 +84,7 @@ app.include_router(admin_router.router)
 app.include_router(notifications.router)
 app.include_router(admin_emails.router)
 app.include_router(billing.router)
+app.include_router(approvals.router)
 
 
 # ─── Direct /brand-kit Route Aliases ───────────────────────

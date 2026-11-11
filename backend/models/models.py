@@ -111,6 +111,13 @@ class Brand(Base):
     last_scanned_at = Column(DateTime)  # last website scan time
     created_at = Column(DateTime, default=func.now())
 
+    # ── Approval Workflow Settings ─────────────────────────
+    require_approval = Column(Boolean, default=False, nullable=False)
+    approval_mode = Column(String(20), default="anyone", nullable=False)  # "anyone" | "all"
+    approval_autopilot_routing = Column(String(20), default="approvers", nullable=False)  # "approvers" | "creator"
+    approval_deadline_hours = Column(Integer, default=24, nullable=False)
+    approval_reminder_hours = Column(Integer, default=6, nullable=False)
+
     # Relationships
     user = relationship("User", back_populates="brands")
     scan_logs = relationship("BrandScanLog", back_populates="brand", cascade="all, delete-orphan")
@@ -260,6 +267,8 @@ class Post(Base):
     source = Column(String(50), default="manual")  # manual | autopilot
     credits_used = Column(Integer, default=1, nullable=False)
     session_id = Column(String(36), nullable=True)
+    status = Column(String(50), default="draft", nullable=False)  # draft | in_review | approved | changes_requested | rejected | published
+    approved_version_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -413,7 +422,8 @@ class ScheduledPost(Base):
     platform_copies = Column(JSON, nullable=True)  # Dict of per-platform captions & hashtags
     edit_prompt = Column(Text, nullable=True)
     scheduled_at = Column(DateTime, nullable=False)
-    status = Column(String(50), default="Draft")  # Draft, Pending Approval, Scheduled, Publishing, Published, Failed, Skipped
+    status = Column(String(50), default="Draft")  # Draft, Pending Approval, In Review, Approved, Changes Requested, Rejected, Scheduled, Publishing, Published, Failed, Skipped
+    approved_version_hash = Column(String(64), nullable=True)
     external_post_id = Column(String(255), nullable=True)
     permalink = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
@@ -752,8 +762,89 @@ class Plan(Base):
     reroll_pool = Column(Integer, default=3, nullable=False)  # Monthly re-roll allowance
     x_allowed = Column(Boolean, default=False, nullable=False)
     x_monthly_allowance = Column(Integer, default=0, nullable=False)
+    max_approvers = Column(Integer, default=1, nullable=False)  # Approvers per brand limit (Trial 1, Starter 1, Growth 3, Pro 10)
     features = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+# ═══════════════════════════════════════════════════════════
+# BRAND MEMBER — Team Members & Role (Creator / Approver)
+# ═══════════════════════════════════════════════════════════
+class BrandMember(Base):
+    __tablename__ = "brand_members"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    role = Column(String(50), nullable=False, default="approver")  # "creator" | "approver"
+    status = Column(String(50), nullable=False, default="invited")  # "invited" | "active" | "removed"
+    invited_email = Column(String(255), nullable=True, index=True)
+    invitation_token = Column(String(255), nullable=True, unique=True, index=True)
+    invitation_expires_at = Column(DateTime, nullable=True)
+    invited_by_user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    brand = relationship("Brand", backref=backref("members", cascade="all, delete-orphan"))
+    user = relationship("User", foreign_keys=[user_id], backref=backref("brand_memberships", cascade="all, delete-orphan"))
+    invited_by = relationship("User", foreign_keys=[invited_by_user_id])
+
+
+# ═══════════════════════════════════════════════════════════
+# POST VERSION — Immutable Content Snapshot for Approval
+# ═══════════════════════════════════════════════════════════
+class PostVersion(Base):
+    __tablename__ = "post_versions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    post_id = Column(String(36), ForeignKey("posts.id", ondelete="CASCADE"), nullable=True, index=True)
+    scheduled_post_id = Column(String(36), ForeignKey("scheduled_posts.id", ondelete="CASCADE"), nullable=True, index=True)
+    brand_id = Column(String(36), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(Integer, default=1, nullable=False)
+    submitted_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    
+    captions = Column(JSON, nullable=True)  # Dict of per-platform captions: {"instagram": "...", "linkedin": "..."}
+    hashtags = Column(JSON, nullable=True)  # Dict of per-platform hashtags: {"instagram": ["#tnt"], ...}
+    image_url = Column(Text, nullable=True)
+    scheduled_time = Column(DateTime, nullable=True)
+    content_hash = Column(String(64), nullable=False, index=True)
+    
+    status = Column(String(50), default="in_review", nullable=False)  # in_review | approved | changes_requested | rejected
+    decision = Column(String(50), nullable=True)
+    decision_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decision_at = Column(DateTime, nullable=True)
+    decision_notes = Column(Text, nullable=True)
+    changes_requested_chips = Column(JSON, nullable=True)  # ["image", "caption", "time", "hashtags"]
+    
+    created_at = Column(DateTime, default=func.now())
+
+    # Relationships
+    post = relationship("Post", backref=backref("versions", cascade="all, delete-orphan", order_by="PostVersion.version_number.desc()"))
+    scheduled_post = relationship("ScheduledPost", backref=backref("versions", cascade="all, delete-orphan", order_by="PostVersion.version_number.desc()"))
+    submitted_by = relationship("User", foreign_keys=[submitted_by_id])
+    decision_by = relationship("User", foreign_keys=[decision_by_id])
+    approvals = relationship("PostApproval", back_populates="version", cascade="all, delete-orphan")
+
+
+# ═══════════════════════════════════════════════════════════
+# POST APPROVAL — Per-Approver Decision Record ("All" Mode)
+# ═══════════════════════════════════════════════════════════
+class PostApproval(Base):
+    __tablename__ = "post_approvals"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    post_version_id = Column(String(36), ForeignKey("post_versions.id", ondelete="CASCADE"), nullable=False, index=True)
+    approver_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    decision = Column(String(50), nullable=False)  # approved | changes_requested | rejected
+    notes = Column(Text, nullable=True)
+    chips = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
+    version = relationship("PostVersion", back_populates="approvals")
+    approver = relationship("User", foreign_keys=[approver_id])
+
 

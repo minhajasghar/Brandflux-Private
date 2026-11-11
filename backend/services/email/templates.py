@@ -741,6 +741,221 @@ def render_trial_expired(data: Dict[str, Any]) -> Tuple[str, str, str]:
     return subject, html, plain
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CREATOR / APPROVER WORKFLOW EMAIL TEMPLATES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def render_approver_invite(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    brand_name = data.get("brand_name") or "Your Brand"
+    inviter_name = data.get("inviter_name") or "A team member"
+    invite_url = data.get("invite_url") or f"{APP_BASE_URL}/invite/accept"
+    
+    subject = f"You're invited to review content for {brand_name}"
+    preheader = f"{inviter_name} invited you to join {brand_name} as a content approver on Brandflux."
+    
+    body_html = f"""
+    <p>Hello,</p>
+    <p><strong>{inviter_name}</strong> has invited you to join <strong>{brand_name}</strong> as a content approver on Brandflux.</p>
+    <p>As an approver, you can review upcoming social posts, preview tailored copy for each platform, inspect visual variants, request revisions, and approve publishing.</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0; color: {TEXT_WHITE}; font-weight: 600;">Workspace: {brand_name}</p>
+        <p style="margin: 4px 0 0 0; color: {TEXT_MUTED}; font-size: 13px;">Role: Approver &bull; Access: /approvals inbox</p>
+        <p style="margin: 8px 0 0 0; color: {TEXT_SUB}; font-size: 12px;">This single-use invite expires in 7 days.</p>
+    </div>
+    """
+    
+    action_button = {
+        "label": "Accept Invite & Open Approvals",
+        "url": invite_url
+    }
+    
+    html = wrap_email_html(f"Join {brand_name} as Approver", preheader, body_html, action_button)
+    plain = f"Hi,\n\n{inviter_name} invited you to join {brand_name} as an approver on Brandflux.\n\nAccept your invite here (valid for 7 days): {invite_url}"
+    return subject, html, plain
+
+
+def render_post_submitted(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    brand_name = data.get("brand_name") or "Your Brand"
+    title = data.get("title") or "New Post"
+    creator_name = data.get("creator_name") or "The content creator"
+    review_url = data.get("review_url") or f"{APP_BASE_URL}/approvals"
+    sched_str = data.get("scheduled_time") or "Pending review"
+
+    subject = f"[Action Required] Post submitted for approval: {title}"
+    preheader = f"{creator_name} submitted '{title}' for review and approval."
+
+    body_html = f"""
+    <p>Hello,</p>
+    <p><strong>{creator_name}</strong> has submitted a new post for your review on <strong>{brand_name}</strong>:</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 16px; margin: 20px 0;">
+        <h3 style="margin: 0 0 8px 0; color: {TEXT_WHITE}; font-size: 16px;">{title}</h3>
+        <p style="margin: 0; color: {TEXT_MUTED}; font-size: 13px;">Target Schedule: <strong style="color: {TEXT_WHITE};">{sched_str}</strong></p>
+    </div>
+    <p>Please review platform captions, preview visual variants, and approve or request changes before the scheduled publish time.</p>
+    """
+
+    action_button = {
+        "label": "Review & Approve Post",
+        "url": review_url
+    }
+
+    html = wrap_email_html("Review Pending Content", preheader, body_html, action_button)
+    plain = f"New post submitted for {brand_name}: '{title}'. Review here: {review_url}"
+    return subject, html, plain
+
+
+def render_post_approved(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    brand_name = data.get("brand_name") or "Your Brand"
+    title = data.get("title") or "Post"
+    approver_name = data.get("approver_name") or "An approver"
+    post_url = data.get("post_url") or f"{APP_BASE_URL}/calendar"
+    is_edited = data.get("is_edited", False)
+
+    subject = f"Post Approved: {title} ({brand_name})"
+    preheader = f"{approver_name} has approved '{title}'{' with minor tweaks' if is_edited else ''}."
+
+    edit_notice = f"<p style='color: #FBBF24; font-weight: 500;'>Note: {approver_name} made edits and approved the revised version.</p>" if is_edited else ""
+
+    body_html = f"""
+    <p>Great news!</p>
+    <p><strong>{approver_name}</strong> has approved your post <strong>'{title}'</strong> for <strong>{brand_name}</strong>.</p>
+    {edit_notice}
+    <p>The post is locked to its approved snapshot and ready for automated scheduled publishing.</p>
+    """
+
+    action_button = {
+        "label": "View Approved Post",
+        "url": post_url
+    }
+
+    html = wrap_email_html("Post Approved", preheader, body_html, action_button)
+    plain = f"Your post '{title}' for {brand_name} was approved by {approver_name}.\n\nView post: {post_url}"
+    return subject, html, plain
+
+
+def render_post_changes_requested(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    brand_name = data.get("brand_name") or "Your Brand"
+    title = data.get("title") or "Post"
+    approver_name = data.get("approver_name") or "An approver"
+    comment = data.get("comment") or "Please revise according to team standards."
+    chips = data.get("chips") or []
+    edit_url = data.get("edit_url") or f"{APP_BASE_URL}/session"
+
+    chips_html = ""
+    if chips:
+        badges = " ".join([f"<span style='background-color: #374151; color: #F3F4F6; padding: 3px 8px; border-radius: 4px; font-size: 11px; margin-right: 4px;'>{chip}</span>" for chip in chips])
+        chips_html = f"<div style='margin-top: 10px;'>Requested focus: {badges}</div>"
+
+    subject = f"Changes Requested: {title} ({brand_name})"
+    preheader = f"{approver_name} requested revisions on '{title}'."
+
+    body_html = f"""
+    <p>Hello,</p>
+    <p><strong>{approver_name}</strong> reviewed <strong>'{title}'</strong> and requested revisions before it can be published.</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0; color: #F87171; font-weight: 600; font-size: 13px;">Approver Feedback:</p>
+        <p style="margin: 8px 0 0 0; color: {TEXT_WHITE}; font-style: italic;">&ldquo;{comment}&rdquo;</p>
+        {chips_html}
+    </div>
+    <p>You can update the copy, pick an alternate image variant, or adjust the schedule and resubmit for approval.</p>
+    """
+
+    action_button = {
+        "label": "Fix & Resubmit Post",
+        "url": edit_url
+    }
+
+    html = wrap_email_html("Revisions Requested", preheader, body_html, action_button)
+    plain = f"{approver_name} requested changes on '{title}' for {brand_name}.\nFeedback: {comment}\nFix & resubmit: {edit_url}"
+    return subject, html, plain
+
+
+def render_post_rejected(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    brand_name = data.get("brand_name") or "Your Brand"
+    title = data.get("title") or "Post"
+    approver_name = data.get("approver_name") or "An approver"
+    reason = data.get("reason") or "Content not aligned with brand strategy."
+    post_url = data.get("post_url") or f"{APP_BASE_URL}/ideas"
+
+    subject = f"Post Rejected: {title} ({brand_name})"
+    preheader = f"{approver_name} has rejected '{title}'."
+
+    body_html = f"""
+    <p>Hello,</p>
+    <p><strong>{approver_name}</strong> has rejected the post <strong>'{title}'</strong> for <strong>{brand_name}</strong>.</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0; color: #EF4444; font-weight: 600; font-size: 13px;">Reason for Rejection:</p>
+        <p style="margin: 8px 0 0 0; color: {TEXT_WHITE};">&ldquo;{reason}&rdquo;</p>
+    </div>
+    <p>This post will not be published. You can review archived drafts in Content History.</p>
+    """
+
+    action_button = {
+        "label": "View in Content History",
+        "url": post_url
+    }
+
+    html = wrap_email_html("Post Rejected", preheader, body_html, action_button)
+    plain = f"Your post '{title}' for {brand_name} was rejected by {approver_name}.\nReason: {reason}\n{post_url}"
+    return subject, html, plain
+
+
+def render_approval_reminder(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    brand_name = data.get("brand_name") or "Your Brand"
+    title = data.get("title") or "Pending Post"
+    hours_left = data.get("hours_left", 6)
+    review_url = data.get("review_url") or f"{APP_BASE_URL}/approvals"
+
+    subject = f"[Reminder] Approval needed: {title} ({brand_name})"
+    preheader = f"Approval deadline is approaching for '{title}'."
+
+    body_html = f"""
+    <p>Hello,</p>
+    <p>This is a reminder that the post <strong>'{title}'</strong> for <strong>{brand_name}</strong> is awaiting your review.</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0; color: #F59E0B; font-weight: 600;">Approx. {hours_left} hours until deadline</p>
+        <p style="margin: 6px 0 0 0; color: {TEXT_MUTED}; font-size: 13px;">If no decision is made before the scheduled time, the post will be automatically skipped to protect brand safety.</p>
+    </div>
+    """
+
+    action_button = {
+        "label": "Review Post Now",
+        "url": review_url
+    }
+
+    html = wrap_email_html("Approval Reminder", preheader, body_html, action_button)
+    plain = f"Reminder: '{title}' for {brand_name} needs your approval within {hours_left} hours.\nReview: {review_url}"
+    return subject, html, plain
+
+
+def render_approval_skipped(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    brand_name = data.get("brand_name") or "Your Brand"
+    title = data.get("title") or "Post"
+    post_url = data.get("post_url") or f"{APP_BASE_URL}/calendar"
+
+    subject = f"[Notice] Post skipped: Approval deadline expired ({brand_name})"
+    preheader = f"'{title}' was skipped because no approval was received before deadline."
+
+    body_html = f"""
+    <p>Hello,</p>
+    <p>The post <strong>'{title}'</strong> for <strong>{brand_name}</strong> reached its scheduled time without receiving required team approval.</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0; color: #F97316; font-weight: 600;">Status: Skipped (Never Auto-Published)</p>
+        <p style="margin: 6px 0 0 0; color: {TEXT_MUTED}; font-size: 13px;">Under your team approval policy, posts without explicit approval are safely skipped rather than published.</p>
+    </div>
+    <p>You can reschedule or resubmit this post anytime from your Content Calendar.</p>
+    """
+
+    action_button = {
+        "label": "View in Calendar",
+        "url": post_url
+    }
+
+    html = wrap_email_html("Post Skipped", preheader, body_html, action_button)
+    plain = f"Post '{title}' for {brand_name} was skipped because approval was not received before deadline.\nView: {post_url}"
+    return subject, html, plain
+
+
 # Registry of templates
 TEMPLATE_REGISTRY = {
     "verify_email": render_verify_email,
@@ -757,6 +972,13 @@ TEMPLATE_REGISTRY = {
     "trial_day10": render_trial_day10,
     "trial_day13": render_trial_day13,
     "trial_expired": render_trial_expired,
+    "approver_invite": render_approver_invite,
+    "post_submitted": render_post_submitted,
+    "post_approved": render_post_approved,
+    "post_changes_requested": render_post_changes_requested,
+    "post_rejected": render_post_rejected,
+    "approval_reminder": render_approval_reminder,
+    "approval_skipped": render_approval_skipped,
 }
 
 def render_template(template_name: str, data: Dict[str, Any]) -> Tuple[str, str, str]:

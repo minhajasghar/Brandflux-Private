@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import AutopilotTab from '@/components/autopilot/AutopilotTab'
 import ConnectedAccountsTab from '@/components/settings/ConnectedAccountsTab'
+import TeamTab from '@/components/settings/TeamTab'
 
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -32,7 +33,8 @@ import {
   X,
   Sliders,
   Calendar as CalendarIcon,
-  Clock
+  Clock,
+  Users
 } from 'lucide-react'
 import { 
   getProfile, 
@@ -61,7 +63,7 @@ import {
   confirmEmailChange
 } from '@/lib/api'
 
-type TabType = 'brand-kit' | 'autopilot' | 'connected' | 'account' | 'billing'
+type TabType = 'brand-kit' | 'autopilot' | 'connected' | 'team' | 'account' | 'billing'
 
 const isDarkHex = (color: string): boolean => {
   if (!color || !color.startsWith('#') || color.length < 4) return true
@@ -778,6 +780,7 @@ export default function SettingsPage() {
           { id: 'brand-kit', label: 'Brand Kit', icon: Palette },
           { id: 'autopilot', label: 'Autopilot Agent', icon: Bot },
           { id: 'connected', label: 'Connected Accounts', icon: Share2 },
+          { id: 'team', label: 'Team', icon: Users },
           { id: 'account', label: 'Account', icon: User },
           { id: 'billing', label: 'Billing & Plan', icon: CreditCard },
         ].map(tab => {
@@ -1402,6 +1405,11 @@ export default function SettingsPage() {
           {/* TAB 3: CONNECTED ACCOUNTS                                    */}
           {/* ═════════════════════════════════════════════════════════════ */}
           {activeTab === 'connected' && <ConnectedAccountsTab />}
+
+          {/* ═════════════════════════════════════════════════════════════ */}
+          {/* TAB: TEAM & APPROVAL WORKFLOW                                 */}
+          {/* ═════════════════════════════════════════════════════════════ */}
+          {activeTab === 'team' && <TeamTab brandId={brandKit?.id} />}
 
           {/* ═════════════════════════════════════════════════════════════ */}
           {activeTab === 'billing' && (

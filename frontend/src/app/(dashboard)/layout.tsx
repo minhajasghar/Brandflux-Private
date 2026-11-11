@@ -15,7 +15,8 @@ import {
   X,
   User,
   BarChart3,
-  ShieldAlert
+  ShieldAlert,
+  CheckCircle2
 } from 'lucide-react'
 import Cookies from 'js-cookie'
 import { getProfile, getUserCredits } from '@/lib/api'
@@ -35,6 +36,7 @@ export default function DashboardLayout({
   const [userEmail, setUserEmail] = useState('')
   const [userPlan, setUserPlan] = useState('FREE')
   const [userRole, setUserRole] = useState('user')
+  const [isApprover, setIsApprover] = useState(false)
   const [creditBalance, setCreditBalance] = useState<number | null>(null)
   const [isLowBalance, setIsLowBalance] = useState(false)
   
@@ -62,9 +64,17 @@ export default function DashboardLayout({
         const profile = await getProfile()
         if (profile && profile.user) {
           const userRole = profile.user.role || 'user'
+          const isAppr = Boolean(profile.user?.is_approver || profile.brand_role === 'approver' || profile.user?.brand_role === 'approver')
+          setIsApprover(isAppr)
           setUserEmail(profile.user.email)
-          setUserPlan(profile.user.plan ? profile.user.plan.toUpperCase() : 'FREE')
+          setUserPlan(isAppr ? 'APPROVER' : (profile.user.plan ? profile.user.plan.toUpperCase() : 'FREE'))
           setUserRole(userRole)
+
+          // Approvers cannot access generation, billing, or onboarding
+          if (isAppr && ['/session', '/pricing', '/onboarding'].includes(pathname)) {
+            router.replace('/approvals')
+            return
+          }
 
           // Admin users must never open user routes - redirect immediately to /admin
           if (userRole === 'admin' || userRole === 'support_admin') {
@@ -75,7 +85,7 @@ export default function DashboardLayout({
 
           document.cookie = `brandflux_user_role=${userRole}; path=/; max-age=604800;`
 
-          const onboardingComplete = Boolean(profile.brand?.onboarding_complete)
+          const onboardingComplete = Boolean(profile.brand?.onboarding_complete) || isAppr
           const isCurrentlyOnboarding = pathname === '/onboarding'
 
           if (!onboardingComplete && !isCurrentlyOnboarding) {
@@ -83,18 +93,20 @@ export default function DashboardLayout({
             router.push('/onboarding')
           } else if (onboardingComplete && isCurrentlyOnboarding) {
             document.cookie = 'brandflux_onboarding_complete=true; path=/; max-age=604800;'
-            router.push('/dashboard')
+            router.push(isAppr ? '/approvals' : '/dashboard')
           }
 
-          // Fetch authoritative credit ledger balance
-          try {
-            const credData = await getUserCredits()
-            if (credData && typeof credData.balance === 'number') {
-              setCreditBalance(credData.balance)
-              setIsLowBalance(Boolean(credData.is_low_balance))
+          // Fetch authoritative credit ledger balance (creators only)
+          if (!isAppr) {
+            try {
+              const credData = await getUserCredits()
+              if (credData && typeof credData.balance === 'number') {
+                setCreditBalance(credData.balance)
+                setIsLowBalance(Boolean(credData.is_low_balance))
+              }
+            } catch (credErr) {
+              console.error('Failed to load credit balance:', credErr)
             }
-          } catch (credErr) {
-            console.error('Failed to load credit balance:', credErr)
           }
         }
       } catch (err: any) {
@@ -135,14 +147,21 @@ export default function DashboardLayout({
     router.push('/login')
   }
 
-  const navItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-    { icon: Sparkles, label: 'Create Content', href: '/session' },
-    { icon: Lightbulb, label: 'Content History', href: '/ideas' },
-    { icon: Calendar, label: 'Content Calendar', href: '/calendar' },
-    { icon: BarChart3, label: 'Analytics', href: '/analytics' },
-    { icon: Settings, label: 'Brand Studio Settings', href: '/settings' },
-  ]
+  const navItems = isApprover
+    ? [
+        { icon: CheckCircle2, label: 'Approvals', href: '/approvals' },
+        { icon: Lightbulb, label: 'Content History', href: '/ideas' },
+        { icon: Calendar, label: 'Content Calendar', href: '/calendar' },
+      ]
+    : [
+        { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
+        { icon: Sparkles, label: 'Create Content', href: '/session' },
+        { icon: CheckCircle2, label: 'Approvals', href: '/approvals' },
+        { icon: Lightbulb, label: 'Content History', href: '/ideas' },
+        { icon: Calendar, label: 'Content Calendar', href: '/calendar' },
+        { icon: BarChart3, label: 'Analytics', href: '/analytics' },
+        { icon: Settings, label: 'Brand Studio Settings', href: '/settings' },
+      ]
 
   if (isOnboarding) return <>{children}</>
 
@@ -252,28 +271,34 @@ export default function DashboardLayout({
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Post Credits Pill */}
-            <Link
-              href="/settings?tab=billing"
-              className={`px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition ${
-                creditBalance !== null && creditBalance <= 0
-                  ? 'bg-danger/10 border-danger/30 text-danger hover:bg-danger/20'
-                  : isLowBalance
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
-                  : 'bg-surface-secondary border-border text-text hover:border-accent/40'
-              }`}
-              title="Your remaining post credits"
-            >
-              <Zap className={`h-3 w-3 ${creditBalance !== null && creditBalance <= 0 ? 'text-danger' : isLowBalance ? 'text-amber-400' : 'text-accent'}`} />
-              <span>{creditBalance !== null ? `${creditBalance} post credits` : '...'}</span>
-            </Link>
+            {/* Post Credits Pill (Creators only) */}
+            {!isApprover && (
+              <Link
+                href="/settings?tab=billing"
+                className={`px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition ${
+                  creditBalance !== null && creditBalance <= 0
+                    ? 'bg-danger/10 border-danger/30 text-danger hover:bg-danger/20'
+                    : isLowBalance
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                    : 'bg-surface-secondary border-border text-text hover:border-accent/40'
+                }`}
+                title="Your remaining post credits"
+              >
+                <Zap className={`h-3 w-3 ${creditBalance !== null && creditBalance <= 0 ? 'text-danger' : isLowBalance ? 'text-amber-400' : 'text-accent'}`} />
+                <span>{creditBalance !== null ? `${creditBalance} post credits` : '...'}</span>
+              </Link>
+            )}
 
             {/* In-App Notification Center Bell */}
             <NotificationBell />
 
-            <div className="px-2.5 sm:px-3 py-1 rounded-full bg-surface-secondary border border-border text-[11px] sm:text-xs font-bold text-text flex items-center gap-1.5 sm:gap-2">
-              <span className="text-accent">●</span>
-              <span>{userPlan}</span>
+            <div className={`px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 ${
+              isApprover
+                ? 'bg-blue-500/15 border-blue-500/30 text-blue-400'
+                : 'bg-surface-secondary border-border text-text'
+            }`}>
+              <span className={isApprover ? 'text-blue-400' : 'text-accent'}>●</span>
+              <span>{isApprover ? 'Approver' : userPlan}</span>
             </div>
           </div>
         </header>

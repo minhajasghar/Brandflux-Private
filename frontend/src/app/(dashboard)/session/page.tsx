@@ -35,7 +35,8 @@ import api, {
   generateSessionVariants, 
   selectSessionVariant, 
   regenerateSingleVariant,
-  getUserCredits
+  getUserCredits,
+  submitPostForApproval
 } from '@/lib/api'
 import { 
   SessionResult, 
@@ -143,6 +144,9 @@ export default function SessionPage() {
   // Regenerating state per variant
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [savingSelection, setSavingSelection] = useState(false)
+  const [requireApproval, setRequireApproval] = useState(false)
+  const [submittingApproval, setSubmittingApproval] = useState(false)
+  const [savedPostId, setSavedPostId] = useState<string | null>(null)
 
   // Credits & Limits
   const [creditsRemaining, setCreditsRemaining] = useState<number>(60)
@@ -161,6 +165,9 @@ export default function SessionPage() {
         const brandRes = await api.get('/brand/profile').catch(() => null)
         if (brandRes?.data?.business_name) {
           setBusinessName(brandRes.data.business_name)
+        }
+        if (brandRes?.data?.require_approval) {
+          setRequireApproval(Boolean(brandRes.data.require_approval))
         }
 
         const sessionRes = await api.post('/sessions/questions').catch(() => null)
@@ -460,7 +467,7 @@ export default function SessionPage() {
   const handleProceedToCalendar = async () => {
     if (variantSessionData && selectedVariantId) {
       try {
-        await selectSessionVariant({
+        const res = await selectSessionVariant({
           variant_id: selectedVariantId,
           session_id: variantSessionData.session_id,
           adjusted_caption: captionText,
@@ -469,11 +476,44 @@ export default function SessionPage() {
           platform_copies: platformCopies,
           selected_platforms: selectedPlatforms
         })
+        if (res?.post_id) {
+          setSavedPostId(res.post_id)
+        }
       } catch (e) {
         console.error('Error committing selection before calendar:', e)
       }
     }
     router.push('/calendar')
+  }
+
+  const handleSubmitForApproval = async () => {
+    if (!variantSessionData || !selectedVariantId) return
+    setSubmittingApproval(true)
+    try {
+      const res = await selectSessionVariant({
+        variant_id: selectedVariantId,
+        session_id: variantSessionData.session_id,
+        adjusted_caption: captionText,
+        adjusted_hashtags: hashtagsList,
+        target_platform: activePlatformTab,
+        platform_copies: platformCopies,
+        selected_platforms: selectedPlatforms
+      })
+      const postId = res?.post_id || res?.parent_post_id || savedPostId
+      if (postId) {
+        setSavedPostId(postId)
+        await submitPostForApproval(postId)
+        toast.success('Post submitted for approver review!')
+        router.push('/approvals')
+      } else {
+        toast.error('Could not resolve post ID for approval.')
+      }
+    } catch (err: any) {
+      console.error('Failed to submit post for approval:', err)
+      toast.error(err.response?.data?.detail || 'Failed to submit post for approval.')
+    } finally {
+      setSubmittingApproval(false)
+    }
   }
 
   // ─── Regenerate Single Variant / More Like This ────────────────────────────
@@ -1343,15 +1383,33 @@ export default function SessionPage() {
                     </span>
                   </div>
 
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={handleProceedToCalendar}
-                      className="w-full py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-accent-glow"
-                    >
-                      <span>Proceed to Calendar &amp; Schedule</span>
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
+                  <div className="pt-2 space-y-2">
+                    {requireApproval ? (
+                      <>
+                        <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300">
+                          <ShieldCheck className="h-4 w-4 shrink-0 text-blue-400" />
+                          <span>Team approval is required for this brand. Submitting will notify your approver team before publishing.</span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={submittingApproval}
+                          onClick={handleSubmitForApproval}
+                          className="w-full py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-accent-glow disabled:opacity-50"
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          <span>{submittingApproval ? 'Submitting for Approval...' : 'Submit for Approval'}</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleProceedToCalendar}
+                        className="w-full py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-accent-glow"
+                      >
+                        <span>Proceed to Calendar &amp; Schedule</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

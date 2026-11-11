@@ -551,12 +551,31 @@ class NanoBananaGenerator:
             pad_x = int(bw * 0.045)
             pad_y = int(bh * 0.045)
 
+            # 4. Clean backdrop & shadow so authentic logo is pristine and occludes any stray artifacts
+            pill_pad = 10
+            pill_w = new_w + pill_pad * 2
+            pill_h = new_h + pill_pad * 2
+            pill = Image.new("RGBA", (pill_w, pill_h), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(pill)
+            draw.rounded_rectangle([0, 0, pill_w - 1, pill_h - 1], radius=14, fill=(10, 14, 23, 215))
+            pill = pill.filter(ImageFilter.GaussianBlur(3))
+            base_img.paste(pill, (pad_x - pill_pad, pad_y - pill_pad), mask=pill)
+
             # 4. Composite the authentic brand kit logo cleanly with its natural alpha transparency
             # No artificial blurry bounding boxes, pill shapes, or square containers
             if logo_resized.mode == "RGBA":
+                alpha = logo_resized.split()[3]
+                shadow = Image.new("RGBA", (new_w + 16, new_h + 16), (0, 0, 0, 0))
+                shadow_solid = Image.new("RGBA", (new_w, new_h), (0, 0, 0, 180))
+                shadow.paste(shadow_solid, (8, 8), mask=alpha)
+                shadow = shadow.filter(ImageFilter.GaussianBlur(4))
+                base_img.paste(shadow, (pad_x - 8, pad_y - 8), mask=shadow)
                 base_img.paste(logo_resized, (pad_x, pad_y), mask=logo_resized)
             else:
                 base_img.paste(logo_resized, (pad_x, pad_y))
+
+            # 5. Composite the official authentic brand logo
+            base_img.paste(logo_resized, (pad_x, pad_y), mask=logo_resized)
 
             output = io.BytesIO()
             base_img.save(output, format="PNG", quality=95)

@@ -137,8 +137,20 @@ def update_scheduled_post(
         if cap in valid_statuses:
             update_data["status"] = cap
 
+    content_changed = any(k in update_data for k in ["caption", "media_url", "scheduled_at", "platform_copies"])
     for field, val in update_data.items():
         setattr(post, field, val)
+
+    # Rule: Any edit after approval returns the post to in_review when approval required
+    brand = db.query(Brand).filter(Brand.id == post.brand_id).first()
+    if brand and brand.require_approval and content_changed:
+        post.status = "In Review"
+        post.approved_version_hash = None
+        if post.post_id:
+            parent = db.query(Post).filter(Post.id == post.post_id).first()
+            if parent:
+                parent.status = "in_review"
+                parent.approved_version_hash = None
 
     post.updated_at = datetime.utcnow()
     db.commit()

@@ -81,6 +81,11 @@ def request_plan_upgrade(
     Submits a manual upgrade request.
     Notifies admin and logs for manual activation flow.
     """
+    from services.brand_service import resolve_user_brand, get_user_brand_role
+    active_b = resolve_user_brand(user, db)
+    if active_b and get_user_brand_role(user, active_b.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers do not have access to billing or plan upgrades.")
+
     target_plan = get_plan(db, req.plan_id)
     if not target_plan:
         raise HTTPException(status_code=404, detail="Requested plan does not exist.")
@@ -132,6 +137,11 @@ def purchase_credit_pack(
     Top-up post credits pack ($14 for 20 credits, $0.70/credit).
     STRICT RULE: Available on paid plans only. Free trial users must upgrade first.
     """
+    from services.brand_service import resolve_user_brand, get_user_brand_role
+    active_b = resolve_user_brand(user, db)
+    if active_b and get_user_brand_role(user, active_b.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers do not have access to billing or credit top-ups.")
+
     plan_clean = (user.plan or "trial").lower().strip()
     if plan_clean in ("free", "trial"):
         raise HTTPException(

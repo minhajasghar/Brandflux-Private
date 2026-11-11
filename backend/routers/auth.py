@@ -479,20 +479,30 @@ def confirm_email_change(
 
 @router.get("/me")
 def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Return current user info + brand info."""
-    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    """Return current user info + brand info + team role."""
+    from services.brand_service import resolve_user_brand, get_user_brand_role
+    brand = resolve_user_brand(user, db)
+    brand_role = get_user_brand_role(user, brand.id, db) if brand else "creator"
+    is_approver = (brand_role == "approver")
     
     return {
         "user": {
             "id": user.id,
             "email": user.email,
             "full_name": user.full_name,
-            "plan": user.plan,
+            "plan": "Approver" if is_approver else user.plan,
             "role": getattr(user, "role", "user") or "user",
             "is_suspended": getattr(user, "is_suspended", False) or False,
-            "created_at": user.created_at
+            "created_at": user.created_at,
+            "brand_role": brand_role,
+            "is_approver": is_approver,
+            "has_credits": not is_approver,
+            "has_billing": not is_approver,
+            "has_generation": not is_approver,
+            "has_connections": not is_approver
         },
-        "brand": brand
+        "brand": brand,
+        "brand_role": brand_role
     }
 
 # ─── Background Task: First Scan ──────────────────────────

@@ -64,6 +64,34 @@ def get_user_credit_balance(user_id: str, db: Session) -> Dict[str, Any]:
             "history": []
         }
 
+    # Approvers have no credits, billing or generation quota
+    from models.models import BrandMember
+    membership = None
+    if user.active_brand_id:
+        membership = db.query(BrandMember).filter(
+            BrandMember.brand_id == user.active_brand_id,
+            BrandMember.user_id == user.id,
+            BrandMember.status == "active"
+        ).first()
+    if not membership:
+        membership = db.query(BrandMember).filter(
+            BrandMember.user_id == user.id,
+            BrandMember.status == "active",
+            BrandMember.role == "approver"
+        ).first()
+    if membership and membership.role == "approver":
+            return {
+                "balance": 0,
+                "quota": 0,
+                "used_this_period": 0,
+                "percentage_remaining": 0.0,
+                "is_low_balance": False,
+                "is_zero_balance": True,
+                "is_approver": True,
+                "currency": "post credits",
+                "history": []
+            }
+
     ensure_user_ledger_initialized(user, db)
 
     # Sum all ledger deltas for user

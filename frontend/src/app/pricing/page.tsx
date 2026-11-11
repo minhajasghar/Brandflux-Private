@@ -243,6 +243,17 @@ export default function PricingPage() {
           1 post credit delivers 2 distinct AI visual concepts, complete multi-channel copy, and verified publishing. Zero hidden rendering fees.
         </p>
 
+        {userStatus?.plan_id === 'non_payment' && (
+          <div className="mt-6 max-w-xl mx-auto p-4 rounded-2xl bg-purple-500/15 border border-purple-500/30 text-purple-200 text-xs text-center space-y-1">
+            <p className="font-extrabold text-sm text-purple-100 flex items-center justify-center gap-1.5">
+              <span>✨ Admin-Declared Non-Payment Account</span>
+            </p>
+            <p className="text-purple-300/90">
+              Your account has unrestricted VIP access with zero billing tier limits or post credit restrictions.
+            </p>
+          </div>
+        )}
+
         {/* Billing Cycle Toggle */}
         <div className="mt-8 inline-flex items-center gap-3 p-1.5 rounded-2xl bg-[#0D0F16] border border-white/10">
           <button

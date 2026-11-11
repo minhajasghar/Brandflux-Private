@@ -46,3 +46,30 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def upgrade_database_schema(db_engine):
+    """Ensure newly introduced columns exist in the active database engine."""
+    from sqlalchemy import inspect, text
+    try:
+        inspector = inspect(db_engine)
+        tables = inspector.get_table_names()
+        if "users" in tables:
+            columns = [c["name"] for c in inspector.get_columns("users")]
+            with db_engine.begin() as conn:
+                if "is_approved" not in columns:
+                    logger.info("Migrating schema: adding users.is_approved")
+                    conn.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN DEFAULT 0"))
+                if "approved_at" not in columns:
+                    logger.info("Migrating schema: adding users.approved_at")
+                    conn.execute(text("ALTER TABLE users ADD COLUMN approved_at DATETIME"))
+                if "approved_by_id" not in columns:
+                    logger.info("Migrating schema: adding users.approved_by_id")
+                    conn.execute(text("ALTER TABLE users ADD COLUMN approved_by_id VARCHAR(36)"))
+                if "is_non_payment" not in columns:
+                    logger.info("Migrating schema: adding users.is_non_payment")
+                    conn.execute(text("ALTER TABLE users ADD COLUMN is_non_payment BOOLEAN DEFAULT 0"))
+                # Ensure all admins are approved
+                conn.execute(text("UPDATE users SET is_approved = 1, is_verified = 1, is_non_payment = 1 WHERE role IN ('admin', 'support_admin')"))
+    except Exception as e:
+        logger.warning(f"Schema upgrade check notice: {e}")

@@ -1068,7 +1068,7 @@ export default function SettingsPage() {
                     Brand Voice, Tone &amp; Content Pillars
                   </h3>
                   <p className="text-xs text-muted mt-0.5">
-                    Gemini content generation reads directly from these guidelines to preserve your authentic tone across all channels.
+                    Brandflux AI reads directly from these guidelines to preserve your authentic tone across all channels.
                   </p>
                 </div>
 

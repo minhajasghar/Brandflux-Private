@@ -67,7 +67,8 @@ export default function DashboardLayout({
           const isAppr = Boolean(profile.user?.is_approver || profile.brand_role === 'approver' || profile.user?.brand_role === 'approver')
           setIsApprover(isAppr)
           setUserEmail(profile.user.email)
-          setUserPlan(isAppr ? 'APPROVER' : (profile.user.plan ? profile.user.plan.toUpperCase() : 'FREE'))
+          const isNonPay = Boolean(profile.user?.is_non_payment)
+          setUserPlan(isNonPay ? 'NON-PAYMENT (VIP)' : (isAppr ? 'APPROVER' : (profile.user.plan ? profile.user.plan.toUpperCase() : 'FREE')))
           setUserRole(userRole)
 
           // Approvers cannot access generation, billing, or onboarding
@@ -102,7 +103,7 @@ export default function DashboardLayout({
               const credData = await getUserCredits()
               if (credData && typeof credData.balance === 'number') {
                 setCreditBalance(credData.balance)
-                setIsLowBalance(Boolean(credData.is_low_balance))
+                setIsLowBalance(isNonPay ? false : Boolean(credData.is_low_balance))
               }
             } catch (credErr) {
               console.error('Failed to load credit balance:', credErr)

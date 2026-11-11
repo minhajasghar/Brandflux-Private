@@ -132,7 +132,11 @@ def list_users(
     query = db.query(User)
 
     if status == "active":
-        query = query.filter(User.is_suspended == False, User.is_deleted == False)
+        query = query.filter(User.is_suspended == False, User.is_deleted == False, User.is_approved == True)
+    elif status == "pending_approval":
+        query = query.filter(User.is_approved == False, User.is_deleted == False)
+    elif status == "non_payment":
+        query = query.filter(User.is_non_payment == True, User.is_deleted == False)
     elif status == "suspended":
         query = query.filter(User.is_suspended == True, User.is_deleted == False)
     elif status == "deleted":
@@ -188,6 +192,9 @@ def list_users(
             "abuse_flags": abuse_flags,
             "upgrade_requested_plan": u.upgrade_requested_plan,
             "trial_days_left": trial_days_left,
+            "is_approved": bool(getattr(u, "is_approved", False)),
+            "is_non_payment": bool(getattr(u, "is_non_payment", False)),
+            "approved_at": u.approved_at.isoformat() if u.approved_at else None,
             "is_suspended": bool(getattr(u, "is_suspended", False)),
             "is_deleted": bool(getattr(u, "is_deleted", False)),
             "last_active_at": u.last_active_at.isoformat() if u.last_active_at else None,
@@ -301,6 +308,9 @@ def get_user_detail(
             "role": getattr(user, "role", "user") or "user",
             "plan": (user.plan or "starter").capitalize(),
             "posts_used_this_month": user.posts_used_this_month or 0,
+            "is_approved": bool(getattr(user, "is_approved", False)),
+            "is_non_payment": bool(getattr(user, "is_non_payment", False)),
+            "approved_at": user.approved_at.isoformat() if user.approved_at else None,
             "is_suspended": bool(getattr(user, "is_suspended", False)),
             "is_deleted": bool(getattr(user, "is_deleted", False)),
             "deleted_at": user.deleted_at.isoformat() if user.deleted_at else None,
@@ -332,6 +342,11 @@ class GrantCreditsAdminRequest(BaseModel):
 class ExtendTrialAdminRequest(BaseModel):
     days: int = 14
     reason: Optional[str] = "Manual trial extension by administrator"
+
+class SetNonPaymentAdminRequest(BaseModel):
+    is_non_payment: bool = True
+    reason: Optional[str] = "Admin set account as non-payment / VIP"
+
 
 @router.post("/users/{user_id}/activate-plan")
 def activate_plan_admin_endpoint(
@@ -1590,6 +1605,9 @@ def create_admin_account(
         existing.role = req.role
         existing.is_suspended = False
         existing.is_deleted = False
+        existing.is_approved = True
+        existing.is_verified = True
+        existing.is_non_payment = True
         db.commit()
         log_audit_action(
             db=db,
@@ -1609,7 +1627,10 @@ def create_admin_account(
         role=req.role,
         plan="pro",
         is_suspended=False,
-        is_deleted=False
+        is_deleted=False,
+        is_approved=True,
+        is_verified=True,
+        is_non_payment=True
     )
     db.add(new_admin)
     db.commit()
@@ -1655,3 +1676,122 @@ def change_admin_role(
     )
 
     return {"success": True, "message": f"Role updated to {req.role} for {target_admin.email}."}
+
+@router.post("/users/{user_id}/approve")
+def approve_user_signup(
+    user_id: str,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Approve a locked new user sign-up."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_approved = True
+    user.approved_at = datetime.utcnow()
+    user.approved_by_id = admin.id
+
+    from models.models import Notification
+    notif = Notification(
+        user_id=user.id,
+        title="Account Approved! 🎉",
+        message="Your Brandflux account has been approved by an administrator. You can now access your dashboard and generate content.",
+        type="info"
+    )
+    db.add(notif)
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_approve_user",
+        target_type="user",
+        target_id=user.id,
+        target_email=user.email,
+        details={"approved_by": admin.email}
+    )
+
+    return {
+        "success": True,
+        "is_approved": True,
+        "message": f"User {user.email} has been approved successfully."
+    }
+
+@router.post("/users/{user_id}/reject-approval")
+def reject_user_signup(
+    user_id: str,
+    req: ActionReasonRequest = ActionReasonRequest(),
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Lock or reject user signup approval."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_approved = False
+    user.token_version = (getattr(user, "token_version", 1) or 1) + 1
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_reject_approval",
+        target_type="user",
+        target_id=user.id,
+        target_email=user.email,
+        details={"reason": req.reason or "Signup rejected or locked by administrator"}
+    )
+
+    return {
+        "success": True,
+        "is_approved": False,
+        "message": f"User {user.email} sign-up has been locked/rejected."
+    }
+
+@router.post("/users/{user_id}/set-non-payment")
+def set_user_non_payment(
+    user_id: str,
+    req: SetNonPaymentAdminRequest,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """
+    Declare someone as a non-payment account by admin.
+    They don't have restrictions of any pro or free tier plans.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_non_payment = req.is_non_payment
+    if req.is_non_payment:
+        user.is_approved = True
+
+    from models.models import Notification
+    status_msg = "granted Non-Payment / VIP status (unlimited access, no tier restrictions)" if req.is_non_payment else "switched to standard tier billing"
+    notif = Notification(
+        user_id=user.id,
+        title="Account Status Updated",
+        message=f"Your account has been {status_msg} by an administrator.",
+        type="info"
+    )
+    db.add(notif)
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_set_non_payment",
+        target_type="user",
+        target_id=user.id,
+        target_email=user.email,
+        details={"is_non_payment": req.is_non_payment, "reason": req.reason}
+    )
+
+    return {
+        "success": True,
+        "is_non_payment": user.is_non_payment,
+        "message": f"Successfully updated non-payment status for {user.email} to {user.is_non_payment}."
+    }

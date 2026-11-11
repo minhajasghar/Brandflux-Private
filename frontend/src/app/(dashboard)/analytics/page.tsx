@@ -629,7 +629,7 @@ export default function AnalyticsPage() {
                 Top 5 vs. Bottom 5 Posts Analyzed
               </h3>
               <p className="text-xs text-muted">
-                These exact 10 posts are parsed into the Gemini content prompt to replicate wins and eliminate low-engagement formulas.
+                These top 10 posts are analyzed to replicate high-performing engagement formulas and eliminate weak patterns.
               </p>
             </div>
 

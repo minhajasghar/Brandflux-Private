@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { login } from '@/lib/api'
+import BrandfluxLogo from '@/components/shared/BrandfluxLogo'
 import { Loader2, Mail, Lock, Zap } from 'lucide-react'
 
 export default function LoginPage() {
@@ -45,9 +46,7 @@ export default function LoginPage() {
         <div className="bg-surface py-8 sm:py-10 px-5 sm:px-10 shadow-2xl rounded-2xl sm:rounded-3xl border border-border">
           <div className="text-center mb-8">
             <Link href="/" className="inline-flex items-center gap-2.5 mb-3 group">
-              <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center font-bold text-white shadow-glow group-hover:scale-105 transition-transform">
-                <Zap className="h-5 w-5 text-white" />
-              </div>
+              <BrandfluxLogo size={36} />
               <span className="text-2xl font-extrabold text-text tracking-tight">Brandflux</span>
             </Link>
             <p className="text-sm text-muted font-medium">Welcome back! Sign in to your account.</p>
@@ -106,8 +105,23 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="text-danger text-xs font-semibold text-center bg-danger/10 py-2.5 px-3 rounded-xl border border-danger/20">
-                {error}
+              <div className={`text-xs font-semibold p-3.5 rounded-xl border ${
+                error.toLowerCase().includes('pending') || error.toLowerCase().includes('approval') || error.toLowerCase().includes('locked')
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 text-left space-y-1'
+                  : 'bg-danger/10 border-danger/20 text-danger text-center py-2.5 px-3'
+              }`}>
+                {error.toLowerCase().includes('pending') || error.toLowerCase().includes('approval') || error.toLowerCase().includes('locked') ? (
+                  <>
+                    <p className="font-extrabold text-amber-200 flex items-center gap-1.5">
+                      <span>🔒 Account Pending Admin Approval</span>
+                    </p>
+                    <p className="text-[11px] font-medium text-amber-300/90 leading-relaxed">
+                      {error}
+                    </p>
+                  </>
+                ) : (
+                  error
+                )}
               </div>
             )}
 

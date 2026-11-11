@@ -110,6 +110,8 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
         is_suspended=getattr(user, "is_suspended", False) or False,
         onboarding_complete=False,
         is_verified=False,
+        is_approved=False,
+        is_non_payment=False,
         dev_mode=is_dev,
         verification_token=verify_token if is_dev else None
     )
@@ -147,6 +149,14 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid password"
         )
 
+    # 4b. Block unapproved accounts until admin approval
+    user_role = getattr(user, "role", "user") or "user"
+    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is locked pending administrator approval. Please wait for an administrator to review and approve your registration."
+        )
+
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     user_role = getattr(user, "role", "user") or "user"
     # Admins do not need brand onboarding to access the admin portal
@@ -164,7 +174,9 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         role=user_role,
         is_suspended=getattr(user, "is_suspended", False) or False,
         onboarding_complete=is_onboarding_complete,
-        is_verified=getattr(user, "is_verified", True)
+        is_verified=getattr(user, "is_verified", True),
+        is_approved=getattr(user, "is_approved", False),
+        is_non_payment=getattr(user, "is_non_payment", False)
     )
 
 @router.post("/verify-email")
@@ -207,7 +219,15 @@ async def verify_email_endpoint(
     if not user.welcome_sent:
         user.welcome_sent = True
         create_post_url = f"{APP_BASE_URL}/session"
-        brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+        # 4b. Block unapproved accounts until admin approval
+    user_role = getattr(user, "role", "user") or "user"
+    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is locked pending administrator approval. Please wait for an administrator to review and approve your registration."
+        )
+
+    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
         brand_id = brand.id if brand else None
         background_tasks.add_task(
             send_email,
@@ -225,6 +245,14 @@ async def verify_email_endpoint(
     db.commit()
     db.refresh(user)
 
+    # 4b. Block unapproved accounts until admin approval
+    user_role = getattr(user, "role", "user") or "user"
+    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is locked pending administrator approval. Please wait for an administrator to review and approve your registration."
+        )
+
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     user_role = getattr(user, "role", "user") or "user"
     is_onboarding_complete = True if user_role == "admin" else (brand.onboarding_complete if brand else False)
@@ -239,6 +267,8 @@ async def verify_email_endpoint(
         "full_name": user.full_name,
         "role": user_role,
         "is_verified": True,
+        "is_approved": getattr(user, "is_approved", False),
+        "is_non_payment": getattr(user, "is_non_payment", False),
         "onboarding_complete": is_onboarding_complete
     }
 
@@ -280,6 +310,14 @@ async def resend_verification(
     user.verification_token = new_token
     user.verification_token_expires_at = datetime.utcnow() + timedelta(hours=24)
     db.commit()
+
+    # 4b. Block unapproved accounts until admin approval
+    user_role = getattr(user, "role", "user") or "user"
+    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is locked pending administrator approval. Please wait for an administrator to review and approve your registration."
+        )
 
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     verification_url = f"{APP_BASE_URL}/verify?token={new_token}"
@@ -493,6 +531,8 @@ def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)
             "plan": "Approver" if is_approver else user.plan,
             "role": getattr(user, "role", "user") or "user",
             "is_suspended": getattr(user, "is_suspended", False) or False,
+            "is_approved": bool(getattr(user, "is_approved", False)),
+            "is_non_payment": bool(getattr(user, "is_non_payment", False)),
             "created_at": user.created_at,
             "brand_role": brand_role,
             "is_approver": is_approver,

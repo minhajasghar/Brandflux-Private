@@ -53,7 +53,7 @@ const PROGRESS_STAGES = [
   { pct: 0,   label: 'Initializing session...' },
   { pct: 15,  label: 'Analyzing brand tone & references...' },
   { pct: 30,  label: 'Drafting multi-channel copy...' },
-  { pct: 50,  label: 'Nano Banana 2.1 formulating hero visuals...' },
+  { pct: 50,  label: 'Designing brand visual layouts...' },
   { pct: 75,  label: 'Rendering crisp HTML/CSS typography variants...' },
   { pct: 90,  label: 'Harmonizing brand logos and CTA overlays...' },
   { pct: 100, label: 'Your variants are ready! 🎉' },
@@ -1047,28 +1047,7 @@ export default function SessionPage() {
               </div>
             </div>
 
-            {/* Prominent Diagnostic Alert Banner when AI generation has issues */}
-            {variantSessionData.generation_error && (
-              <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-4 text-amber-300">
-                <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <div className="space-y-1.5 flex-1 text-xs">
-                  <div className="flex items-center justify-between">
-                    <p className="font-extrabold text-sm text-amber-200">
-                      Why did AI generation fail?
-                    </p>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                      0 Credits Deducted
-                    </span>
-                  </div>
-                  <p className="font-medium text-amber-100 leading-relaxed bg-black/50 p-3 rounded-xl border border-amber-500/20 font-mono text-[11px]">
-                    {variantSessionData.generation_error}
-                  </p>
-                  <p className="text-[11px] text-muted">
-                    No post credits were consumed. To fix: update your <code>GEMINI_API_KEY</code> in <code>backend/.env</code> and click <strong>Regenerate All</strong>.
-                  </p>
-                </div>
-              </div>
-            )}
+
 
             {/* ─── VARIANTS GRID WITH SKELETON LOADERS & SELECTION ─────────── */}
             <div className="space-y-4">

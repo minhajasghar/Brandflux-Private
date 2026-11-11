@@ -27,6 +27,7 @@ function VerifyContent() {
   const [email, setEmail] = useState(emailFromUrl || '')
   const [isVerifying, setIsVerifying] = useState(false)
   const [verifiedSuccess, setVerifiedSuccess] = useState(false)
+  const [isApproved, setIsApproved] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   
   // Dev mode helper state
@@ -66,26 +67,30 @@ function VerifyContent() {
     try {
       const res = await verifyEmail(tokenToUse)
       setVerifiedSuccess(true)
-      toast.success('Email verified successfully! 🎉')
+      const approved = Boolean(res.is_approved || res.role === 'admin')
+      setIsApproved(approved)
 
-      // Store auth session
-      if (res.token) {
-        localStorage.setItem('brandflux_token', res.token)
-        sessionStorage.setItem('brandflux_token', res.token)
-        Cookies.set('brandflux_token', res.token, { expires: 7 })
-        Cookies.set('brandflux_user_role', res.role || 'user', { expires: 7 })
-        Cookies.set('brandflux_onboarding_complete', String(Boolean(res.onboarding_complete)), { expires: 7 })
-      }
-
-      setTimeout(() => {
-        if (res.role === 'admin') {
-          router.push('/admin')
-        } else if (!res.onboarding_complete) {
-          router.push('/onboarding')
-        } else {
-          router.push('/dashboard')
+      if (approved) {
+        toast.success('Email verified! 🎉')
+        if (res.token) {
+          localStorage.setItem('brandflux_token', res.token)
+          sessionStorage.setItem('brandflux_token', res.token)
+          Cookies.set('brandflux_token', res.token, { expires: 7 })
+          Cookies.set('brandflux_user_role', res.role || 'user', { expires: 7 })
+          Cookies.set('brandflux_onboarding_complete', String(Boolean(res.onboarding_complete)), { expires: 7 })
         }
-      }, 2000)
+        setTimeout(() => {
+          if (res.role === 'admin') {
+            router.push('/admin')
+          } else if (!res.onboarding_complete) {
+            router.push('/onboarding')
+          } else {
+            router.push('/dashboard')
+          }
+        }, 2000)
+      } else {
+        toast.success('Email verified! Awaiting administrator approval.', { duration: 5000 })
+      }
     } catch (err: any) {
       setErrorMessage(err.response?.data?.detail || 'Invalid or expired verification link.')
     } finally {
@@ -139,16 +144,20 @@ function VerifyContent() {
           {/* Title & Body */}
           {verifiedSuccess ? (
             <div className="space-y-3">
-              <h2 className="text-2xl font-black text-text">Email Verified!</h2>
+              <h2 className="text-2xl font-black text-text">
+                {isApproved ? 'Email Verified!' : 'Email Verified — Pending Approval'}
+              </h2>
               <p className="text-sm text-muted">
-                Your account is activated. Redirecting you to your workspace...
+                {isApproved 
+                  ? 'Your account is activated. Redirecting you to your workspace...'
+                  : 'Your email has been confirmed! New accounts remain locked until reviewed and approved by an administrator. You will gain access as soon as your account is approved.'}
               </p>
               <div className="pt-4 flex justify-center">
                 <Link
-                  href="/dashboard"
+                  href={isApproved ? '/dashboard' : '/login'}
                   className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition flex items-center gap-2"
                 >
-                  <span>Continue to Brandflux</span>
+                  <span>{isApproved ? 'Continue to Brandflux' : 'Return to Login'}</span>
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>

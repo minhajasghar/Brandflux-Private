@@ -1,3 +1,7 @@
+from sqlalchemy import func
+import uuid
+import logging
+logger = logging.getLogger("approvals_router")
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -417,3 +421,303 @@ async def resubmit_post_endpoint(
 
     version = await submit_post_for_approval(post_id=post.id, user=user, db=db, note=req.note or "Fix & Resubmit")
     return {"status": "success", "message": "Post resubmitted for approval.", "version": version.version_number}
+
+
+# ─── Approver Accounts Management from Approvals Section ────────────────────
+
+class CreateApproverAccountRequest(BaseModel):
+    brand_id: Optional[str] = None
+    email: str
+    full_name: Optional[str] = None
+    password: Optional[str] = None  # If provided, creates active approver user immediately
+
+@router.get("/team")
+def get_approvals_team(
+    brand_id: Optional[str] = Query(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve current approver accounts and team approval settings for the brand.
+    Accessible from the Approval section.
+    """
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="No active brand found.")
+
+    user_role = get_user_brand_role(user, brand.id, db)
+    if not user_role:
+        raise HTTPException(status_code=403, detail="You do not have access to this brand's team.")
+
+    from services.plan_service import get_plan
+    plan = get_plan(db, user.plan)
+    max_approvers = 999999 if getattr(user, "is_non_payment", False) else getattr(plan, "max_approvers", 1)
+
+    members = db.query(BrandMember).filter(
+        BrandMember.brand_id == brand.id
+    ).order_by(BrandMember.created_at.asc()).all()
+
+    serialized_members = []
+    active_count = 0
+    for m in members:
+        if m.role == "approver" and m.status == "active":
+            active_count += 1
+
+        member_email = m.invited_email
+        member_name = None
+        if m.user:
+            member_email = m.user.email
+            member_name = m.user.full_name
+
+        serialized_members.append({
+            "id": m.id,
+            "user_id": m.user_id,
+            "email": member_email,
+            "name": member_name or (member_email.split("@")[0] if member_email else "Member"),
+            "role": m.role,
+            "status": m.status,
+            "invitation_token": m.invitation_token,
+            "invitation_expires_at": m.invitation_expires_at.isoformat() if m.invitation_expires_at else None,
+            "accepted_at": m.accepted_at.isoformat() if m.accepted_at else None,
+            "created_at": m.created_at.isoformat() if m.created_at else None
+        })
+
+    return {
+        "brand_id": brand.id,
+        "brand_name": brand.name or brand.business_name,
+        "user_role": user_role,
+        "plan": user.plan,
+        "plan_limit": max_approvers,
+        "active_approvers_count": active_count,
+        "require_approval": bool(brand.require_approval),
+        "approval_mode": brand.approval_mode or "anyone",
+        "approval_deadline_hours": brand.approval_deadline_hours or 24,
+        "approval_reminder_hours": brand.approval_reminder_hours or 6,
+        "members": serialized_members
+    }
+
+@router.post("/team/create")
+async def create_approver_account(
+    req: CreateApproverAccountRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Directly create or invite an approver account from the Approval section.
+    If password is provided, creates a fully active login account immediately.
+    If password is omitted, generates a 7-day secure invitation token and sends an invite.
+    """
+    brand = resolve_user_brand(user, db, brand_id=req.brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    user_role = get_user_brand_role(user, brand.id, db)
+    if user_role not in ("creator", "admin"):
+        raise HTTPException(status_code=403, detail="Only brand creators can create or invite approver accounts.")
+
+    # 1. Enforce Plan Limits
+    from services.plan_service import get_plan
+    plan = get_plan(db, user.plan)
+    max_approvers = 999999 if getattr(user, "is_non_payment", False) else getattr(plan, "max_approvers", 1)
+
+    current_count = db.query(BrandMember).filter(
+        BrandMember.brand_id == brand.id,
+        BrandMember.role == "approver",
+        BrandMember.status.in_(["active", "invited"])
+    ).count()
+
+    if current_count >= max_approvers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Your {user.plan.capitalize()} plan allows up to {max_approvers} approver(s). Upgrade to invite more team members."
+        )
+
+    clean_email = req.email.strip().lower()
+    if not clean_email or "@" not in clean_email:
+        raise HTTPException(status_code=400, detail="A valid email address is required.")
+
+    # 2. Check for existing active membership for this brand
+    existing_member = db.query(BrandMember).filter(
+        BrandMember.brand_id == brand.id,
+        (BrandMember.invited_email == clean_email) | (BrandMember.user_id.in_(
+            db.query(User.id).filter(func.lower(User.email) == clean_email)
+        ))
+    ).first()
+
+    if existing_member and existing_member.status == "active":
+        raise HTTPException(status_code=400, detail=f"{clean_email} is already an active approver for this brand.")
+
+    from services.auth_service import hash_password
+    import secrets
+    from datetime import timedelta
+    from config import APP_BASE_URL
+    from services.email.email_service import send_email
+
+    now = datetime.utcnow()
+    existing_user = db.query(User).filter(func.lower(User.email) == clean_email).first()
+
+    # Case A: Password provided -> create/activate active user account immediately!
+    if req.password and req.password.strip():
+        pwd = req.password.strip()
+        if len(pwd) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+        if existing_user:
+            existing_user.password_hash = hash_password(pwd)
+            existing_user.is_approved = True
+            existing_user.is_verified = True
+            existing_user.active_brand_id = brand.id
+            target_user = existing_user
+        else:
+            target_user = User(
+                id=str(uuid.uuid4()),
+                email=clean_email,
+                password_hash=hash_password(pwd),
+                full_name=req.full_name or clean_email.split("@")[0].capitalize(),
+                role="user",
+                plan="starter",
+                is_approved=True,
+                is_verified=True,
+                welcome_sent=True,
+                active_brand_id=brand.id
+            )
+            db.add(target_user)
+            db.flush()
+
+        if existing_member:
+            existing_member.user_id = target_user.id
+            existing_member.status = "active"
+            existing_member.invitation_token = None
+            existing_member.accepted_at = now
+            member = existing_member
+        else:
+            member = BrandMember(
+                id=str(uuid.uuid4()),
+                brand_id=brand.id,
+                user_id=target_user.id,
+                role="approver",
+                status="active",
+                invited_email=clean_email,
+                invited_by_user_id=user.id,
+                accepted_at=now
+            )
+            db.add(member)
+
+        db.commit()
+
+        log_approval_audit(
+            db=db,
+            user=user,
+            action="approver_account_created_direct",
+            target_id=member.id,
+            target_type="brand_member",
+            details={"email": clean_email, "brand_id": brand.id, "login_ready": True}
+        )
+
+        return {
+            "status": "success",
+            "message": f"Approver account successfully created for {clean_email}! They can now log in directly.",
+            "member_id": member.id,
+            "email": clean_email,
+            "account_status": "active",
+            "login_ready": True
+        }
+
+    # Case B: Password omitted -> send invitation link
+    invitation_token = secrets.token_urlsafe(32)
+    invitation_expires_at = now + timedelta(days=7)
+
+    if existing_member:
+        existing_member.status = "invited"
+        existing_member.invitation_token = invitation_token
+        existing_member.invitation_expires_at = invitation_expires_at
+        existing_member.invited_email = clean_email
+        existing_member.invited_by_user_id = user.id
+        member = existing_member
+    else:
+        member = BrandMember(
+            id=str(uuid.uuid4()),
+            brand_id=brand.id,
+            user_id=existing_user.id if existing_user else None,
+            role="approver",
+            status="invited",
+            invited_email=clean_email,
+            invitation_token=invitation_token,
+            invitation_expires_at=invitation_expires_at,
+            invited_by_user_id=user.id
+        )
+        db.add(member)
+
+    db.commit()
+
+    invite_url = f"{APP_BASE_URL}/invite/accept?token={invitation_token}"
+
+    try:
+        send_email(
+            to=clean_email,
+            template="team_invite",
+            data={
+                "inviter_name": user.full_name or user.email,
+                "brand_name": brand.name or brand.business_name or "Brandflux Workspace",
+                "invite_url": invite_url
+            },
+            user_id=user.id,
+            brand_id=brand.id,
+            idempotency_key=f"invite_{member.id}_{now.strftime('%Y%m%d%H%M')}"
+        )
+    except Exception as em_err:
+        logger.warning(f"Email delivery notice for invite: {em_err}")
+
+    log_approval_audit(
+        db=db,
+        user=user,
+        action="approver_invited",
+        target_id=member.id,
+        target_type="brand_member",
+        details={"invited_email": clean_email, "brand_id": brand.id}
+    )
+
+    return {
+        "status": "success",
+        "message": f"Invitation link generated and sent to {clean_email}.",
+        "member_id": member.id,
+        "email": clean_email,
+        "invite_url": invite_url,
+        "account_status": "invited",
+        "login_ready": False
+    }
+
+@router.delete("/team/{member_id}")
+def remove_approver_member(
+    member_id: str,
+    brand_id: Optional[str] = Query(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Remove an approver member from the brand."""
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    user_role = get_user_brand_role(user, brand.id, db)
+    if user_role not in ("creator", "admin"):
+        raise HTTPException(status_code=403, detail="Only brand creators can remove approvers.")
+
+    member = db.query(BrandMember).filter(BrandMember.id == member_id, BrandMember.brand_id == brand.id).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    member.status = "removed"
+    member.invitation_token = None
+    db.commit()
+
+    log_approval_audit(
+        db=db,
+        user=user,
+        action="approver_removed",
+        target_id=member.id,
+        target_type="brand_member",
+        details={"member_id": member_id, "brand_id": brand.id}
+    )
+
+    return {"status": "success", "message": "Approver removed from brand."}

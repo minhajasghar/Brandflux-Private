@@ -881,5 +881,48 @@ export async function resubmitPost(
   return response.data
 }
 
+
+// ─── User Approval & Non-Payment Admin Actions ─────────────────────────────
+
+export async function adminApproveUser(userId: string) {
+  const response = await api.post(`/admin/users/${userId}/approve`)
+  return response.data
+}
+
+export async function adminRejectApproval(userId: string, reason?: string) {
+  const response = await api.post(`/admin/users/${userId}/reject-approval`, { reason })
+  return response.data
+}
+
+export async function adminSetNonPayment(userId: string, isNonPayment: boolean, reason?: string) {
+  const response = await api.post(`/admin/users/${userId}/set-non-payment`, {
+    is_non_payment: isNonPayment,
+    reason
+  })
+  return response.data
+}
+
+// ─── Approvals Section Team Management ─────────────────────────────────────
+
+export async function getApprovalsTeam(brandId?: string) {
+  const response = await api.get('/approvals/team', { params: { brand_id: brandId } })
+  return response.data
+}
+
+export async function createApproverAccount(data: {
+  brand_id?: string
+  email: string
+  full_name?: string
+  password?: string
+}) {
+  const response = await api.post('/approvals/team/create', data)
+  return response.data
+}
+
+export async function removeApproverMember(memberId: string, brandId?: string) {
+  const response = await api.delete(`/approvals/team/${memberId}`, { params: { brand_id: brandId } })
+  return response.data
+}
+
 export { api }
 export default api

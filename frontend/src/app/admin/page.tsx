@@ -37,7 +37,8 @@ import {
   Power,
   ExternalLink,
   Plus,
-  Play
+  Play,
+  ChevronRight,
 } from 'lucide-react'
 import { 
   getAdminOverview, 
@@ -72,6 +73,9 @@ import {
   getAdminTeam,
   adminCreateAdmin,
   adminUpdateAdminRole,
+  adminApproveUser,
+  adminRejectApproval,
+  adminSetNonPayment,
   api
 } from '@/lib/api'
 import AdminEmailsTab from '@/components/admin/AdminEmailsTab'
@@ -197,6 +201,34 @@ function AdminPortalContent() {
     else if (activeTab === 'health') fetchHealth()
     else if (activeTab === 'admins') fetchAdmins()
   }, [activeTab])
+
+  const handleQuickApprove = async (userId: string, email: string) => {
+    try {
+      await adminApproveUser(userId)
+      toast.success(`User ${email} approved! Sign-up unlocked.`)
+      fetchUsers()
+      if (overviewData) {
+        setOverviewData((prev: any) => ({
+          ...prev,
+          pending_approvals_count: Math.max(0, (prev?.pending_approvals_count || 1) - 1)
+        }))
+      }
+      if (selectedUserDetail) handleOpenUserDetail(userId)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Approval failed')
+    }
+  }
+
+  const handleQuickToggleNonPayment = async (userId: string, email: string, currentVal: boolean) => {
+    try {
+      await adminSetNonPayment(userId, !currentVal)
+      toast.success(`Non-payment status set to ${!currentVal} for ${email}`)
+      fetchUsers()
+      if (selectedUserDetail) handleOpenUserDetail(userId)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to update non-payment status')
+    }
+  }
 
   const loadOverview = async () => {
     try {
@@ -634,6 +666,36 @@ function AdminPortalContent() {
       {/* ─── TAB 1: OVERVIEW ─── */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
+          {/* Pending Sign-Ups Attention Card (Instruction 1 & 8) */}
+          {Boolean(overviewData?.pending_approvals_count && overviewData.pending_approvals_count > 0) && (
+            <div className="p-5 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-amber-200 shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+                  <Lock className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm text-amber-100 flex items-center gap-2">
+                    <span>{overviewData.pending_approvals_count} Sign-Up{overviewData.pending_approvals_count > 1 ? 's' : ''} Locked Awaiting Approval</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">Action Required</span>
+                  </h4>
+                  <p className="text-xs text-amber-300/80">
+                    New user accounts remain locked until an administrator reviews and approves them.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setStatusFilter('pending_approval')
+                  setActiveTab('users')
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs transition flex items-center gap-1.5 shrink-0 self-start sm:self-auto shadow-sm"
+              >
+                <span>Review & Approve ({overviewData.pending_approvals_count})</span>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {/* Key Metric KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
@@ -699,6 +761,40 @@ function AdminPortalContent() {
       {/* ─── TAB 2: USERS & ACCOUNTS ─── */}
       {activeTab === 'users' && (
         <div className="space-y-4">
+          {/* Quick Filter Pills (Instruction 8 - Easy to Use) */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {[
+              { id: 'all', label: 'All Users', count: totalUsersCount },
+              { id: 'pending_approval', label: 'Pending Approval', count: overviewData?.pending_approvals_count || 0, badgeClass: 'bg-amber-500/20 text-amber-300' },
+              { id: 'non_payment', label: 'Non-Payment (VIP)', count: overviewData?.non_payment_users_count || 0, badgeClass: 'bg-purple-500/20 text-purple-300' },
+              { id: 'active', label: 'Active', count: null },
+              { id: 'suspended', label: 'Suspended', count: null },
+              { id: 'deleted', label: 'Deleted', count: null }
+            ].map((pill: any) => {
+              const isActive = statusFilter === pill.id
+              return (
+                <button
+                  key={pill.id}
+                  onClick={() => {
+                    setStatusFilter(pill.id)
+                  }}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
+                    isActive
+                      ? 'bg-accent text-black font-extrabold shadow-sm'
+                      : 'bg-surface border border-border text-muted hover:text-text hover:bg-surface-secondary'
+                  }`}
+                >
+                  <span>{pill.label}</span>
+                  {pill.count !== null && pill.count !== undefined && pill.count > 0 && (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${isActive ? 'bg-black/20 text-black' : pill.badgeClass || 'bg-surface-secondary text-muted'}`}>
+                      {pill.count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
           {/* Search and Filters Ribbon */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl bg-surface border border-border">
             <div className="relative flex-1 w-full sm:w-auto">
@@ -732,6 +828,8 @@ function AdminPortalContent() {
                 className="px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs font-bold text-text focus:outline-none"
               >
                 <option value="all">All Statuses</option>
+                <option value="pending_approval">Pending Approval</option>
+                <option value="non_payment">Non-Payment (VIP)</option>
                 <option value="active">Active</option>
                 <option value="suspended">Suspended</option>
                 <option value="deleted">Deleted</option>
@@ -810,15 +908,32 @@ function AdminPortalContent() {
                       )}
                     </td>
                     <td className="py-3 px-3">
-                      {u.is_deleted ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                          Soft Deleted
-                        </span>
-                      ) : u.is_suspended ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-danger/20 text-danger border border-danger/40">Suspended</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {u.is_deleted ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 w-fit">
+                            Soft Deleted
+                          </span>
+                        ) : u.is_suspended ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-danger/20 text-danger border border-danger/40 w-fit">Suspended</span>
+                        ) : !u.is_approved ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 w-fit flex items-center gap-1">
+                            <Lock className="h-2.5 w-2.5" />
+                            <span>Pending Approval</span>
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 w-fit flex items-center gap-1">
+                            <Check className="h-2.5 w-2.5" />
+                            <span>Approved</span>
+                          </span>
+                        )}
+
+                        {u.is_non_payment && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/30 w-fit flex items-center gap-1">
+                            <Sparkles className="h-2.5 w-2.5 text-purple-300" />
+                            <span>Non-Payment (VIP)</span>
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -1921,7 +2036,27 @@ function AdminPortalContent() {
             >
               <div className="flex items-center justify-between border-b border-border pb-4">
                 <div>
-                  <h3 className="text-lg font-black text-text">{selectedUserDetail.user.email}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-black text-text">{selectedUserDetail.user.email}</h3>
+                    {!selectedUserDetail.user.is_approved ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                        <Lock className="h-2.5 w-2.5" />
+                        <span>Pending Approval</span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <Check className="h-2.5 w-2.5" />
+                        <span>Approved</span>
+                      </span>
+                    )}
+
+                    {selectedUserDetail.user.is_non_payment && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                        <Sparkles className="h-2.5 w-2.5" />
+                        <span>Non-Payment (VIP)</span>
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted">User ID: {selectedUserDetail.user.id}</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1935,6 +2070,36 @@ function AdminPortalContent() {
                   <button onClick={() => setSelectedUserDetail(null)} className="p-2 rounded-xl text-muted hover:text-text">
                     <X className="h-5 w-5" />
                   </button>
+                </div>
+              </div>
+
+              {/* Quick Admin Actions Ribbon (Instruction 1 & 2) */}
+              <div className="p-3.5 rounded-2xl bg-surface-secondary border border-border flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-muted text-[11px] uppercase tracking-wider">Quick Actions:</span>
+                  {!selectedUserDetail.user.is_approved && (
+                    <button
+                      onClick={() => handleQuickApprove(selectedUserDetail.user.id, selectedUserDetail.user.email)}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs transition flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Approve User Sign-Up</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleQuickToggleNonPayment(selectedUserDetail.user.id, selectedUserDetail.user.email, Boolean(selectedUserDetail.user.is_non_payment))}
+                    className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition border flex items-center gap-1.5 ${
+                      selectedUserDetail.user.is_non_payment
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-purple-500/30'
+                        : 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
+                    }`}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>{selectedUserDetail.user.is_non_payment ? 'Revoke Non-Payment' : 'Set as Non-Payment (VIP)'}</span>
+                  </button>
+                </div>
+                <div className="text-[11px] text-muted">
+                  Plan: <strong className="text-text">{selectedUserDetail.user.is_non_payment ? 'Non-Payment (Unlimited)' : selectedUserDetail.user.plan}</strong>
                 </div>
               </div>
 

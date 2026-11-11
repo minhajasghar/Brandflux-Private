@@ -64,6 +64,21 @@ def get_user_credit_balance(user_id: str, db: Session) -> Dict[str, Any]:
             "history": []
         }
 
+    # Non-payment VIP users have unlimited credits
+    if getattr(user, "is_non_payment", False):
+        return {
+            "balance": 999999,
+            "quota": 999999,
+            "used_this_period": 0,
+            "percentage_remaining": 100.0,
+            "is_low_balance": False,
+            "is_zero_balance": False,
+            "is_non_payment": True,
+            "currency": "post credits",
+            "plan": "Non-Payment (VIP)",
+            "history": []
+        }
+
     # Approvers have no credits, billing or generation quota
     from models.models import BrandMember
     membership = None
@@ -151,6 +166,10 @@ def deduct_post_credit(user_id: str, reference_id: str, db: Session, reason: str
     - If user has balance <= 0, returns False.
     - Otherwise inserts negative delta entry and updates user.posts_used_this_month.
     """
+    user_obj = db.query(User).filter(User.id == user_id).first()
+    if user_obj and (getattr(user_obj, "is_non_payment", False) or getattr(user_obj, "role", "user") in ("admin", "support_admin")):
+        return True
+
     if reference_id:
         existing = db.query(CreditLedger).filter(
             CreditLedger.user_id == user_id,

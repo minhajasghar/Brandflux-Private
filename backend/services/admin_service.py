@@ -40,6 +40,9 @@ def seed_initial_admin(db: Session) -> Optional[User]:
                 plan="pro",
                 is_suspended=False,
                 is_deleted=False,
+                is_approved=True,
+                is_verified=True,
+                is_non_payment=True,
                 token_version=1
             )
             db.add(admin_user)
@@ -48,6 +51,15 @@ def seed_initial_admin(db: Session) -> Optional[User]:
             logger.info(f"👑 Initial administrator seeded: {ADMIN_EMAIL}")
         else:
             changed = False
+            if not getattr(admin_user, "is_approved", False):
+                admin_user.is_approved = True
+                changed = True
+            if not getattr(admin_user, "is_verified", False):
+                admin_user.is_verified = True
+                changed = True
+            if not getattr(admin_user, "is_non_payment", False):
+                admin_user.is_non_payment = True
+                changed = True
             if admin_user.role != "admin":
                 admin_user.role = "admin"
                 changed = True
@@ -181,8 +193,13 @@ def get_admin_overview_metrics(db: Session) -> Dict[str, Any]:
         for f in recent_failures
     ]
 
+    pending_approvals_count = db.query(User).filter(User.is_approved == False, User.is_deleted == False).count()
+    non_payment_users_count = db.query(User).filter(User.is_non_payment == True, User.is_deleted == False).count()
+
     return {
         "total_users": total_users,
+        "pending_approvals_count": pending_approvals_count,
+        "non_payment_users_count": non_payment_users_count,
         "new_signups_7d": new_signups_7d,
         "new_signups_30d": new_signups_30d,
         "active_users": active_users,

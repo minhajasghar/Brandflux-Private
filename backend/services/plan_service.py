@@ -118,6 +118,38 @@ def get_plan(db: Session, plan_id: str) -> Plan:
 
 def get_user_plan_limits(db: Session, user: User) -> Dict[str, Any]:
     """Calculate real-time plan status, trial expiration, and quota usage for a user."""
+    if getattr(user, "is_non_payment", False):
+        brands_count = db.query(Brand).filter(Brand.user_id == user.id).count()
+        connected_platforms_count = db.query(SocialAccount).filter(
+            SocialAccount.user_id == user.id,
+            SocialAccount.is_active == True
+        ).count()
+        return {
+            "plan_id": "non_payment",
+            "plan_name": "Non-Payment (VIP / Unlimited)",
+            "price_usd": 0,
+            "price_annual_usd": 0,
+            "credits_remaining": 999999,
+            "is_trial": False,
+            "trial_days_left": 999,
+            "trial_is_expired": False,
+            "trial_ends_at": None,
+            "free_rerolls_left": 999999,
+            "rerolls_pool": 999999,
+            "rerolls_used": 0,
+            "generations_today": 0,
+            "daily_generation_cap": 999999,
+            "max_posts_per_day": 999999,
+            "brands_used": brands_count,
+            "brands_limit": 999999,
+            "platforms_used": connected_platforms_count,
+            "platforms_limit": 999999,
+            "x_allowed": True,
+            "x_monthly_allowance": 999999,
+            "x_posts_used": 0,
+            "upgrade_requested_plan": None
+        }
+
     plan_id = (user.plan or "trial").lower().strip()
     if plan_id == "free":
         plan_id = "trial"
@@ -189,6 +221,8 @@ def get_user_plan_limits(db: Session, user: User) -> Dict[str, Any]:
 
 def enforce_can_generate_post(db: Session, user: User) -> None:
     """Server-side check: refuses post generation if trial expired, daily cap reached, or 0 credits."""
+    if getattr(user, "is_non_payment", False) or getattr(user, "role", "") in ("admin", "support_admin"):
+        return
     limits = get_user_plan_limits(db, user)
 
     # 1. Trial Expiry check
@@ -227,6 +261,8 @@ def enforce_can_generate_post(db: Session, user: User) -> None:
 
 def enforce_can_add_brand(db: Session, user: User) -> None:
     """Server-side check: enforces brand limit per plan."""
+    if getattr(user, "is_non_payment", False) or getattr(user, "role", "") in ("admin", "support_admin"):
+        return
     limits = get_user_plan_limits(db, user)
     if limits["brands_used"] >= limits["brands_limit"]:
         raise HTTPException(
@@ -241,6 +277,8 @@ def enforce_can_add_brand(db: Session, user: User) -> None:
 
 def enforce_can_connect_platform(db: Session, user: User, platform: str) -> None:
     """Server-side check: enforces platforms count and X-only-on-Pro restriction."""
+    if getattr(user, "is_non_payment", False) or getattr(user, "role", "") in ("admin", "support_admin"):
+        return
     limits = get_user_plan_limits(db, user)
     plat_clean = platform.lower().strip()
 
@@ -278,6 +316,12 @@ def enforce_can_connect_platform(db: Session, user: User, platform: str) -> None
 
 
 def consume_reroll_allowance(db: Session, user: User, reference_id: str) -> Dict[str, Any]:
+    if getattr(user, "is_non_payment", False) or getattr(user, "role", "") in ("admin", "support_admin"):
+        return {
+            "charged_credits": 0,
+            "free_rerolls_remaining": 999999,
+            "reason": "non_payment_unlimited"
+        }
     """
     Consumes 1 re-roll:
     - Free if user has remaining re-rolls in their monthly pool.
@@ -314,6 +358,10 @@ def consume_reroll_allowance(db: Session, user: User, reference_id: str) -> Dict
 
 
 def charge_x_publishing_credit(db: Session, user: User, has_link: bool, reference_id: str) -> None:
+    if getattr(user, "is_non_payment", False) or getattr(user, "role", "") in ("admin", "support_admin"):
+        user.x_posts_used_this_month = (user.x_posts_used_this_month or 0) + 1
+        db.commit()
+        return
     """
     Enforces X publishing rules on Pro:
     - X posting allowed on Pro only.

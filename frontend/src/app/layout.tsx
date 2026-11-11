@@ -14,6 +14,14 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "Brandflux — AI Brand Content Tool",
   description: "Smart brand content tool for small business owners.",
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico' }
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/icon.svg'
+  },
   other: {
     "tiktok-developers-site-verification": "itD2UYLgYa0x1zD3mbvnQzuDok5vTvTN",
   },

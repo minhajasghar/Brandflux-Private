@@ -1,19 +1,20 @@
 'use client'
 
-import { use, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import { useRouter, useParams } from 'next/navigation'
 
-export default function ApprovalDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ApprovalDetailPage() {
   const router = useRouter()
-  const resolvedParams = use(params)
+  const params = useParams()
+  const id = params?.id as string | undefined
 
   useEffect(() => {
-    if (resolvedParams?.id) {
-      router.replace(`/approvals?post_id=${resolvedParams.id}`)
+    if (id) {
+      router.replace(`/approvals?post_id=${id}`)
     } else {
       router.replace('/approvals')
     }
-  }, [resolvedParams, router])
+  }, [id, router])
 
   return (
     <div className="flex items-center justify-center p-20 text-muted text-sm">

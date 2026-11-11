@@ -58,6 +58,14 @@ def get_current_user(
             detail="Your account has been suspended by an administrator. Please contact support.",
         )
 
+    # 2b. Block unapproved accounts until admin approval (except admins)
+    user_role = getattr(user, "role", "user") or "user"
+    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is locked pending administrator approval.",
+        )
+
     # 3. Force logout / session invalidation check
     current_token_version = getattr(user, "token_version", 1) or 1
     if token_version < current_token_version:

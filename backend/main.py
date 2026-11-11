@@ -31,6 +31,8 @@ async def lifespan(app: FastAPI):
     # Base tables auto-create (Alembic handles versioned migrations)
     try:
         models.Base.metadata.create_all(bind=engine)
+        from database import upgrade_database_schema
+        upgrade_database_schema(engine)
         from services.admin_service import seed_initial_admin
         from database import SessionLocal
         with SessionLocal() as db_session:

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { signup } from '@/lib/api'
 import api from '@/lib/api'
+import BrandfluxLogo from '@/components/shared/BrandfluxLogo'
 import { Loader2, User, Mail, Lock, Globe, Briefcase, Zap, CheckCircle2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
@@ -72,9 +73,9 @@ export default function SignupPage() {
     try {
       const res = await signup(formData)
 
-      toast.success('Account created! Please verify your email.', {
-        duration: 3500,
-        icon: '✉️',
+      toast.success('Account created! Awaiting administrator approval.', {
+        duration: 4500,
+        icon: '⏳',
       })
 
       // Route to verification screen
@@ -99,9 +100,7 @@ export default function SignupPage() {
         <div className="bg-surface py-8 sm:py-10 px-5 sm:px-10 shadow-2xl rounded-2xl sm:rounded-3xl border border-border">
           <div className="text-center mb-8">
             <Link href="/" className="inline-flex items-center gap-2.5 mb-3 group">
-              <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center font-bold text-white shadow-glow group-hover:scale-105 transition-transform">
-                <Zap className="h-5 w-5 text-white" />
-              </div>
+              <BrandfluxLogo size={36} />
               <span className="text-2xl font-extrabold text-text tracking-tight">Brandflux</span>
             </Link>
             <p className="text-sm text-muted font-medium">Start your AI brand journey</p>

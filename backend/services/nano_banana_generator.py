@@ -41,7 +41,7 @@ class NanoBananaGenerator:
     def __init__(self):
         self._model_override = None
         self._api_key_override = None
-        self.timeout_seconds = 38.0
+        self.timeout_seconds = 60.0
         self.max_retries = 2
         self.last_error_message = None
 
@@ -220,8 +220,6 @@ class NanoBananaGenerator:
             "Content-Type": "application/json",
             "x-goog-api-key": api_key
         }
-        if api_key.startswith("AQ.") or api_key.startswith("ya29."):
-            headers["Authorization"] = f"Bearer {api_key}"
 
         api_aspect_ratio = aspect_ratio if aspect_ratio in ("1:1", "4:5", "9:16", "16:9") else "1:1"
         content_url = f"https://generativelanguage.googleapis.com/v1beta/{clean_model}:generateContent?key={api_key}"

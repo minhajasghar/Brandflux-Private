@@ -1274,14 +1274,22 @@ export default function IdeasPage() {
                                   setIsBatchPublishing(true);
                                   try {
                                     const res = await api.post('/content/publish-batch', { copy_ids: selectedCopyIdsToPublish, force: true });
-                                    if (res.data?.success) {
-                                      toast.success(`Published to ${res.data.published_count} platform(s)! 🎉`);
+                                    const publishedPlats: string[] = res.data?.published_platforms || [];
+                                    const disconnectedPlats: string[] = res.data?.skipped_disconnected || [];
+
+                                    if (publishedPlats.length > 0) {
+                                      toast.success(`Published to ${publishedPlats.join(', ')}! 🎉`);
                                     }
-                                    if (res.data?.errors?.length > 0) {
+                                    if (disconnectedPlats.length > 0) {
+                                      toast(`${disconnectedPlats.join(', ')} not connected. Skipped and left in draft.`, {
+                                        icon: 'ℹ️',
+                                        duration: 5000
+                                      });
+                                    }
+                                    if (publishedPlats.length === 0 && disconnectedPlats.length === 0 && res.data?.errors?.length > 0) {
                                       const relevantErrors = res.data.errors.filter((e: any) => selectedCopyIdsToPublish.includes(e.copy_id));
-                                      if (relevantErrors.length > 0) {
-                                        toast.error(`Platform error: ${relevantErrors[0]?.message || 'Check error details'}`);
-                                      }
+                                      const errMsg = relevantErrors[0]?.message || 'Publishing failed.';
+                                      toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
                                     }
                                     const refreshed = await api.get(`/content/history/${selectedSessionId}`);
                                     setSessionDetail(refreshed.data);
@@ -1538,8 +1546,14 @@ export default function IdeasPage() {
                                     setSessionDetail(res.data);
                                     fetchHistory(true);
                                   } catch (err: any) {
-                                    const errMsg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Publish failed.';
-                                    toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+                                    const detail = err.response?.data?.detail;
+                                    const isNeedsReconnect = detail?.status === 'needs_reconnect' || (typeof detail?.message === 'string' && detail.message.toLowerCase().includes('not connected'));
+                                    if (isNeedsReconnect) {
+                                      toast(`${platName} is not connected. Connect in Brand Studio Settings.`, { icon: 'ℹ️', duration: 4000 });
+                                    } else {
+                                      const errMsg = detail?.message || detail || 'Publish failed.';
+                                      toast.error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+                                    }
                                     const res = await api.get(`/content/history/${selectedSessionId}`);
                                     setSessionDetail(res.data);
                                     fetchHistory(true);

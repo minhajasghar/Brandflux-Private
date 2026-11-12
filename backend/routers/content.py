@@ -671,22 +671,32 @@ async def publish_batch_copies(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Publish multiple platform copies in one action."""
+    """Publish multiple platform copies in one action without disconnected platforms affecting connected ones."""
     results = []
     errors = []
+    skipped_disconnected = []
+
     for c_id in req.copy_ids:
         try:
             res = await publish_platform_copy(copy_id=c_id, force=bool(req.force), user=user, db=db)
             results.append(res)
         except HTTPException as he:
             detail = he.detail if isinstance(he.detail, dict) else {"message": str(he.detail)}
+            plat = (detail.get("platform") or "unknown").capitalize()
+            if detail.get("status") == "needs_reconnect" or "not connected" in str(detail.get("message", "")).lower() or detail.get("error_code") == "ACCOUNT_DISCONNECTED":
+                if plat not in skipped_disconnected:
+                    skipped_disconnected.append(plat)
             errors.append({"copy_id": c_id, **detail})
         except Exception as e:
             errors.append({"copy_id": c_id, "message": str(e), "status": "failed"})
 
+    published_platforms = [r.get("platform", "").capitalize() for r in results if r.get("platform")]
+
     return {
-        "success": len(results) > 0,
+        "success": len(results) > 0 or len(skipped_disconnected) > 0,
         "published_count": len(results),
+        "published_platforms": published_platforms,
+        "skipped_disconnected": skipped_disconnected,
         "results": results,
         "errors": errors
     }

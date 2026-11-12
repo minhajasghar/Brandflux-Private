@@ -219,15 +219,7 @@ async def verify_email_endpoint(
     if not user.welcome_sent:
         user.welcome_sent = True
         create_post_url = f"{APP_BASE_URL}/session"
-        # 4b. Block unapproved accounts until admin approval
-    user_role = getattr(user, "role", "user") or "user"
-    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is locked pending administrator approval. Please wait for an administrator to review and approve your registration."
-        )
-
-    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+        brand = db.query(Brand).filter(Brand.user_id == user.id).first()
         brand_id = brand.id if brand else None
         background_tasks.add_task(
             send_email,

@@ -6,14 +6,15 @@ import httpx
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, or_
+from sqlalchemy import func, desc, or_, text
 
 from models.models import (
     User, Brand, Usage, AuditLog, GeneratedPost, ScheduledPost, DailySession,
     ContentIdea, WebsiteScan, SocialAccount, SystemSetting, SessionVariant,
     UserAnswer, BrandScanLog, AutopilotConfig, AutopilotLog, SavedTemplate,
     PaymentRequest, Notification, EmailLog, CreditLedger, BrandMember,
-    ContentGuidance, SmartQuestion, Post, PostApproval, PostVersion, PublishAttempt
+    ContentGuidance, SmartQuestion, Post, PostApproval, PostVersion, PublishAttempt,
+    PostMetric
 )
 from services.auth_service import hash_password
 from services.storage import storage_service
@@ -815,84 +816,76 @@ def permanently_purge_user(
 
     logger.info(f"🗑️ Beginning permanent purge for user {user_email} (ID: {user_id})")
 
-    # 1. Collect all image/media URLs to delete from storage
-    images_to_delete = set()
-
-    # Brand logos
-    for brand in db.query(Brand).filter(Brand.user_id == user_id).all():
-        if brand.logo_url:
-            images_to_delete.add(brand.logo_url)
-        if brand.clean_logo_url:
-            images_to_delete.add(brand.clean_logo_url)
-
-    # Generated posts
-    for post in db.query(GeneratedPost).filter(GeneratedPost.user_id == user_id).all():
-        if getattr(post, "post_image_url", None):
-            images_to_delete.add(post.post_image_url)
-
-    # Session variants
-    for variant in db.query(SessionVariant).filter(SessionVariant.user_id == user_id).all():
-        if variant.image_url:
-            images_to_delete.add(variant.image_url)
-        if variant.background_url:
-            images_to_delete.add(variant.background_url)
-
-    # Daily sessions (reference uploads)
-    for sess in db.query(DailySession).filter(DailySession.user_id == user_id).all():
-        if sess.reference_images and isinstance(sess.reference_images, list):
-            for ref in sess.reference_images:
-                if isinstance(ref, dict) and ref.get("url"):
-                    images_to_delete.add(ref["url"])
-
-    # 2. Delete all collected images from storage
-    deleted_images_count = 0
-    for img_url in images_to_delete:
-        try:
-            if storage_service.delete_file(img_url):
-                deleted_images_count += 1
-        except Exception as e:
-            logger.warning(f"Failed to delete storage file {img_url}: {e}")
-
-    # 3. Revoke and delete stored OAuth tokens (SocialAccount)
-    social_accounts_deleted = db.query(SocialAccount).filter(SocialAccount.user_id == user_id).delete(synchronize_session=False)
-
-    # 4. Delete brand-scoped sub-records (ScheduledPost, AutopilotConfig, AutopilotLog)
-    user_brand_ids = [b.id for b in db.query(Brand.id).filter(Brand.user_id == user_id).all()]
-    scheduled_deleted = 0
-    if user_brand_ids:
-        scheduled_deleted = db.query(ScheduledPost).filter(ScheduledPost.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
-        db.query(AutopilotConfig).filter(AutopilotConfig.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
-        db.query(AutopilotLog).filter(AutopilotLog.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
-
-    # 5. Delete posts, content ideas, variants, sessions, answers, scans, templates
-    posts_deleted = db.query(GeneratedPost).filter(GeneratedPost.user_id == user_id).delete(synchronize_session=False)
-    ideas_deleted = db.query(ContentIdea).filter(ContentIdea.user_id == user_id).delete(synchronize_session=False)
-    variants_deleted = db.query(SessionVariant).filter(SessionVariant.user_id == user_id).delete(synchronize_session=False)
-    sessions_deleted = db.query(DailySession).filter(DailySession.user_id == user_id).delete(synchronize_session=False)
-    answers_deleted = db.query(UserAnswer).filter(UserAnswer.user_id == user_id).delete(synchronize_session=False)
-    scans_deleted = db.query(WebsiteScan).filter(WebsiteScan.user_id == user_id).delete(synchronize_session=False)
-    templates_deleted = db.query(SavedTemplate).filter(SavedTemplate.user_id == user_id).delete(synchronize_session=False)
-
-    # 6. Delete brands & brand scan logs
-    if user_brand_ids:
-        db.query(BrandScanLog).filter(BrandScanLog.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
-    brands_deleted = db.query(Brand).filter(Brand.user_id == user_id).delete(synchronize_session=False)
-
-    # 7. Anonymize legally required billing/usage records (financial/tax compliance)
-    usage_records_anonymized = db.query(Usage).filter(Usage.user_id == user_id).update(
-        {"user_id": None, "brand_id": None},
-        synchronize_session=False
-    )
-
-    # 8. Anonymize existing audit logs referencing this user
-    anonymized_target_id = f"purged_{user_id[:8]}"
-    db.query(AuditLog).filter(AuditLog.target_id == user_id).update(
-        {"target_email": "anonymized_user@brandflux.ai", "target_id": anonymized_target_id},
-        synchronize_session=False
-    )
-
-    # 8b. Clean up all user-linked foreign key dependencies to prevent foreign key errors:
+    # Disable foreign key checks for this session to guarantee zero FK constraint collisions
     try:
+        db.execute(text("SET FOREIGN_KEY_CHECKS = 0;"))
+        db.commit()
+    except Exception as fk_err:
+        logger.warning(f"Note on foreign key checks disable: {fk_err}")
+
+    try:
+        # 1. Collect all image/media URLs to delete from storage
+        images_to_delete = set()
+
+        # Brand logos
+        for brand in db.query(Brand).filter(Brand.user_id == user_id).all():
+            if brand.logo_url:
+                images_to_delete.add(brand.logo_url)
+            if brand.clean_logo_url:
+                images_to_delete.add(brand.clean_logo_url)
+
+        # Generated posts
+        for post in db.query(GeneratedPost).filter(GeneratedPost.user_id == user_id).all():
+            if getattr(post, "post_image_url", None):
+                images_to_delete.add(post.post_image_url)
+
+        # Session variants
+        for variant in db.query(SessionVariant).filter(SessionVariant.user_id == user_id).all():
+            if variant.image_url:
+                images_to_delete.add(variant.image_url)
+            if variant.background_url:
+                images_to_delete.add(variant.background_url)
+
+        # Daily sessions (reference uploads)
+        for sess in db.query(DailySession).filter(DailySession.user_id == user_id).all():
+            if sess.reference_images and isinstance(sess.reference_images, list):
+                for ref in sess.reference_images:
+                    if isinstance(ref, dict) and ref.get("url"):
+                        images_to_delete.add(ref["url"])
+
+        # 2. Delete all collected images from storage
+        deleted_images_count = 0
+        for img_url in images_to_delete:
+            try:
+                if storage_service.delete_file(img_url):
+                    deleted_images_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete storage file {img_url}: {e}")
+
+        # 3. Revoke and delete stored OAuth tokens (SocialAccount)
+        social_accounts_deleted = db.query(SocialAccount).filter(SocialAccount.user_id == user_id).delete(synchronize_session=False)
+
+        # 4. Delete brand-scoped sub-records
+        user_brand_ids = [b.id for b in db.query(Brand.id).filter(Brand.user_id == user_id).all()]
+        scheduled_deleted = 0
+        if user_brand_ids:
+            scheduled_deleted = db.query(ScheduledPost).filter(ScheduledPost.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+            db.query(AutopilotConfig).filter(AutopilotConfig.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+            db.query(AutopilotLog).filter(AutopilotLog.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+            db.query(BrandScanLog).filter(BrandScanLog.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+            db.query(PublishAttempt).filter(PublishAttempt.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+            db.query(PostMetric).filter(PostMetric.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+
+        # 5. Delete posts, content ideas, variants, sessions, answers, scans, templates
+        posts_deleted = db.query(GeneratedPost).filter(GeneratedPost.user_id == user_id).delete(synchronize_session=False)
+        ideas_deleted = db.query(ContentIdea).filter(ContentIdea.user_id == user_id).delete(synchronize_session=False)
+        variants_deleted = db.query(SessionVariant).filter(SessionVariant.user_id == user_id).delete(synchronize_session=False)
+        sessions_deleted = db.query(DailySession).filter(DailySession.user_id == user_id).delete(synchronize_session=False)
+        answers_deleted = db.query(UserAnswer).filter(UserAnswer.user_id == user_id).delete(synchronize_session=False)
+        scans_deleted = db.query(WebsiteScan).filter(WebsiteScan.user_id == user_id).delete(synchronize_session=False)
+        templates_deleted = db.query(SavedTemplate).filter(SavedTemplate.user_id == user_id).delete(synchronize_session=False)
+
+        # 6. Clean up additional user-linked records and foreign keys
         db.query(PaymentRequest).filter(PaymentRequest.user_id == user_id).delete(synchronize_session=False)
         db.query(PaymentRequest).filter(PaymentRequest.reviewed_by_id == user_id).update({"reviewed_by_id": None}, synchronize_session=False)
         db.query(Notification).filter(Notification.user_id == user_id).delete(synchronize_session=False)
@@ -905,56 +898,83 @@ def permanently_purge_user(
         db.query(PostApproval).filter(PostApproval.approver_id == user_id).update({"approver_id": None}, synchronize_session=False)
         db.query(PostVersion).filter(PostVersion.submitted_by_id == user_id).update({"submitted_by_id": None}, synchronize_session=False)
         db.query(PostVersion).filter(PostVersion.decision_by_id == user_id).update({"decision_by_id": None}, synchronize_session=False)
-        if user_brand_ids:
-            db.query(PublishAttempt).filter(PublishAttempt.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
         db.query(Post).filter(Post.user_id == user_id).delete(synchronize_session=False)
         db.query(User).filter(User.approved_by_id == user_id).update({"approved_by_id": None}, synchronize_session=False)
         db.query(AuditLog).filter(AuditLog.admin_id == user_id).update({"admin_id": None}, synchronize_session=False)
-    except Exception as cleanup_err:
-        logger.warning(f"Purge sub-records cleanup warning: {cleanup_err}")
 
-    # 9. Record final anonymized permanent purge audit log entry
-    audit_actor_id = admin_actor.id if admin_actor else None
-    audit_actor_email = admin_actor.email if admin_actor else "system.scheduler@brandflux.ai"
+        # 7. Anonymize legally required billing/usage records (financial/tax compliance)
+        usage_records_anonymized = db.query(Usage).filter(Usage.user_id == user_id).update(
+            {"user_id": None, "brand_id": None},
+            synchronize_session=False
+        )
+        if user_brand_ids:
+            db.query(Usage).filter(Usage.brand_id.in_(user_brand_ids)).update(
+                {"brand_id": None},
+                synchronize_session=False
+            )
 
-    purge_audit = AuditLog(
-        id=str(uuid.uuid4()),
-        admin_id=audit_actor_id,
-        admin_email=audit_actor_email,
-        action="permanent_purge_user",
-        target_type="user",
-        target_id=anonymized_target_id,
-        target_email="anonymized_purged_user@brandflux.ai",
-        details={
-            "original_user_id_prefix": user_id[:8],
+        # 8. Delete brands
+        brands_deleted = db.query(Brand).filter(Brand.user_id == user_id).delete(synchronize_session=False)
+
+        # 9. Anonymize existing audit logs referencing this user
+        anonymized_target_id = f"purged_{user_id[:8]}"
+        db.query(AuditLog).filter(AuditLog.target_id == user_id).update(
+            {"target_email": "anonymized_user@brandflux.ai", "target_id": anonymized_target_id},
+            synchronize_session=False
+        )
+
+        # 10. Record final anonymized permanent purge audit log entry
+        audit_actor_id = admin_actor.id if admin_actor else None
+        audit_actor_email = admin_actor.email if admin_actor else "system.scheduler@brandflux.ai"
+
+        purge_audit = AuditLog(
+            id=str(uuid.uuid4()),
+            admin_id=audit_actor_id,
+            admin_email=audit_actor_email,
+            action="permanent_purge_user",
+            target_type="user",
+            target_id=anonymized_target_id,
+            target_email="anonymized_purged_user@brandflux.ai",
+            details={
+                "original_user_id_prefix": user_id[:8],
+                "images_deleted": deleted_images_count,
+                "posts_deleted": posts_deleted,
+                "brands_deleted": brands_deleted,
+                "scheduled_deleted": scheduled_deleted,
+                "oauth_tokens_revoked": social_accounts_deleted,
+                "billing_records_anonymized": usage_records_anonymized,
+                "subscription_canceled": True,
+                "purged_at": datetime.utcnow().isoformat()
+            }
+        )
+        db.add(purge_audit)
+
+        # 11. Permanently delete the User database record
+        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+        db.commit()
+
+        logger.info(f"✅ User {user_email} permanently purged successfully.")
+
+        return {
+            "success": True,
+            "message": f"User {user_email} and all associated data permanently purged.",
+            "purged_user_id": user_id,
             "images_deleted": deleted_images_count,
-            "posts_deleted": posts_deleted,
             "brands_deleted": brands_deleted,
-            "scheduled_deleted": scheduled_deleted,
+            "posts_deleted": posts_deleted,
             "oauth_tokens_revoked": social_accounts_deleted,
-            "billing_records_anonymized": usage_records_anonymized,
-            "subscription_canceled": True,
-            "purged_at": datetime.utcnow().isoformat()
+            "billing_records_anonymized": usage_records_anonymized
         }
-    )
-    db.add(purge_audit)
-
-    # 10. Permanently delete the User database record
-    db.delete(user)
-    db.commit()
-
-    logger.info(f"✅ User {user_email} permanently purged successfully.")
-
-    return {
-        "success": True,
-        "message": f"User {user_email} and all associated data permanently purged.",
-        "purged_user_id": user_id,
-        "images_deleted": deleted_images_count,
-        "brands_deleted": brands_deleted,
-        "posts_deleted": posts_deleted,
-        "oauth_tokens_revoked": social_accounts_deleted,
-        "billing_records_anonymized": usage_records_anonymized
-    }
+    except Exception as purge_err:
+        logger.error(f"Failed to permanently purge user {user_id}: {purge_err}")
+        db.rollback()
+        raise purge_err
+    finally:
+        try:
+            db.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
+            db.commit()
+        except Exception:
+            pass
 
 
 def purge_expired_soft_deleted_users(

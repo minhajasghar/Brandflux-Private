@@ -1428,33 +1428,31 @@ export default function SessionPage() {
                     </span>
                   </div>
 
-                  <div className="pt-2 space-y-2">
-                    {requireApproval ? (
-                      <>
-                        <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300">
-                          <ShieldCheck className="h-4 w-4 shrink-0 text-blue-400" />
-                          <span>Team approval is required for this brand. Submitting will notify your approver team before publishing.</span>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={submittingApproval}
-                          onClick={handleSubmitForApproval}
-                          className="w-full py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-accent-glow disabled:opacity-50"
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                          <span>{submittingApproval ? 'Submitting for Approval...' : 'Submit for Approval'}</span>
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleProceedToCalendar}
-                        className="w-full py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-accent-glow"
-                      >
-                        <span>Proceed to Calendar &amp; Schedule</span>
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
+                  <div className="pt-2 space-y-2.5">
+                    {requireApproval && (
+                      <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300">
+                        <ShieldCheck className="h-4 w-4 shrink-0 text-blue-400" />
+                        <span>Team approval required: Submitting will alert your approvers before any live publishing.</span>
+                      </div>
                     )}
+                    <button
+                      type="button"
+                      disabled={submittingApproval}
+                      onClick={handleSubmitForApproval}
+                      className="w-full py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-accent-glow disabled:opacity-50"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>{submittingApproval ? 'Submitting for Approval...' : 'Submit for Approval'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleProceedToCalendar}
+                      className="w-full py-3 px-4 bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition"
+                    >
+                      <span>Direct Schedule to Calendar</span>
+                      <ArrowRight className="h-3.5 w-3.5 text-muted" />
+                    </button>
                   </div>
                 </div>
               </div>

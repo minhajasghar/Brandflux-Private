@@ -54,6 +54,27 @@ export default function PaymentPage() {
 
   useEffect(() => {
     fetchInitialData()
+
+    // Background polling every 3 seconds to auto-detect instant admin approval without manual refresh!
+    const pollTimer = setInterval(() => {
+      getMyPaymentRequest()
+        .then((res) => {
+          if (res?.has_payment && res.payment) {
+            setExistingPayment((prev: any) => {
+              if (prev?.status !== 'approved' && res.payment.status === 'approved') {
+                toast.success('Your payment was approved! Unlocking workspace...', { duration: 4000, icon: '🎉' })
+                setTimeout(() => {
+                  router.push('/dashboard')
+                }, 1500)
+              }
+              return res.payment
+            })
+          }
+        })
+        .catch(() => {})
+    }, 3000)
+
+    return () => clearInterval(pollTimer)
   }, [])
 
   const fetchInitialData = async () => {

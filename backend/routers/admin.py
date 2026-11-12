@@ -55,6 +55,9 @@ class DeleteUserRequest(BaseModel):
     confirm_email: Optional[str] = None
     reason: Optional[str] = None
 
+class SetUserPasswordRequest(BaseModel):
+    new_password: str
+
 class TestScanRequest(BaseModel):
     website_url: str
 
@@ -693,6 +696,39 @@ def send_password_reset(
     return {
         "success": True,
         "message": f"Password reset notification recorded and dispatched for {user.email}."
+    }
+
+
+@router.post("/users/{user_id}/set-password")
+def admin_set_user_password(
+    user_id: str,
+    req: SetUserPasswordRequest,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Directly set or change a user's password from the admin console."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    pwd = req.new_password.strip()
+    if len(pwd) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    user.password_hash = hash_password(pwd)
+    user.token_version = (getattr(user, "token_version", 1) or 1) + 1
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_set_user_password",
+        target_id=user.id,
+        target_email=user.email,
+        details={"updated_by": admin.email}
+    )
+
+    return {
+        "success": True,
+        "message": f"Password successfully updated for {user.email}."
     }
 
 

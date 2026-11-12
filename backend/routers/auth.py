@@ -2,6 +2,7 @@ import uuid
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from typing import Optional
@@ -120,8 +121,9 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
 @router.post("/login", response_model=AuthResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     """Log in and get JWT token."""
-    # 1. Find user by email
-    user = db.query(User).filter(User.email == req.email).first()
+    # 1. Find user by email (case-insensitive & whitespace-trimmed)
+    clean_email = req.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == clean_email).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -142,8 +144,12 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
             detail="Your account has been suspended by an administrator. Please contact support."
         )
 
-    # 4. Verify password hash
-    if not auth_service.verify_password(req.password, user.password_hash):
+    # 4. Verify password hash (supports exact and trimmed input)
+    valid_password = auth_service.verify_password(req.password, user.password_hash)
+    if not valid_password and req.password != req.password.strip():
+        valid_password = auth_service.verify_password(req.password.strip(), user.password_hash)
+
+    if not valid_password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid password"

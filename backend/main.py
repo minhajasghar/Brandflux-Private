@@ -106,6 +106,10 @@ app.mount("/static", StaticFiles(directory=PROCESSED_IMAGES_DIR), name="static")
 
 @app.get("/api/media/posts/{filename}")
 @app.head("/api/media/posts/{filename}")
+@app.get("/api/py/media/posts/{filename}")
+@app.head("/api/py/media/posts/{filename}")
+@app.get("/media/posts/{filename}")
+@app.head("/media/posts/{filename}")
 def serve_post_media(filename: str):
     """
     Serve public, unguessable generated post images with full CORS and caching headers.
@@ -135,6 +139,8 @@ def serve_post_media(filename: str):
     return Response(content=fallback_bytes, media_type="image/png", headers=headers)
 
 @app.get("/api/media/references/{filename}")
+@app.get("/api/py/media/references/{filename}")
+@app.get("/media/references/{filename}")
 def serve_reference_media(filename: str):
     clean_name = os.path.basename(filename)
     local_path = os.path.join(PROCESSED_IMAGES_DIR, clean_name)

@@ -47,9 +47,9 @@ export function middleware(request: NextRequest) {
   const brandRole = request.cookies.get('brandflux_brand_role')?.value || 'creator'
   const isApprover = brandRole === 'approver'
 
-  // 3b. Approver Boundary: Approvers land on /approvals and cannot access onboarding or generator
+  // 3b. Approver Boundary: Approvers land on /approvals and are locked to Approvals portal
   if (isApprover) {
-    if (pathname === '/onboarding' || pathname === '/session' || pathname === '/pricing' || pathname === '/dashboard') {
+    if (pathname !== '/approvals' && !pathname.startsWith('/approvals/')) {
       return NextResponse.redirect(new URL('/approvals', request.url))
     }
   }

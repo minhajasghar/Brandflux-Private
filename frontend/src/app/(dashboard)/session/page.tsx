@@ -118,20 +118,26 @@ export default function SessionPage() {
   // Helper to ensure public, stable media resolution across devices
   const resolveMediaUrl = (url?: string | null): string => {
     if (!url) return ''
-    if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      const currentHost = window.location.hostname
-      url = url.replace(/http:\/\/localhost:8000/g, `http://${currentHost}:8000`)
-               .replace(/http:\/\/127\.0\.0\.1:8000/g, `http://${currentHost}:8000`)
-    }
-    if (url.startsWith('http://') || url.startsWith('https://')) {
+    // If it's already a relative path, use directly
+    if (url.startsWith('/')) {
       return url
     }
-    const host = typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost'
-      ? window.location.hostname
-      : 'localhost'
-    const base = `http://${host}:8000`
-    const path = url.startsWith('/') ? url : `/${url}`
-    return `${base.replace(/\/+$/, '')}${path}`
+    // Extract relative /api/media/... or /static/... path to avoid mixed content (HTTP on HTTPS) and avoid closed backend ports
+    if (url.includes('/api/media/')) {
+      return url.substring(url.indexOf('/api/media/'))
+    }
+    if (url.includes('/static/')) {
+      return url.substring(url.indexOf('/static/'))
+    }
+    try {
+      const parsed = new URL(url)
+      if (parsed.pathname.startsWith('/api/media/') || parsed.pathname.startsWith('/static/')) {
+        return parsed.pathname + parsed.search
+      }
+    } catch {
+      // not a full URL
+    }
+    return url
   }
   
   // Editable Copy for Selected Variant

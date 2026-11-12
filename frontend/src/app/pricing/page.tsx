@@ -26,32 +26,12 @@ export default function PricingPage() {
     try {
       setLoading(true)
       const res = await api.get('/billing/plans')
-      if (Array.isArray(res.data) && res.data.length > 0) {
-        setPlans(res.data)
+      const activePaidPlans = (res.data || []).filter((p: any) => p.id !== 'trial' && p.price_usd > 0)
+      if (activePaidPlans.length > 0) {
+        setPlans(activePaidPlans)
       } else {
-        // Fallback default plans
+        // Fallback default plans (Starter, Growth, Pro only)
         setPlans([
-          {
-            id: 'trial',
-            name: '14-Day Free Trial',
-            price_usd: 0,
-            price_annual_usd: 0,
-            credits: 15,
-            brands: 1,
-            platforms: 2,
-            max_posts_per_day: 5,
-            reroll_pool: 3,
-            x_allowed: false,
-            features: [
-              '15 Post Credits (30 visuals)',
-              '1 Brand Kit & Identity',
-              '2 Connected Platforms (FB / IG / LinkedIn)',
-              'Standard 1K AI Image Studio',
-              '3 Free Image Re-rolls total',
-              'Capped at 5 generations/day',
-              'Full History & Asset Download'
-            ]
-          },
           {
             id: 'starter',
             name: 'Starter Plan',
@@ -97,8 +77,8 @@ export default function PricingPage() {
           {
             id: 'pro',
             name: 'Pro Plan',
-            price_usd: 89,
-            price_annual_usd: 890,
+            price_usd: 88,
+            price_annual_usd: 880,
             credits: 200,
             brands: 10,
             platforms: 6,
@@ -286,7 +266,7 @@ export default function PricingPage() {
 
       {/* Pricing Cards Grid */}
       <section className="max-w-7xl mx-auto px-6 pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-6">
           {plans.map((p) => {
             const isTrial = p.id === 'trial'
             const isPopular = p.id === 'growth'
@@ -326,14 +306,12 @@ export default function PricingPage() {
                   <div className="mt-5 flex items-baseline gap-1.5">
                     <span className="text-4xl font-black text-white">${displayPrice}</span>
                     <span className="text-xs text-[#A0A5B5] font-bold">
-                      {isTrial ? 'for 14 days' : billingCycle === 'annual' ? '/mo (billed annually)' : '/month'}
+                      {billingCycle === 'annual' ? '/mo (billed annually)' : '/month'}
                     </span>
                   </div>
 
                   <p className="mt-3 text-xs text-[#A0A5B5] leading-relaxed">
-                    {isTrial
-                      ? 'Experience full multi-platform generation with no card required.'
-                      : `${p.credits} post credits / month with verified publishing.`}
+                    {`${p.credits} post credits / month with verified publishing.`}
                   </p>
 
                   <div className="my-6 border-t border-white/10" />
@@ -364,7 +342,7 @@ export default function PricingPage() {
                         : 'bg-[#1558C9] hover:bg-[#4C8DFF] text-white shadow-md'
                     }`}
                   >
-                    <span>{isCurrent ? 'Active Plan' : isTrial ? 'Start 14-Day Trial' : `Upgrade to ${p.name}`}</span>
+                    <span>{isCurrent ? 'Active Plan' : `Upgrade to ${p.name}`}</span>
                     {!isCurrent && <ArrowRight className="h-3.5 w-3.5" />}
                   </button>
                 </div>

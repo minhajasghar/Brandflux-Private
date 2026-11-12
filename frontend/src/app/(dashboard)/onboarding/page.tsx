@@ -54,6 +54,11 @@ export default function OnboardingPage() {
     const startInitialScan = async () => {
       try {
         const profile = await getProfile()
+        const isAppr = Boolean(profile.user?.is_approver || profile.brand_role === 'approver' || profile.user?.brand_role === 'approver')
+        if (isAppr) {
+          router.replace('/approvals')
+          return
+        }
         const initialBrand = profile.brand
         setBrand(initialBrand)
         

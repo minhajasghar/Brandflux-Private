@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { 
@@ -16,63 +16,121 @@ import {
   Sparkles,
   Heart,
   MessageSquare,
-  CheckCircle2
+  CheckCircle2,
+  Users
 } from 'lucide-react'
 import BrandfluxLogo from '@/components/shared/BrandfluxLogo'
+import api from '@/lib/api'
 
 export default function Home() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
+  const [dbPlans, setDbPlans] = useState<any[]>([])
 
-  const pricingTiers = [
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const res = await api.get('/billing/plans')
+        const active = (res.data || []).filter((p: any) => p.id !== 'trial' && p.price_usd > 0)
+        if (active.length > 0) {
+          setDbPlans(active)
+        }
+      } catch (err) {
+        // Fallback handled below
+      }
+    }
+    fetchPlans()
+  }, [])
+
+  const defaultPricingTiers = [
     {
+      id: "starter",
       name: "Starter",
-      price: billingPeriod === 'monthly' ? "0" : "0",
-      description: "Perfect for testing the AI content generation flow.",
+      price_monthly: 19,
+      price_annual: 15,
+      description: "Essential AI content generation & multi-platform tools for growing brands.",
       features: [
-        "5 generated posts per month",
-        "Standard caption generation",
-        "1 brand profile scan",
-        "Single platform scheduling",
-        "Community support"
+        "30 Post Credits / month (60 visuals)",
+        "1 Brand Kit & Voice Profile",
+        "3 Connected Social Platforms",
+        "15 Free Image Re-rolls / month",
+        "Standard 1K High-Def Visuals",
+        "Max 2 posts / day schedule",
+        "Verified Social Publishing Flow"
       ],
-      buttonText: "Start Free Trial",
+      buttonText: "Get Started",
       href: "/signup",
       popular: false
     },
     {
+      id: "growth",
       name: "Growth",
-      price: billingPeriod === 'monthly' ? "19" : "15",
-      description: "Designed for small businesses scaling their content.",
+      price_monthly: 39,
+      price_annual: 31,
+      description: "Designed for small businesses & creators scaling their social footprint.",
       features: [
-        "30 generated posts per month",
-        "Smart, audience-tailored captions",
-        "Parallel AI image generation",
-        "Dynamic branded templates (Pillow)",
-        "3 platform cross-publishing",
-        "Email support"
+        "100 Post Credits / month (200 visuals)",
+        "3 Distinct Brand Kits",
+        "5 Connected Platforms",
+        "60 Free Image Re-rolls / month",
+        "2K Ultra-HD Visual Generations",
+        "Performance Analytics Suite",
+        "Autopilot Weekly Planner"
       ],
-      buttonText: "Go Growth",
+      buttonText: "Choose Growth",
       href: "/signup",
       popular: true
     },
     {
+      id: "pro",
       name: "Pro",
-      price: billingPeriod === 'monthly' ? "49" : "39",
-      description: "For agencies and power users seeking maximum automation.",
+      price_monthly: 88,
+      price_annual: 70,
+      description: "For agencies and high-velocity teams seeking unlimited publishing & seats.",
       features: [
-        "Unlimited generated posts",
-        "Advanced custom brand strategy",
-        "Premium multi-variant AI images",
-        "Fully custom logo & canvas layouts",
-        "All platform publishing (Insta, FB, LI)",
-        "Priority 24/7 dedicated support",
-        "API access & webhooks"
+        "200 Post Credits / month (400 visuals)",
+        "10 Brand Kits & Multi-Brand Switcher",
+        "All Platforms + X (Twitter) Publishing",
+        "100 Free Image Re-rolls / month",
+        "2K Ultra-HD Visual Generations",
+        "Unlimited Daily Publishing",
+        "Priority Rendering Queue & Team Seats"
       ],
-      buttonText: "Go Pro",
+      buttonText: "Choose Pro",
       href: "/signup",
       popular: false
     }
   ]
+
+  const pricingTiers = dbPlans.length > 0
+    ? dbPlans.map((p) => {
+        const monthly = p.price_usd || 19
+        const annual = p.price_annual_usd ? Math.round(p.price_annual_usd / 12) : Math.round(monthly * 0.8)
+        const isGrowth = p.id === 'growth'
+        const isPro = p.id === 'pro'
+        return {
+          id: p.id,
+          name: p.name.replace(/ Plan$/i, ''),
+          price: billingPeriod === 'monthly' ? String(monthly) : String(annual),
+          description: p.id === 'starter' 
+            ? "Essential AI content generation & multi-platform tools for growing brands."
+            : p.id === 'growth'
+            ? "Designed for small businesses & creators scaling their social footprint."
+            : "For agencies and high-velocity teams seeking maximum automation.",
+          features: (p.features && p.features.length > 0) ? p.features : [
+            `${p.credits} Post Credits / month`,
+            `${p.brands} Brand Kit(s)`,
+            `${p.platforms} Connected Platforms`,
+            "Verified Social Publishing Flow"
+          ],
+          buttonText: p.id === 'starter' ? "Get Started" : `Choose ${p.name.replace(/ Plan$/i, '')}`,
+          href: "/signup",
+          popular: isGrowth
+        }
+      })
+    : defaultPricingTiers.map((t) => ({
+        ...t,
+        price: billingPeriod === 'monthly' ? String(t.price_monthly) : String(t.price_annual)
+      }))
 
   return (
     <div className="relative flex flex-col min-h-screen bg-bg text-text selection:bg-accent selection:text-black overflow-x-hidden">
@@ -478,7 +536,7 @@ export default function Home() {
 
                   <div className="border-t border-border pt-6 mb-8">
                     <ul className="flex flex-col gap-3 text-xs text-text text-left">
-                      {tier.features.map((feature, fIdx) => (
+                      {tier.features.map((feature: any, fIdx: number) => (
                         <li key={fIdx} className="flex items-start gap-2.5">
                           <Check className="h-4 w-4 text-primary-light mt-0.5 shrink-0" />
                           <span>{feature}</span>

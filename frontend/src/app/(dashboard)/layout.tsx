@@ -71,8 +71,8 @@ export default function DashboardLayout({
           setUserPlan(isNonPay ? 'NON-PAYMENT (VIP)' : (isAppr ? 'APPROVER' : (profile.user.plan ? profile.user.plan.toUpperCase() : 'FREE')))
           setUserRole(userRole)
 
-          // Approvers cannot access generation, billing, or onboarding
-          if (isAppr && ['/session', '/pricing', '/onboarding'].includes(pathname)) {
+          // Approvers belong strictly to the creator's brand and are locked to Approvals
+          if (isAppr && pathname !== '/approvals' && !pathname.startsWith('/approvals/')) {
             router.replace('/approvals')
             return
           }
@@ -151,8 +151,6 @@ export default function DashboardLayout({
   const navItems = isApprover
     ? [
         { icon: CheckCircle2, label: 'Approvals', href: '/approvals' },
-        { icon: Lightbulb, label: 'Content History', href: '/ideas' },
-        { icon: Calendar, label: 'Content Calendar', href: '/calendar' },
       ]
     : [
         { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },

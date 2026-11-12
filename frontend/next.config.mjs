@@ -16,10 +16,24 @@ const nextConfig = {
     ],
   },
   async rewrites() {
+    const isProd = process.env.NODE_ENV === 'production';
+    const backendPort = process.env.BACKEND_PORT || (isProd ? '8010' : '8000');
+    const defaultBackend = `http://127.0.0.1:${backendPort}`;
+    const rawBackend = process.env.INTERNAL_BACKEND_URL || (process.env.NEXT_PUBLIC_BACKEND_URL ? process.env.NEXT_PUBLIC_BACKEND_URL : defaultBackend);
+    const backendUrl = rawBackend.replace(/\/+$/, '');
+
     return [
       {
+        source: '/api/media/:path*',
+        destination: `${backendUrl}/api/media/:path*`,
+      },
+      {
+        source: '/static/:path*',
+        destination: `${backendUrl}/static/:path*`,
+      },
+      {
         source: '/api/py/:path*',
-        destination: process.env.INTERNAL_BACKEND_URL || (process.env.NEXT_PUBLIC_BACKEND_URL ? `${process.env.NEXT_PUBLIC_BACKEND_URL}/:path*` : 'http://127.0.0.1:8000/:path*'),
+        destination: `${backendUrl}/:path*`,
       },
     ];
   },

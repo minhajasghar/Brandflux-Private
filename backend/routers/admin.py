@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, or_
 from pydantic import BaseModel
@@ -12,7 +12,8 @@ from pydantic import BaseModel
 from database import get_db
 from models.models import (
     User, Brand, Usage, AuditLog, GeneratedPost, ScheduledPost, DailySession,
-    ContentIdea, WebsiteScan, SocialAccount, SystemSetting, PublishAttempt
+    ContentIdea, WebsiteScan, SocialAccount, SystemSetting, PublishAttempt,
+    PaymentRequest, Plan, Notification
 )
 from middleware.auth import require_admin, require_admin_write
 from services.admin_service import (
@@ -1795,3 +1796,418 @@ def set_user_non_payment(
         "is_non_payment": user.is_non_payment,
         "message": f"Successfully updated non-payment status for {user.email} to {user.is_non_payment}."
     }
+
+
+# ═══════════════════════════════════════════════════════════
+# BANK & PAYMENT DETAILS (MANAGED FROM ADMIN PORTAL)
+# ═══════════════════════════════════════════════════════════
+@router.get("/bank-details")
+def admin_get_bank_details(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Retrieve active beneficiary bank details."""
+    from routers.billing import get_system_bank_details
+    return get_system_bank_details(db)
+
+
+@router.put("/bank-details")
+def admin_update_bank_details(
+    data: Dict[str, Any],
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Update active beneficiary bank details in database SystemSetting."""
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "bank_details").first()
+    if not setting:
+        setting = SystemSetting(key="bank_details", value=data, updated_by=admin.email)
+        db.add(setting)
+    else:
+        setting.value = data
+        setting.updated_by = admin.email
+    db.commit()
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_update_bank_details",
+        target_type="system",
+        target_id="bank_details",
+        details=data
+    )
+    return {"success": True, "message": "Bank details updated successfully."}
+
+
+# ═══════════════════════════════════════════════════════════
+# SMTP CONFIGURATION & DELIVERY SETTINGS
+# ═══════════════════════════════════════════════════════════
+@router.get("/smtp-settings")
+def admin_get_smtp_settings(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Retrieve current SMTP settings with masked password."""
+    from services.email.smtp_provider import get_active_smtp_config
+    cfg = get_active_smtp_config()
+    pw = cfg.get("password") or ""
+    masked_pw = ("*" * min(len(pw), 16)) if pw else ""
+    return {
+        **cfg,
+        "password": masked_pw,
+        "has_password": bool(pw)
+    }
+
+
+@router.put("/smtp-settings")
+def admin_update_smtp_settings(
+    data: Dict[str, Any],
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Save SMTP delivery settings dynamically to database SystemSetting."""
+    from services.email.smtp_provider import get_active_smtp_config
+    current = get_active_smtp_config()
+
+    # Retain current password if not supplied or if only asterisks
+    new_pw = str(data.get("password", "")).strip()
+    if not new_pw or (set(new_pw) == {"*"}):
+        data["password"] = current.get("password", "")
+
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "smtp_settings").first()
+    if not setting:
+        setting = SystemSetting(key="smtp_settings", value=data, updated_by=admin.email)
+        db.add(setting)
+    else:
+        setting.value = data
+        setting.updated_by = admin.email
+
+    # Also record provider choice
+    p_choice = data.get("provider", "smtp")
+    p_setting = db.query(SystemSetting).filter(SystemSetting.key == "email_provider").first()
+    if not p_setting:
+        db.add(SystemSetting(key="email_provider", value=p_choice, updated_by=admin.email))
+    else:
+        p_setting.value = p_choice
+
+    db.commit()
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_update_smtp_settings",
+        target_type="system",
+        target_id="smtp_settings",
+        details={"host": data.get("host"), "port": data.get("port"), "from_email": data.get("from_email")}
+    )
+    return {"success": True, "message": "SMTP configuration saved successfully."}
+
+
+class TestEmailRequest(BaseModel):
+    recipient: str
+
+
+@router.post("/smtp-settings/test")
+async def admin_test_smtp_email(
+    req: TestEmailRequest,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Send live test verification email through configured SMTP provider."""
+    from services.email.email_service import send_email
+    res = await send_email(
+        to=req.recipient.strip(),
+        template="admin_alert",
+        data={
+            "alert_type": "SMTP Test Verification",
+            "message": f"This is an automated test email sent from the Brandflux Admin Portal by {admin.email}. Your SMTP outgoing server connection is functioning successfully!",
+            "details": f"Dispatched at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}."
+        },
+        idempotency_key=f"smtp_test_{uuid.uuid4().hex[:8]}",
+        db=db
+    )
+    if res.get("status") == "failed":
+        raise HTTPException(status_code=400, detail=res.get("error") or "Failed to deliver test email.")
+    return {
+        "success": True,
+        "message": f"Test email dispatched successfully to {req.recipient}!",
+        "result": res
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# PAYMENT APPROVALS (MANUAL BANK TRANSFER REVIEW)
+# ═══════════════════════════════════════════════════════════
+@router.get("/payment-requests")
+def admin_list_payment_requests(
+    status_filter: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """List manual bank transfer payment submissions with status filter and search."""
+    q = db.query(PaymentRequest)
+    if status_filter and status_filter != "all":
+        q = q.filter(PaymentRequest.status == status_filter)
+    if search:
+        s = f"%{search.strip()}%"
+        q = q.filter(or_(
+            PaymentRequest.user_email.ilike(s),
+            PaymentRequest.user_name.ilike(s),
+            PaymentRequest.transaction_reference.ilike(s),
+            PaymentRequest.sender_account_name.ilike(s)
+        ))
+
+    total = q.count()
+    items = q.order_by(PaymentRequest.created_at.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "total": total,
+        "items": [
+            {
+                "id": p.id,
+                "user_id": p.user_id,
+                "user_email": p.user_email,
+                "user_name": p.user_name,
+                "plan_id": p.plan_id,
+                "amount": p.amount,
+                "currency": p.currency,
+                "billing_cycle": p.billing_cycle,
+                "bank_name": p.bank_name,
+                "sender_account_name": p.sender_account_name,
+                "sender_account_number": p.sender_account_number,
+                "transaction_reference": p.transaction_reference,
+                "proof_image_url": p.proof_image_url,
+                "notes": p.notes,
+                "status": p.status,
+                "admin_notes": p.admin_notes,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "reviewed_at": p.reviewed_at.isoformat() if p.reviewed_at else None
+            }
+            for p in items
+        ]
+    }
+
+
+class ApprovePaymentRequest(BaseModel):
+    admin_notes: Optional[str] = None
+
+
+@router.post("/payment-requests/{payment_id}/approve")
+async def admin_approve_payment(
+    payment_id: str,
+    req: ApprovePaymentRequest,
+    background_tasks: BackgroundTasks,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Approve a submitted manual payment, activate user account and set plan."""
+    from services.email.email_service import send_email
+    payment = db.query(PaymentRequest).filter(PaymentRequest.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment request not found")
+
+    payment.status = "approved"
+    payment.admin_notes = req.admin_notes
+    payment.reviewed_by_id = admin.id
+    payment.reviewed_at = datetime.utcnow()
+
+    user = db.query(User).filter(User.id == payment.user_id).first()
+    if user:
+        user.is_approved = True
+        user.approved_at = datetime.utcnow()
+        user.approved_by_id = admin.id
+        user.plan = payment.plan_id
+
+        plan = db.query(Plan).filter(Plan.id == payment.plan_id).first()
+        from services.credit_service import ensure_user_ledger_initialized
+        ensure_user_ledger_initialized(user, db)
+        user.posts_used_this_month = 0
+        user.rerolls_used_this_month = 0
+        user.x_posts_used_this_month = 0
+
+        # Send approval confirmation email to user
+        background_tasks.add_task(
+            send_email,
+            to=user.email,
+            template="payment_approved_user",
+            data={
+                "full_name": user.full_name or "Subscriber",
+                "plan_name": (plan.name if plan else payment.plan_id.upper())
+            },
+            user_id=user.id,
+            idempotency_key=f"pay_appr_{payment.id}"
+        )
+
+        notif = Notification(
+            user_id=user.id,
+            title="Payment Approved! 🎉",
+            message=f"Your bank payment of {payment.amount} {payment.currency} has been approved. Your {payment.plan_id.upper()} subscription is active!",
+            type="info",
+            action_type="link",
+            action_payload={"url": "/dashboard"}
+        )
+        db.add(notif)
+
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_approve_payment",
+        target_type="payment_request",
+        target_id=payment.id,
+        target_email=payment.user_email,
+        details={"plan": payment.plan_id, "amount": payment.amount, "notes": req.admin_notes}
+    )
+
+    return {"success": True, "message": f"Payment for {payment.user_email} approved successfully!"}
+
+
+class RejectPaymentRequest(BaseModel):
+    reason: str
+
+
+@router.post("/payment-requests/{payment_id}/reject")
+async def admin_reject_payment(
+    payment_id: str,
+    req: RejectPaymentRequest,
+    background_tasks: BackgroundTasks,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """Reject a submitted manual payment with reason and notify the user."""
+    from services.email.email_service import send_email
+    payment = db.query(PaymentRequest).filter(PaymentRequest.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment request not found")
+
+    payment.status = "rejected"
+    payment.admin_notes = req.reason
+    payment.reviewed_by_id = admin.id
+    payment.reviewed_at = datetime.utcnow()
+
+    user = db.query(User).filter(User.id == payment.user_id).first()
+    if user:
+        background_tasks.add_task(
+            send_email,
+            to=user.email,
+            template="payment_rejected_user",
+            data={
+                "full_name": user.full_name or "Subscriber",
+                "reason": req.reason
+            },
+            user_id=user.id,
+            idempotency_key=f"pay_rej_{payment.id}"
+        )
+
+        notif = Notification(
+            user_id=user.id,
+            title="Payment Review Update",
+            message=f"Your bank transfer payment could not be verified: {req.reason}",
+            type="warning",
+            action_type="link",
+            action_payload={"url": "/payment"}
+        )
+        db.add(notif)
+
+    db.commit()
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_reject_payment",
+        target_type="payment_request",
+        target_id=payment.id,
+        target_email=payment.user_email,
+        details={"reason": req.reason}
+    )
+
+    return {"success": True, "message": f"Payment for {payment.user_email} has been rejected."}
+
+
+# ═══════════════════════════════════════════════════════════
+# ADMIN CREATE FREE / BYPASS ACCOUNT (FOR OWN BUSINESSES)
+# ═══════════════════════════════════════════════════════════
+class AdminCreateUserRequest(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    website_url: Optional[str] = None
+    business_type: Optional[str] = "Other"
+    plan: Optional[str] = "pro"
+    is_non_payment: Optional[bool] = True
+
+
+@router.post("/users/create-free-account")
+def admin_create_free_user(
+    req: AdminCreateUserRequest,
+    admin: User = Depends(require_admin_write),
+    db: Session = Depends(get_db)
+):
+    """
+    Directly create a pre-approved, non-payment / free account
+    for internal businesses or team without payment requirement.
+    ONLY accessible from Admin Portal.
+    """
+    clean_email = req.email.lower().strip()
+    existing = db.query(User).filter(User.email == clean_email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"User with email {clean_email} already exists.")
+
+    new_user = User(
+        email=clean_email,
+        password_hash=hash_password(req.password),
+        full_name=req.full_name.strip(),
+        plan=req.plan.lower().strip(),
+        role="user",
+        is_verified=True,
+        is_approved=True,
+        approved_at=datetime.utcnow(),
+        approved_by_id=admin.id,
+        is_non_payment=req.is_non_payment,
+        welcome_sent=True,
+        trial_started_at=datetime.utcnow(),
+        trial_ends_at=datetime.utcnow() + timedelta(days=3650)
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    if req.website_url:
+        from models.models import Brand
+        clean_brand_name = req.full_name.strip()
+        new_brand = Brand(
+            user_id=new_user.id,
+            name=clean_brand_name,
+            website_url=req.website_url.strip(),
+            industry=req.business_type or "General",
+            onboarding_complete=False
+        )
+        db.add(new_brand)
+        db.commit()
+        db.refresh(new_brand)
+        new_user.active_brand_id = new_brand.id
+        db.commit()
+
+    from services.credit_service import ensure_user_ledger_initialized
+    ensure_user_ledger_initialized(new_user, db)
+
+    log_audit_action(
+        db=db,
+        admin=admin,
+        action="admin_create_free_account",
+        target_type="user",
+        target_id=new_user.id,
+        target_email=new_user.email,
+        details={"plan": new_user.plan, "is_non_payment": new_user.is_non_payment}
+    )
+
+    return {
+        "success": True,
+        "user_id": new_user.id,
+        "email": new_user.email,
+        "plan": new_user.plan,
+        "is_non_payment": new_user.is_non_payment,
+        "message": f"Successfully created pre-approved account for {new_user.email}."
+    }
+

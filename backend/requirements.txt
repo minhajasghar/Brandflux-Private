@@ -40,3 +40,5 @@ rembg
 
 # ─── Background Jobs ──────────────────────
 apscheduler
+
+reportlab>=5.0.0

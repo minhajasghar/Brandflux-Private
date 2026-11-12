@@ -15,25 +15,27 @@ import {
   LogOut, 
   Menu,
   X,
-  Radar,
-  Radio,
   KeyRound,
   Mail,
-  Share2
+  Share2,
+  CreditCard,
+  Building2,
+  Send
 } from 'lucide-react'
 import Cookies from 'js-cookie'
 import { getProfile } from '@/lib/api'
 
 const adminNavItems = [
   { id: 'overview', label: 'Overview', icon: Activity, href: '/admin?tab=overview' },
-  { id: 'integrations', label: 'Integrations (APIs)', icon: Share2, href: '/admin?tab=integrations' },
+  { id: 'approvals', label: 'Payment Approvals', icon: CreditCard, href: '/admin?tab=approvals' },
   { id: 'users', label: 'Users & Accounts', icon: Users, href: '/admin?tab=users' },
-  { id: 'emails', label: 'Emails (Dev Outbox)', icon: Mail, href: '/admin?tab=emails' },
+  { id: 'bank', label: 'Bank & Payments', icon: Building2, href: '/admin?tab=bank' },
+  { id: 'smtp', label: 'SMTP Email Config', icon: Send, href: '/admin?tab=smtp' },
+  { id: 'emails', label: 'Email Logs', icon: Mail, href: '/admin?tab=emails' },
+  { id: 'plans', label: 'Plans & Pricing', icon: Layers, href: '/admin?tab=plans' },
+  { id: 'integrations', label: 'Integrations (APIs)', icon: Share2, href: '/admin?tab=integrations' },
   { id: 'usage', label: 'Usage & Costs', icon: Sliders, href: '/admin?tab=usage' },
   { id: 'credentials', label: 'AI & Models', icon: KeyRound, href: '/admin?tab=credentials' },
-  { id: 'scans', label: 'Website Scans', icon: Radar, href: '/admin?tab=scans' },
-  { id: 'publishing', label: 'Publishing Monitor', icon: Radio, href: '/admin?tab=publishing' },
-  { id: 'plans', label: 'Plans & Limits', icon: Layers, href: '/admin?tab=plans' },
   { id: 'audit', label: 'Audit Log', icon: FileText, href: '/admin?tab=audit' },
   { id: 'health', label: 'System Health', icon: Cpu, href: '/admin?tab=health' },
   { id: 'admins', label: 'Admin Team', icon: ShieldCheck, href: '/admin?tab=admins' },

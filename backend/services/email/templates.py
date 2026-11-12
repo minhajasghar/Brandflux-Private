@@ -956,6 +956,104 @@ def render_approval_skipped(data: Dict[str, Any]) -> Tuple[str, str, str]:
     return subject, html, plain
 
 
+# ─── Payment & Bank Transfer Templates ───────────────────────────────────────
+def render_payment_submitted_user(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    full_name = data.get("full_name", "there")
+    plan_name = data.get("plan_name", "Subscription")
+    amount = data.get("amount", "")
+    currency = data.get("currency", "USD")
+    txn_ref = data.get("transaction_reference", "N/A")
+    payment_url = f"{APP_BASE_URL}/payment"
+
+    subject = f"Payment Received: {plan_name} — Review in Progress ⏳"
+    preheader = f"We have received your bank transfer proof for {plan_name}."
+
+    body_html = f"""
+    <p style="font-size: 16px; color: {TEXT_WHITE}; font-weight: 600; margin-bottom: 12px;">Hi {full_name},</p>
+    <p style="color: {TEXT_MUTED}; margin-bottom: 16px;">Thank you for your payment! We have received your manual bank transfer submission for the <strong>{plan_name}</strong> plan.</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 8px 0; color: {TEXT_WHITE}; font-size: 14px;"><strong>Plan:</strong> {plan_name}</p>
+        <p style="margin: 0 0 8px 0; color: {TEXT_WHITE}; font-size: 14px;"><strong>Amount:</strong> {amount} {currency}</p>
+        <p style="margin: 0; color: {TEXT_WHITE}; font-size: 14px;"><strong>Transaction Ref:</strong> {txn_ref}</p>
+    </div>
+    <p style="color: {TEXT_MUTED}; margin-bottom: 16px;">Our team is reviewing your receipt. Once verified by an administrator, your account will be activated immediately and you will receive another confirmation email.</p>
+    """
+    action_button = {"label": "View Payment Status", "url": payment_url}
+    html = wrap_email_html("Payment Under Review", preheader, body_html, action_button)
+    plain = f"Hi {full_name},\nWe received your payment proof for {plan_name} ({amount} {currency}). Ref: {txn_ref}. Our team will review and activate your account shortly."
+    return subject, html, plain
+
+
+def render_payment_submitted_admin(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    user_email = data.get("user_email", "")
+    user_name = data.get("user_name", "User")
+    plan_name = data.get("plan_name", "")
+    amount = data.get("amount", "")
+    currency = data.get("currency", "USD")
+    txn_ref = data.get("transaction_reference", "N/A")
+    admin_url = f"{APP_BASE_URL}/admin?tab=approvals"
+
+    subject = f"[Admin Alert] New Bank Payment for Approval: {plan_name} (${amount}) 💳"
+    preheader = f"New payment proof submitted by {user_email}."
+
+    body_html = f"""
+    <p style="font-size: 16px; color: {TEXT_WHITE}; font-weight: 600; margin-bottom: 12px;">New Payment Awaiting Approval</p>
+    <p style="color: {TEXT_MUTED}; margin-bottom: 16px;">A user has submitted a manual bank transfer proof on Brandflux:</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 8px 0; color: {TEXT_WHITE}; font-size: 14px;"><strong>User:</strong> {user_name} ({user_email})</p>
+        <p style="margin: 0 0 8px 0; color: {TEXT_WHITE}; font-size: 14px;"><strong>Plan:</strong> {plan_name}</p>
+        <p style="margin: 0 0 8px 0; color: {TEXT_WHITE}; font-size: 14px;"><strong>Amount:</strong> {amount} {currency}</p>
+        <p style="margin: 0; color: {TEXT_WHITE}; font-size: 14px;"><strong>Transaction Ref:</strong> {txn_ref}</p>
+    </div>
+    <p style="color: {TEXT_MUTED};">Please review the payment proof receipt and approve or reject the request in the Admin Portal.</p>
+    """
+    action_button = {"label": "Review in Admin Portal", "url": admin_url}
+    html = wrap_email_html("Payment Approval Required", preheader, body_html, action_button)
+    plain = f"New bank payment from {user_name} ({user_email}) for {plan_name} ({amount} {currency}). Ref: {txn_ref}. Review at: {admin_url}"
+    return subject, html, plain
+
+
+def render_payment_approved_user(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    full_name = data.get("full_name", "there")
+    plan_name = data.get("plan_name", "Pro")
+    dashboard_url = f"{APP_BASE_URL}/dashboard"
+
+    subject = f"Payment Approved! Welcome to Brandflux {plan_name} 🎉"
+    preheader = f"Your payment has been approved and your workspace is fully active."
+
+    body_html = f"""
+    <p style="font-size: 16px; color: {TEXT_WHITE}; font-weight: 600; margin-bottom: 12px;">Great news, {full_name}!</p>
+    <p style="color: {TEXT_MUTED}; margin-bottom: 16px;">Your payment for the <strong>{plan_name}</strong> plan has been approved by our team. Your Brandflux account is now completely active!</p>
+    <p style="color: {TEXT_MUTED}; margin-bottom: 20px;">You can now generate automated AI content, schedule posts across your connected social platforms, and invite team members.</p>
+    """
+    action_button = {"label": "Open Your Workspace", "url": dashboard_url}
+    html = wrap_email_html("Account Activated", preheader, body_html, action_button)
+    plain = f"Hi {full_name},\nYour payment has been approved! Your {plan_name} plan is now active. Get started: {dashboard_url}"
+    return subject, html, plain
+
+
+def render_payment_rejected_user(data: Dict[str, Any]) -> Tuple[str, str, str]:
+    full_name = data.get("full_name", "there")
+    reason = data.get("reason", "Payment verification could not be completed.")
+    payment_url = f"{APP_BASE_URL}/payment"
+
+    subject = "Update regarding your Brandflux payment submission"
+    preheader = "Your payment submission could not be verified."
+
+    body_html = f"""
+    <p style="font-size: 16px; color: {TEXT_WHITE}; font-weight: 600; margin-bottom: 12px;">Hi {full_name},</p>
+    <p style="color: {TEXT_MUTED}; margin-bottom: 16px;">We were unable to verify your recent bank transfer payment submission.</p>
+    <div style="background-color: {CARD_INNER}; border: 1px solid #7F1D1D; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0; color: #FCA5A5; font-size: 14px;"><strong>Reason:</strong> {reason}</p>
+    </div>
+    <p style="color: {TEXT_MUTED}; margin-bottom: 20px;">Please check your bank details or re-upload your valid transfer receipt using the button below. If you believe this is an error, please reply directly to this email.</p>
+    """
+    action_button = {"label": "Resubmit Payment Proof", "url": payment_url}
+    html = wrap_email_html("Payment Verification Update", preheader, body_html, action_button)
+    plain = f"Hi {full_name},\nYour payment could not be verified. Reason: {reason}.\nPlease resubmit at: {payment_url}"
+    return subject, html, plain
+
+
 # Registry of templates
 TEMPLATE_REGISTRY = {
     "verify_email": render_verify_email,
@@ -979,6 +1077,10 @@ TEMPLATE_REGISTRY = {
     "post_rejected": render_post_rejected,
     "approval_reminder": render_approval_reminder,
     "approval_skipped": render_approval_skipped,
+    "payment_submitted_user": render_payment_submitted_user,
+    "payment_submitted_admin": render_payment_submitted_admin,
+    "payment_approved_user": render_payment_approved_user,
+    "payment_rejected_user": render_payment_rejected_user,
 }
 
 def render_template(template_name: str, data: Dict[str, Any]) -> Tuple[str, str, str]:

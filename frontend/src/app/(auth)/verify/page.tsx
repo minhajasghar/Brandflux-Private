@@ -89,7 +89,15 @@ function VerifyContent() {
           }
         }, 2000)
       } else {
-        toast.success('Email verified! Awaiting administrator approval.', { duration: 5000 })
+        toast.success('Email verified! Please submit bank transfer payment for activation.', { duration: 5000 })
+        if (res.token) {
+          localStorage.setItem('brandflux_token', res.token)
+          sessionStorage.setItem('brandflux_token', res.token)
+          Cookies.set('brandflux_token', res.token, { expires: 7 })
+        }
+        setTimeout(() => {
+          router.push('/payment')
+        }, 1500)
       }
     } catch (err: any) {
       setErrorMessage(err.response?.data?.detail || 'Invalid or expired verification link.')
@@ -150,16 +158,24 @@ function VerifyContent() {
               <p className="text-sm text-muted">
                 {isApproved 
                   ? 'Your account is activated. Redirecting you to your workspace...'
-                  : 'Your email has been confirmed! New accounts remain locked until reviewed and approved by an administrator. You will gain access as soon as your account is approved.'}
+                  : 'Your email has been confirmed! Complete your bank transfer payment below to submit your receipt for instant admin approval.'}
               </p>
-              <div className="pt-4 flex justify-center">
+              <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link
-                  href={isApproved ? '/dashboard' : '/login'}
-                  className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition flex items-center gap-2"
+                  href={isApproved ? '/dashboard' : '/payment'}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-primary/25"
                 >
-                  <span>{isApproved ? 'Continue to Brandflux' : 'Return to Login'}</span>
+                  <span>{isApproved ? 'Continue to Brandflux' : 'Proceed to Bank Payment'}</span>
                   <ArrowRight className="h-4 w-4" />
                 </Link>
+                {!isApproved && (
+                  <Link
+                    href="/login"
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-surface border border-border text-muted hover:text-text text-xs font-bold transition text-center"
+                  >
+                    Return to Login
+                  </Link>
+                )}
               </div>
             </div>
           ) : isVerifying ? (

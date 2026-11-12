@@ -852,3 +852,34 @@ class PostApproval(Base):
     approver = relationship("User", foreign_keys=[approver_id])
 
 
+# ═══════════════════════════════════════════════════════════
+# PAYMENT REQUEST — Manual Bank Transfer Submissions
+# ═══════════════════════════════════════════════════════════
+class PaymentRequest(Base):
+    __tablename__ = "payment_requests"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_email = Column(String(255), nullable=False)
+    user_name = Column(String(255), nullable=True)
+    plan_id = Column(String(50), nullable=False, default="starter")
+    amount = Column(Float, nullable=False, default=0.0)
+    currency = Column(String(10), default="USD", nullable=False)
+    billing_cycle = Column(String(20), default="monthly", nullable=False)
+    bank_name = Column(String(100), nullable=True)
+    sender_account_name = Column(String(255), nullable=True)
+    sender_account_number = Column(String(100), nullable=True)
+    transaction_reference = Column(String(100), nullable=True, index=True)
+    proof_image_url = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    status = Column(String(50), default="pending", nullable=False, index=True)  # pending | approved | rejected
+    admin_notes = Column(Text, nullable=True)
+    reviewed_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now(), index=True)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    user = relationship("User", foreign_keys=[user_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by_id])
+
+

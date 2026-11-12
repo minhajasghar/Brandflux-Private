@@ -8,6 +8,7 @@ from database import SessionLocal
 from models.models import EmailLog, User
 from services.email.dev_provider import DevEmailProvider
 from services.email.resend_provider import ResendEmailProvider
+from services.email.smtp_provider import SMTPEmailProvider, get_active_smtp_config
 from services.email.templates import render_template, extract_links
 from services.notification_service import create_notification
 
@@ -16,9 +17,27 @@ logger = logging.getLogger("email.service")
 # Map provider instances
 _DEV_PROVIDER = DevEmailProvider()
 _RESEND_PROVIDER = ResendEmailProvider()
+_SMTP_PROVIDER = SMTPEmailProvider()
 
 def get_email_provider():
-    provider_name = os.getenv("EMAIL_PROVIDER", EMAIL_PROVIDER or "dev").strip().lower()
+    # 1. Check if configured in DB system_settings
+    try:
+        from models.models import SystemSetting
+        db = SessionLocal()
+        s = db.query(SystemSetting).filter(SystemSetting.key == "email_provider").first()
+        db.close()
+        if s and s.value:
+            p = str(s.value).strip().lower()
+            if p == "smtp": return _SMTP_PROVIDER
+            if p == "resend": return _RESEND_PROVIDER
+            if p == "dev": return _DEV_PROVIDER
+    except Exception:
+        pass
+
+    # 2. Check environment variable
+    provider_name = os.getenv("EMAIL_PROVIDER", EMAIL_PROVIDER or "smtp").strip().lower()
+    if provider_name == "smtp":
+        return _SMTP_PROVIDER
     if provider_name == "resend":
         return _RESEND_PROVIDER
     return _DEV_PROVIDER
@@ -74,9 +93,14 @@ async def send_email(
         subject, full_html, plain_text = render_template(template, data)
         parsed_links = extract_links(full_html)
 
-        # 4. Dispatch to Provider (Dev or Resend)
+        # 4. Dispatch to Provider (SMTP, Resend, or Dev)
         provider = get_email_provider()
-        provider_name = "resend" if isinstance(provider, ResendEmailProvider) else "dev"
+        if isinstance(provider, SMTPEmailProvider):
+            provider_name = "smtp"
+        elif isinstance(provider, ResendEmailProvider):
+            provider_name = "resend"
+        else:
+            provider_name = "dev"
         result = await provider.send(
             recipient=to,
             subject=subject,

@@ -924,5 +924,102 @@ export async function removeApproverMember(memberId: string, brandId?: string) {
   return response.data
 }
 
+// ─── Bank Transfer & Payment Proofs ────────────────────────────────────────
+
+export async function getBankDetails() {
+  const response = await api.get('/billing/bank-details')
+  return response.data
+}
+
+export async function submitPaymentRequest(payload: {
+  plan_id: string
+  billing_cycle?: string
+  bank_name?: string
+  sender_account_name: string
+  sender_account_number?: string
+  transaction_reference: string
+  proof_image_url?: string
+  notes?: string
+}) {
+  const response = await api.post('/billing/payment-request', payload)
+  return response.data
+}
+
+export async function getMyPaymentRequest() {
+  const response = await api.get('/billing/my-payment-request')
+  return response.data
+}
+
+export async function getAvailablePlans() {
+  const response = await api.get('/billing/plans')
+  return response.data
+}
+
+// ─── Admin Bank, SMTP & Payment Approvals ──────────────────────────────────
+
+export async function getAdminBankDetails() {
+  const response = await api.get('/admin/bank-details')
+  return response.data
+}
+
+export async function updateAdminBankDetails(data: any) {
+  const response = await api.put('/admin/bank-details', data)
+  return response.data
+}
+
+export async function getAdminSMTPSettings() {
+  const response = await api.get('/admin/smtp-settings')
+  return response.data
+}
+
+export async function updateAdminSMTPSettings(data: any) {
+  const response = await api.put('/admin/smtp-settings', data)
+  return response.data
+}
+
+export async function testAdminSMTPEmail(recipient: string) {
+  const response = await api.post('/admin/smtp-settings/test', { recipient })
+  return response.data
+}
+
+export async function getAdminPaymentRequests(status?: string, search?: string, limit: number = 50, offset: number = 0) {
+  const response = await api.get('/admin/payment-requests', {
+    params: {
+      status_filter: status,
+      search,
+      limit,
+      offset
+    }
+  })
+  return response.data
+}
+
+export async function adminApprovePayment(paymentId: string, adminNotes?: string) {
+  const response = await api.post(`/admin/payment-requests/${paymentId}/approve`, {
+    admin_notes: adminNotes
+  })
+  return response.data
+}
+
+export async function adminRejectPayment(paymentId: string, reason: string) {
+  const response = await api.post(`/admin/payment-requests/${paymentId}/reject`, {
+    reason
+  })
+  return response.data
+}
+
+export async function adminCreateFreeUser(payload: {
+  full_name: string
+  email: string
+  password: string
+  website_url?: string
+  business_type?: string
+  plan?: string
+  is_non_payment?: boolean
+}) {
+  const response = await api.post('/admin/users/create-free-account', payload)
+  return response.data
+}
+
 export { api }
 export default api

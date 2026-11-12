@@ -141,12 +141,12 @@ export default function PricingPage() {
     }
 
     if (plan.id === 'trial') {
-      toast.success('You have active access to the trial!')
       router.push('/dashboard')
       return
     }
 
-    setSelectedPlanModal(plan)
+    // Direct user to secure bank transfer payment page
+    router.push(`/payment?plan=${plan.id}&cycle=${billingCycle}`)
   }
 
   const handleConfirmUpgradeRequest = async () => {

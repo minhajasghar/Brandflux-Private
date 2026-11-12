@@ -25,6 +25,7 @@ import {
   deleteScheduledPost,
   uploadBrandLogo
 } from '@/lib/api'
+import { SocialIcon } from '@/components/shared/SocialIcons'
 
 interface ScheduledPost {
   id: string
@@ -711,7 +712,7 @@ export default function CalendarPage() {
                               <div className="flex items-center justify-between gap-1">
                                 <span className="flex items-center gap-1 text-[11px] font-bold text-text truncate">
                                   <GripVertical className="h-3 w-3 text-muted/60 shrink-0" />
-                                  <span>{platformCfg.icon}</span>
+                                  <SocialIcon platform={platformCfg.id} className="h-3.5 w-3.5 shrink-0 inline-block" />
                                   <span className="truncate">{platformCfg.label}</span>
                                 </span>
 
@@ -838,7 +839,7 @@ export default function CalendarPage() {
                             <div className="flex items-center justify-between gap-1">
                               <span className="text-xs font-bold text-text flex items-center gap-1 truncate">
                                 <GripVertical className="h-3 w-3 text-muted/60 shrink-0" />
-                                <span>{platformCfg.icon}</span>
+                                <SocialIcon platform={platformCfg.id} className="h-3.5 w-3.5 shrink-0 inline-block" />
                                 <span className="truncate">{platformCfg.label}</span>
                               </span>
                               <span
@@ -1042,15 +1043,15 @@ export default function CalendarPage() {
                         />
                       </div>
                     ) : (
-                      <div className="h-14 w-14 rounded-xl bg-surface border border-border flex items-center justify-center text-xl shrink-0">
-                        {platformCfg.icon}
+                      <div className="h-14 w-14 rounded-xl bg-surface border border-border flex items-center justify-center shrink-0">
+                        <SocialIcon platform={platformCfg.id} className="h-6 w-6" />
                       </div>
                     )}
 
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-extrabold text-text flex items-center gap-1.5">
-                          <span>{platformCfg.icon}</span>
+                          <SocialIcon platform={platformCfg.id} className="h-4 w-4 shrink-0" />
                           <span className="truncate">{platformCfg.label}</span>
                         </span>
                         <span
@@ -1208,7 +1209,7 @@ export default function CalendarPage() {
                                 : 'bg-surface-secondary border-border text-muted hover:text-text hover:bg-surface-hover'
                             }`}
                           >
-                            <span className="text-base">{p.icon}</span>
+                            <SocialIcon platform={p.id} className="h-4 w-4 shrink-0" />
                             <span className="text-xs font-bold truncate">{p.label}</span>
                           </button>
                         )

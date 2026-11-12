@@ -8,19 +8,19 @@ import TeamTab from '@/components/settings/TeamTab'
 
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { 
-  User, 
-  Palette, 
-  Share2, 
-  CreditCard, 
-  RefreshCw, 
-  Upload, 
-  Plus, 
-  Trash2, 
-  Sparkles, 
-  Save, 
-  Key, 
-  Globe, 
+import {
+  User,
+  Palette,
+  Share2,
+  CreditCard,
+  RefreshCw,
+  Upload,
+  Plus,
+  Trash2,
+  Sparkles,
+  Save,
+  Key,
+  Globe,
   Image as ImageIcon,
   AlertTriangle,
   CheckCircle2,
@@ -36,11 +36,11 @@ import {
   Clock,
   Users
 } from 'lucide-react'
-import { 
-  getProfile, 
-  getBrandKit, 
-  updateBrandKit, 
-  uploadBrandLogo, 
+import {
+  getProfile,
+  getBrandKit,
+  updateBrandKit,
+  uploadBrandLogo,
   rescanBrand,
   updateBrandWebsite,
   getConnectedSocialAccounts,
@@ -790,11 +790,10 @@ export default function SettingsPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as TabType)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap ${
-                isActive
-                  ? 'bg-accent text-black shadow-sm font-extrabold'
-                  : 'text-muted hover:text-text hover:bg-surface-secondary'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap ${isActive
+                ? 'bg-accent text-black shadow-sm font-extrabold'
+                : 'text-muted hover:text-text hover:bg-surface-secondary'
+                }`}
             >
               <Icon className={`h-4 w-4 ${isActive ? 'text-black' : 'text-primary-light'}`} />
               <span>{tab.label}</span>
@@ -889,8 +888,8 @@ export default function SettingsPage() {
                 {/* Color Swatches Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {brandKit.colors.map((hex, idx) => (
-                    <div 
-                      key={idx} 
+                    <div
+                      key={idx}
                       className="p-3 rounded-xl bg-surface-secondary border border-border flex flex-col gap-2.5 relative group"
                     >
                       {/* Top badge */}
@@ -911,12 +910,11 @@ export default function SettingsPage() {
 
                       {/* Color Preview & Native Picker */}
                       <div className="flex items-center gap-3">
-                        <div 
-                          className={`relative h-10 w-10 rounded-lg overflow-hidden shrink-0 shadow-inner transition ${
-                            isDarkHex(hex) 
-                              ? 'border border-white/30 ring-1 ring-white/15' 
-                              : 'border border-black/25 ring-1 ring-black/10'
-                          }`}
+                        <div
+                          className={`relative h-10 w-10 rounded-lg overflow-hidden shrink-0 shadow-inner transition ${isDarkHex(hex)
+                            ? 'border border-white/30 ring-1 ring-white/15'
+                            : 'border border-black/25 ring-1 ring-black/10'
+                            }`}
                         >
                           <input
                             type="color"
@@ -924,7 +922,7 @@ export default function SettingsPage() {
                             onChange={(e) => handleColorChange(idx, e.target.value)}
                             className="absolute -inset-2 w-14 h-14 cursor-pointer opacity-0"
                           />
-                          <div 
+                          <div
                             className="w-full h-full border border-white/10"
                             style={{ backgroundColor: hex }}
                           />
@@ -946,9 +944,9 @@ export default function SettingsPage() {
                   <span className="text-[11px] font-bold text-muted block mb-2 uppercase tracking-wider">Palette Balance Preview</span>
                   <div className="h-4 w-full rounded-full overflow-hidden flex border border-border shadow-sm">
                     {brandKit.colors.map((c, i) => (
-                      <div 
-                        key={i} 
-                        style={{ backgroundColor: c, width: `${100 / brandKit.colors.length}%` }} 
+                      <div
+                        key={i}
+                        style={{ backgroundColor: c, width: `${100 / brandKit.colors.length}%` }}
                         className="h-full"
                         title={c}
                       />
@@ -979,13 +977,13 @@ export default function SettingsPage() {
                           Watermark Default
                         </span>
                       </div>
-                      
+
                       <div className="h-28 w-full rounded-lg bg-surface border border-dashed border-border flex items-center justify-center p-3 overflow-hidden">
                         {brandKit.logo_url ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
-                          <img 
-                            src={brandKit.logo_url} 
-                            alt="Primary Brand Logo" 
+                          <img
+                            src={brandKit.logo_url}
+                            alt="Primary Brand Logo"
                             className="max-h-full max-w-full object-contain"
                           />
                         ) : (
@@ -997,10 +995,10 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <input 
-                      type="file" 
-                      ref={primaryLogoInputRef} 
-                      className="hidden" 
+                    <input
+                      type="file"
+                      ref={primaryLogoInputRef}
+                      className="hidden"
                       accept="image/*"
                       onChange={(e) => handleLogoUpload(e, 'primary')}
                     />
@@ -1023,13 +1021,13 @@ export default function SettingsPage() {
                           Dark Canvas Variant
                         </span>
                       </div>
-                      
+
                       <div className="h-28 w-full rounded-lg bg-surface border border-dashed border-border flex items-center justify-center p-3 overflow-hidden">
                         {brandKit.clean_logo_url ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
-                          <img 
-                            src={brandKit.clean_logo_url} 
-                            alt="Alternate Clean Logo" 
+                          <img
+                            src={brandKit.clean_logo_url}
+                            alt="Alternate Clean Logo"
                             className="max-h-full max-w-full object-contain"
                           />
                         ) : (
@@ -1041,10 +1039,10 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <input 
-                      type="file" 
-                      ref={altLogoInputRef} 
-                      className="hidden" 
+                    <input
+                      type="file"
+                      ref={altLogoInputRef}
+                      className="hidden"
                       accept="image/*"
                       onChange={(e) => handleLogoUpload(e, 'alt')}
                     />
@@ -1068,7 +1066,7 @@ export default function SettingsPage() {
                     Brand Voice, Tone &amp; Content Pillars
                   </h3>
                   <p className="text-xs text-muted mt-0.5">
-                    Brandflux AI reads directly from these guidelines to preserve your authentic tone across all channels.
+                    Gemini content generation reads directly from these guidelines to preserve your authentic tone across all channels.
                   </p>
                 </div>
 
@@ -1111,11 +1109,10 @@ export default function SettingsPage() {
                           key={preset}
                           type="button"
                           onClick={() => setBrandKit(prev => ({ ...prev, brand_tone: preset }))}
-                          className={`text-xs px-2.5 py-1 rounded-lg border transition ${
-                            brandKit.brand_tone.toLowerCase().includes(preset.toLowerCase())
-                              ? 'bg-primary/20 border-primary text-primary-light font-bold'
-                              : 'bg-surface-secondary border-border text-muted hover:text-text'
-                          }`}
+                          className={`text-xs px-2.5 py-1 rounded-lg border transition ${brandKit.brand_tone.toLowerCase().includes(preset.toLowerCase())
+                            ? 'bg-primary/20 border-primary text-primary-light font-bold'
+                            : 'bg-surface-secondary border-border text-muted hover:text-text'
+                            }`}
                         >
                           {preset}
                         </button>
@@ -1140,13 +1137,13 @@ export default function SettingsPage() {
                     <label className="text-xs font-bold text-muted uppercase tracking-wider">Voice Keywords</label>
                     <div className="p-2.5 rounded-xl bg-surface-secondary border border-border flex flex-wrap items-center gap-2">
                       {brandKit.brand_keywords.map((kw, i) => (
-                        <span 
-                          key={i} 
+                        <span
+                          key={i}
                           className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-primary/30 text-xs font-bold text-primary-light"
                         >
                           <span>{kw}</span>
-                          <button 
-                            onClick={() => handleRemoveKeyword(kw)} 
+                          <button
+                            onClick={() => handleRemoveKeyword(kw)}
                             className="hover:text-danger transition"
                           >
                             &times;
@@ -1169,13 +1166,13 @@ export default function SettingsPage() {
                     <label className="text-xs font-bold text-muted uppercase tracking-wider">Content Pillars (Themes)</label>
                     <div className="p-2.5 rounded-xl bg-surface-secondary border border-border flex flex-wrap items-center gap-2">
                       {brandKit.content_themes.map((pillar, i) => (
-                        <span 
-                          key={i} 
+                        <span
+                          key={i}
                           className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-accent/40 text-xs font-bold text-accent"
                         >
                           <span>{pillar}</span>
-                          <button 
-                            onClick={() => handleRemoveTheme(pillar)} 
+                          <button
+                            onClick={() => handleRemoveTheme(pillar)}
                             className="hover:text-danger transition text-text"
                           >
                             &times;
@@ -1423,11 +1420,10 @@ export default function SettingsPage() {
             >
               {/* Trial Status Banner */}
               {billingStatus?.is_trial && (
-                <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                  billingStatus?.trial_is_expired 
-                    ? 'bg-danger/10 border-danger/30' 
-                    : 'bg-accent/10 border-accent/30'
-                }`}>
+                <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${billingStatus?.trial_is_expired
+                  ? 'bg-danger/10 border-danger/30'
+                  : 'bg-accent/10 border-accent/30'
+                  }`}>
                   <div className="flex items-start gap-3">
                     <Sparkles className={`h-5 w-5 shrink-0 mt-0.5 ${billingStatus?.trial_is_expired ? 'text-danger' : 'text-accent'}`} />
                     <div>
@@ -1528,13 +1524,12 @@ export default function SettingsPage() {
                     </span>
                   </div>
                   <div className="h-3 w-full rounded-full bg-surface-secondary overflow-hidden border border-border">
-                    <div 
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        billingCredits?.is_zero_balance ? 'bg-danger' : billingCredits?.is_low_balance ? 'bg-amber-400' : 'bg-accent'
-                      }`}
-                      style={{ 
-                        width: `${Math.min(100, Math.round(((billingCredits?.used_this_period ?? 0) / (billingCredits?.quota || 30)) * 100))}%` 
-                      }} 
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${billingCredits?.is_zero_balance ? 'bg-danger' : billingCredits?.is_low_balance ? 'bg-amber-400' : 'bg-accent'
+                        }`}
+                      style={{
+                        width: `${Math.min(100, Math.round(((billingCredits?.used_this_period ?? 0) / (billingCredits?.quota || 30)) * 100))}%`
+                      }}
                     />
                   </div>
                   <p className="text-[11px] text-muted">

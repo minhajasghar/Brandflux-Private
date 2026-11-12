@@ -80,8 +80,12 @@ import {
 } from '@/lib/api'
 import AdminEmailsTab from '@/components/admin/AdminEmailsTab'
 import AdminIntegrationsTab from '@/components/admin/AdminIntegrationsTab'
+import AdminPaymentApprovalsTab from '@/components/admin/AdminPaymentApprovalsTab'
+import AdminBankDetailsTab from '@/components/admin/AdminBankDetailsTab'
+import AdminSMTPSettingsTab from '@/components/admin/AdminSMTPSettingsTab'
+import AdminCreateUserModal from '@/components/admin/AdminCreateUserModal'
 
-type AdminTab = 'overview' | 'integrations' | 'users' | 'emails' | 'usage' | 'credentials' | 'scans' | 'publishing' | 'plans' | 'audit' | 'health' | 'admins'
+type AdminTab = 'overview' | 'approvals' | 'users' | 'bank' | 'smtp' | 'emails' | 'plans' | 'integrations' | 'usage' | 'credentials' | 'audit' | 'health' | 'admins'
 
 function AdminPortalContent() {
   const searchParams = useSearchParams()
@@ -122,6 +126,7 @@ function AdminPortalContent() {
   const [selectedNewPlan, setSelectedNewPlan] = useState('starter')
   const [newPostsLimit, setNewPostsLimit] = useState(0)
   const [actionSubmitting, setActionSubmitting] = useState(false)
+  const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false)
 
   // ─── 3. Usage & Feature Flags State ─────────────────────────────────────────
   const [usageReport, setUsageReport] = useState<any>(null)
@@ -194,8 +199,6 @@ function AdminPortalContent() {
     if (activeTab === 'users') fetchUsers()
     else if (activeTab === 'usage') { fetchUsageReport(); fetchFlags() }
     else if (activeTab === 'credentials') fetchAICredentials()
-    else if (activeTab === 'scans') fetchScans()
-    else if (activeTab === 'publishing') fetchPublishingMonitor()
     else if (activeTab === 'plans') fetchPlans()
     else if (activeTab === 'audit') fetchAuditLogs()
     else if (activeTab === 'health') fetchHealth()
@@ -683,16 +686,15 @@ function AdminPortalContent() {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  setStatusFilter('pending_approval')
-                  setActiveTab('users')
-                }}
-                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs transition flex items-center gap-1.5 shrink-0 self-start sm:self-auto shadow-sm"
-              >
-                <span>Review & Approve ({overviewData.pending_approvals_count})</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setActiveTab('approvals')}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs transition flex items-center gap-1.5 shadow-sm"
+                >
+                  <span>Review Payment Approvals ({overviewData.pending_approvals_count})</span>
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           )}
 
@@ -841,6 +843,15 @@ function AdminPortalContent() {
                 title="Refresh users"
               >
                 <RefreshCw className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsCreateUserModalOpen(true)}
+                className="px-3.5 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm whitespace-nowrap"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Create Free Account</span>
               </button>
             </div>
           </div>
@@ -1428,147 +1439,14 @@ function AdminPortalContent() {
         </div>
       )}
 
-      {/* ─── TAB 4: SCAN LOGS & DEBUG TOOL ─── */}
-      {activeTab === 'scans' && (
-        <div className="space-y-6">
-          {/* Debug Scanner Tool (Does NOT create or modify brands) */}
-          <div className="p-6 rounded-3xl bg-surface border border-border shadow-xl space-y-4">
-            <div>
-              <h3 className="text-sm font-extrabold text-text flex items-center gap-2">
-                <Radar className="h-4 w-4 text-primary-light" />
-                <span>Test Scanner Debug Tool</span>
-              </h3>
-              <p className="text-xs text-muted mt-0.5">
-                Run the layered website scraper in an isolated sandbox. Does NOT create or alter any customer brand profile.
-              </p>
-            </div>
+      {/* ─── TAB: PAYMENT APPROVALS ─── */}
+      {activeTab === 'approvals' && <AdminPaymentApprovalsTab />}
 
-            <form onSubmit={handleRunDebugScan} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="https://example.com"
-                value={debugUrl}
-                onChange={e => setDebugUrl(e.target.value)}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-surface-secondary border border-border text-xs text-text focus:outline-none focus:border-primary"
-              />
-              <button
-                type="submit"
-                disabled={runningDebugScan}
-                className="px-5 py-2.5 bg-accent hover:bg-accent-hover text-black font-extrabold text-xs rounded-xl transition flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <Play className="h-3.5 w-3.5" />
-                <span>{runningDebugScan ? 'Analyzing...' : 'Test Scan'}</span>
-              </button>
-            </form>
+      {/* ─── TAB: BANK TRANSFER DETAILS ─── */}
+      {activeTab === 'bank' && <AdminBankDetailsTab />}
 
-            {debugResult && (
-              <div className="p-4 rounded-2xl bg-surface-secondary border border-border space-y-3 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-text">{debugResult.website_url}</span>
-                  <span className="text-muted font-mono">{debugResult.color_palette?.extraction_method}</span>
-                </div>
-                {debugResult.color_palette && (
-                  <div className="flex items-center gap-3">
-                    {debugResult.color_palette.colors?.map((c: string, idx: number) => (
-                      <div key={idx} className="flex items-center gap-1.5">
-                        <span className="h-4 w-4 rounded-full border border-white/20" style={{ backgroundColor: c }} />
-                        <span className="font-mono text-[11px] text-muted">{c}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Cross-User Website Scans Table */}
-          <div className="p-4 sm:p-6 rounded-3xl bg-surface border border-border shadow-xl overflow-x-auto space-y-3">
-            <h3 className="text-sm font-extrabold text-text">All Customer Website Scans ({totalScans})</h3>
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-border text-muted uppercase text-[10px] tracking-wider font-extrabold">
-                  <th className="py-3 px-3">User</th>
-                  <th className="py-3 px-3">URL</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Detected Colors</th>
-                  <th className="py-3 px-3">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {scans.map(s => (
-                  <tr key={s.id} className="hover:bg-surface-secondary/50 transition">
-                    <td className="py-3 px-3 font-bold text-text">{s.user_email}</td>
-                    <td className="py-3 px-3 text-muted truncate max-w-xs">{s.website_url}</td>
-                    <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        {s.scan_status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-1.5">
-                        {(s.detected_colors || []).slice(0, 4).map((c: string, idx: number) => (
-                          <span key={idx} className="h-3 w-3 rounded-full border border-white/20" style={{ backgroundColor: c }} />
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-muted">
-                      {s.scanned_at ? new Date(s.scanned_at).toLocaleString() : 'N/A'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ─── TAB 5: PUBLISHING MONITOR ─── */}
-      {activeTab === 'publishing' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
-              <span className="text-xs font-bold text-muted uppercase">Queue Health</span>
-              <p className="text-2xl font-black text-emerald-400 uppercase mt-1">{publishingData?.queue_health || 'Operational'}</p>
-            </div>
-            <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
-              <span className="text-xs font-bold text-muted uppercase">Scheduled (7d)</span>
-              <p className="text-2xl font-black text-text mt-1">{publishingData?.total_scheduled_7d || 0}</p>
-            </div>
-            <div className="p-5 rounded-2xl bg-surface border border-border shadow-sm">
-              <span className="text-xs font-bold text-muted uppercase">7-Day Failure Rate</span>
-              <p className="text-2xl font-black text-danger mt-1">{publishingData?.failure_rate || '0%'}</p>
-            </div>
-          </div>
-
-          {/* Failed Posts List */}
-          <div className="p-6 rounded-3xl bg-surface border border-border shadow-xl space-y-4">
-            <h3 className="text-sm font-extrabold text-text">Failed Scheduled Posts (Sanitized)</h3>
-            {(publishingData?.failed_posts || []).length === 0 ? (
-              <p className="text-xs text-muted py-4">No failed publishing jobs recorded.</p>
-            ) : (
-              <div className="space-y-2">
-                {publishingData.failed_posts.map((fp: any) => (
-                  <div key={fp.id} className="p-3.5 rounded-2xl bg-surface-secondary border border-border flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-bold text-text flex items-center gap-2">
-                        <span>{fp.platform}</span>
-                        <span className="text-muted font-normal">({fp.user_email})</span>
-                      </div>
-                      <p className="text-danger text-[11px] mt-0.5">{fp.error}</p>
-                    </div>
-                    <button
-                      onClick={() => handleRetryPublishingPost(fp.id)}
-                      className="px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-black font-extrabold text-xs transition"
-                    >
-                      Retry Post
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ─── TAB: SMTP CONFIGURATION & TEST ─── */}
+      {activeTab === 'smtp' && <AdminSMTPSettingsTab onNavigateToEmails={() => setActiveTab('emails')} />}
 
       {/* ─── TAB 6: PLANS & LIMITS EDITOR ─── */}
       {activeTab === 'plans' && (
@@ -2317,6 +2195,13 @@ function AdminPortalContent() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Admin Create Free Account Modal */}
+      <AdminCreateUserModal
+        isOpen={isCreateUserModalOpen}
+        onClose={() => setIsCreateUserModalOpen(false)}
+        onSuccess={fetchUsers}
+      />
     </div>
   )
 }

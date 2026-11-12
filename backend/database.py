@@ -49,9 +49,11 @@ def get_db():
 
 
 def upgrade_database_schema(db_engine):
-    """Ensure newly introduced columns exist in the active database engine."""
+    """Ensure newly introduced columns and tables exist in the active database engine."""
     from sqlalchemy import inspect, text
     try:
+        # Create any newly defined tables (e.g. payment_requests)
+        Base.metadata.create_all(bind=db_engine)
         inspector = inspect(db_engine)
         tables = inspector.get_table_names()
         if "users" in tables:

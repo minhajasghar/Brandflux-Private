@@ -73,6 +73,12 @@ export default function PaymentPage() {
       }
       if (myPaymentRes?.has_payment && myPaymentRes.payment) {
         setExistingPayment(myPaymentRes.payment)
+        if (myPaymentRes.payment.status === 'approved') {
+          toast.success('Your subscription is approved! Redirecting to workspace...', { duration: 4000, icon: '🎉' })
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 2000)
+        }
       }
     } catch (err) {
       console.error('Error loading payment data:', err)

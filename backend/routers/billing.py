@@ -2,7 +2,7 @@
 Billing and Post Credits API Router for Brandflux.
 Manages subscription plans, real-time quota status, manual upgrades, and credit packs.
 """
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response, Query
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -362,18 +362,21 @@ def get_my_latest_payment_request(
 
 @router.get("/payment-requests/{payment_id}/receipt-pdf")
 def download_payment_receipt_pdf(
+    request: Request,
     payment_id: str,
     token: Optional[str] = Query(None),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
     db: Session = Depends(get_db)
 ):
     """Generate and download official PDF receipt for a payment request."""
-    # Resolve token from either Bearer header or query parameter
+    # Resolve token from either Bearer header, query parameter, or browser cookie
     jwt_raw = None
     if credentials and credentials.credentials:
         jwt_raw = credentials.credentials
     elif token:
         jwt_raw = token.strip()
+    elif request.cookies.get("brandflux_token"):
+        jwt_raw = request.cookies.get("brandflux_token").strip()
 
     if not jwt_raw:
         raise HTTPException(status_code=401, detail="Authentication token required to download receipt.")

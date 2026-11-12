@@ -423,6 +423,66 @@ async def resubmit_post_endpoint(
     return {"status": "success", "message": "Post resubmitted for approval.", "version": version.version_number}
 
 
+@router.post("/{post_id}/publish-now")
+async def publish_approved_post_now(
+    post_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Publish an approved post immediately to all connected platforms."""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    brand = db.query(Brand).filter(Brand.id == post.brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    user_role = get_user_brand_role(user, brand.id, db)
+    if not user_role:
+        raise HTTPException(status_code=403, detail="You do not have access to this brand.")
+
+    # Find all platform copies for this post
+    copies = db.query(PlatformCopy).filter(PlatformCopy.post_id == post.id).all()
+    if not copies:
+        raise HTTPException(status_code=400, detail="No platform copies found for this post.")
+
+    from routers.content import publish_platform_copy
+    results = []
+    errors = []
+    skipped_disconnected = []
+
+    for copy in copies:
+        try:
+            res = await publish_platform_copy(copy_id=copy.id, force=True, user=user, db=db)
+            results.append(res)
+        except HTTPException as he:
+            detail = he.detail if isinstance(he.detail, dict) else {"message": str(he.detail)}
+            plat = (detail.get("platform") or copy.platform or "unknown").capitalize()
+            if detail.get("status") == "needs_reconnect" or "not connected" in str(detail.get("message", "")).lower() or detail.get("error_code") == "ACCOUNT_DISCONNECTED":
+                if plat not in skipped_disconnected:
+                    skipped_disconnected.append(plat)
+            errors.append({"platform": copy.platform, **detail})
+        except Exception as e:
+            errors.append({"platform": copy.platform, "message": str(e), "status": "failed"})
+
+    published_platforms = [r.get("platform", "").capitalize() for r in results if r.get("platform")]
+
+    # Mark post status as published if at least one succeeded
+    if published_platforms:
+        post.status = "published"
+        db.commit()
+
+    return {
+        "success": len(results) > 0 or len(skipped_disconnected) > 0,
+        "published_count": len(results),
+        "published_platforms": published_platforms,
+        "skipped_disconnected": skipped_disconnected,
+        "results": results,
+        "errors": errors
+    }
+
+
 # ─── Approver Accounts Management from Approvals Section ────────────────────
 
 class CreateApproverAccountRequest(BaseModel):

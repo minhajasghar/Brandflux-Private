@@ -14,9 +14,10 @@ import {
   Loader2, 
   Bookmark, 
   ArrowRight,
-  RotateCcw
+  RotateCcw,
+  ShieldCheck
 } from 'lucide-react'
-import api from '@/lib/api'
+import api, { submitPostForApproval } from '@/lib/api'
 import { toast } from 'react-hot-toast'
 import CopyButton from '@/components/ui/CopyButton'
 import Skeleton from '@/components/ui/Skeleton'
@@ -101,6 +102,7 @@ export default function IdeasPage() {
   const [savingPost, setSavingPost] = useState<{ content_id: string; platform: string; default_title: string } | null>(null)
   const [templateName, setTemplateName] = useState('')
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false)
 
   // Fetch History Items
   const fetchHistory = async (resetPage = false, currentStatus = statusFilter) => {
@@ -1310,6 +1312,29 @@ export default function IdeasPage() {
                               <p className="text-[11px] text-muted text-center font-medium">
                                 Platforms already published are skipped.
                               </p>
+
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const targetPostId = sessionDetail?.id || sessionDetail?.parent_post_id || selectedSessionId;
+                                  if (!targetPostId) return toast.error('Could not identify post ID.');
+                                  setIsSubmittingApproval(true);
+                                  try {
+                                    await submitPostForApproval(targetPostId);
+                                    toast.success('Post submitted to Approvals review queue! 🛡️');
+                                    fetchHistory(true);
+                                  } catch (e: any) {
+                                    toast.error(e.response?.data?.detail || 'Failed to submit for approval.');
+                                  } finally {
+                                    setIsSubmittingApproval(false);
+                                  }
+                                }}
+                                disabled={isSubmittingApproval}
+                                className="w-full py-2.5 px-4 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold text-xs flex items-center justify-center gap-2 transition"
+                              >
+                                {isSubmittingApproval ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 text-primary-light" />}
+                                <span>Submit Post for Team Approval</span>
+                              </button>
                             </div>
                           );
                         })()}

@@ -171,11 +171,77 @@ async def check_approval_deadlines_job():
         db.close()
 
 
+async def check_and_publish_due_posts_job():
+    """
+    Periodic job running every 30 seconds directly in AsyncIOScheduler.
+    Finds ScheduledPost records whose scheduled_at <= utcnow() and status in ('Scheduled', 'Draft')
+    and publishes them via the canonical execute_social_publish function.
+    """
+    from models.models import ScheduledPost
+    from services.publishing.publish_service import execute_social_publish
+    from datetime import datetime
+
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        due_posts = db.query(ScheduledPost).filter(
+            ScheduledPost.scheduled_at <= now,
+            ScheduledPost.status.in_(["Scheduled", "Draft"])
+        ).limit(20).all()
+
+        if not due_posts:
+            return
+
+        logger.info(f"⏰ [Publish Agent] Found {len(due_posts)} due scheduled post(s) to publish live.")
+
+        for post in due_posts:
+            # Idempotency guard
+            if post.status == "Published" and post.external_post_id:
+                continue
+
+            post.status = "Publishing"
+            db.commit()
+
+            try:
+                result = await execute_social_publish(
+                    db=db,
+                    platform=post.platform,
+                    brand_id=post.brand_id,
+                    caption=post.caption,
+                    image_url=post.media_url,
+                    platform_copy_id=post.platform_copy_id,
+                    scheduled_post_id=post.id
+                )
+                if result.success:
+                    logger.info(f"✅ [Publish Agent] Successfully published scheduled post {post.id} ({post.platform}): {result.external_post_id}")
+                else:
+                    logger.warning(f"⚠️ [Publish Agent] Failed publishing post {post.id} ({post.platform}): {result.error}")
+            except Exception as pub_err:
+                logger.error(f"❌ [Publish Agent] Error publishing post {post.id}: {pub_err}")
+                post.status = "Failed"
+                post.error = str(pub_err)
+                db.commit()
+    except Exception as e:
+        logger.error(f"❌ [Publish Agent] check_and_publish_due_posts_job error: {e}")
+    finally:
+        db.close()
+
+
 # ═══════════════════════════════════════════════════════════
 # SCHEDULER SETUP
 # ═══════════════════════════════════════════════════════════
 def start_scheduler():
     """Initialize and start the background scheduler."""
+    # Periodic check to publish due scheduled posts live (every 30 seconds)
+    scheduler.add_job(
+        check_and_publish_due_posts_job,
+        "interval",
+        seconds=30,
+        id="publish_due_scheduled_posts",
+        replace_existing=True,
+        name="Publish Due Scheduled Posts Live"
+    )
+
     # Daily questions at configured hour
     scheduler.add_job(
         generate_daily_questions,

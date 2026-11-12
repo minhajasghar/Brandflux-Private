@@ -28,9 +28,10 @@ import {
   Shield,
   Key,
   CheckCircle,
-  Lock
+  Lock,
+  Zap
 } from 'lucide-react'
-import {
+import api, {
   getApprovalsInbox,
   getApprovalPostDetail,
   approvePost,
@@ -769,6 +770,39 @@ function ApprovalsContent() {
                   >
                     <Send className="h-4 w-4" />
                     <span>Fix & Resubmit</span>
+                  </button>
+                )}
+
+                {/* Publish Live Button */}
+                {(postDetail?.permissions?.can_publish || postDetail?.post?.status === 'approved') && (
+                  <button
+                    type="button"
+                    disabled={submittingAction}
+                    onClick={async () => {
+                      if (!selectedPostId) return
+                      setSubmittingAction(true)
+                      try {
+                        const res = await api.post(`/approvals/${selectedPostId}/publish-now`)
+                        const pubPlats = res.data?.published_platforms || []
+                        const discPlats = res.data?.skipped_disconnected || []
+                        if (pubPlats.length > 0) {
+                          toast.success(`Published live to ${pubPlats.join(', ')}! 🎉`)
+                        }
+                        if (discPlats.length > 0) {
+                          toast(`${discPlats.join(', ')} not connected. Skipped safely.`, { icon: 'ℹ️' })
+                        }
+                        await fetchInbox()
+                        if (selectedPostId) fetchDetail(selectedPostId)
+                      } catch (err: any) {
+                        toast.error(err.response?.data?.detail?.message || err.response?.data?.detail || 'Publishing failed.')
+                      } finally {
+                        setSubmittingAction(false)
+                      }
+                    }}
+                    className="px-5 py-2 rounded-xl bg-accent text-black font-extrabold text-xs hover:bg-accent-hover transition shadow-accent-glow flex items-center gap-1.5"
+                  >
+                    <Zap className="h-4 w-4" />
+                    <span>Publish Live Now</span>
                   </button>
                 )}
               </div>

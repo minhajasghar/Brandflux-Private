@@ -15,10 +15,13 @@ import {
   Clock,
   Image as ImageIcon,
   GripVertical,
-  ExternalLink
+  ExternalLink,
+  Check,
+  Zap,
+  Loader2
 } from 'lucide-react'
 import Link from 'next/link'
-import {
+import api, {
   getScheduledPosts,
   createScheduledPost,
   updateScheduledPost,
@@ -167,6 +170,8 @@ export default function CalendarPage() {
 
   // Drawer Form State
   const [formPlatform, setFormPlatform] = useState('instagram_post')
+  const [selectedPlatformsForSchedule, setSelectedPlatformsForSchedule] = useState<string[]>(['instagram_post'])
+  const [isPublishingNow, setIsPublishingNow] = useState(false)
   const [formCaption, setFormCaption] = useState('')
   const [formMediaUrl, setFormMediaUrl] = useState('')
   const [formScheduledAt, setFormScheduledAt] = useState('')
@@ -413,6 +418,7 @@ export default function CalendarPage() {
     setFormCaption(post.caption || '')
     setFormMediaUrl(post.media_url || '')
     setFormStatus(post.status || 'Draft')
+    setSelectedPlatformsForSchedule([post.platform || 'instagram_post'])
 
     const d = new Date(post.scheduled_at)
     const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
@@ -427,6 +433,7 @@ export default function CalendarPage() {
     setSelectedPost(null)
     setIsCreating(true)
     setFormPlatform('instagram_post')
+    setSelectedPlatformsForSchedule(PLATFORMS.map(p => p.id))
     setFormCaption('')
     setFormMediaUrl('')
     setFormStatus('Draft')
@@ -457,15 +464,20 @@ export default function CalendarPage() {
       const scheduledUtc = new Date(formScheduledAt).toISOString()
 
       if (isCreating) {
-        const created = await createScheduledPost({
-          platform: formPlatform,
+        if (selectedPlatformsForSchedule.length === 0) {
+          toast.error('Select at least one platform to schedule.')
+          setSavingPost(false)
+          return
+        }
+        await api.post('/calendar/posts/batch', {
+          platforms: selectedPlatformsForSchedule,
           caption: formCaption,
           media_url: formMediaUrl || null,
           scheduled_at: scheduledUtc,
-          status: formStatus,
+          status: formStatus || 'Scheduled',
         })
-        setPosts(prev => [...prev, created])
-        toast.success('Post added to calendar schedule!')
+        await fetchPosts()
+        toast.success(`Scheduled across ${selectedPlatformsForSchedule.length} platform(s)!`)
       } else if (selectedPost) {
         const updated = await updateScheduledPost(selectedPost.id, {
           platform: formPlatform,
@@ -483,6 +495,35 @@ export default function CalendarPage() {
       toast.error(err.response?.data?.detail || 'Failed to save post')
     } finally {
       setSavingPost(false)
+    }
+  }
+
+  const handlePublishNow = async () => {
+    try {
+      setIsPublishingNow(true)
+      if (selectedPost) {
+        const res = await api.post(`/calendar/posts/${selectedPost.id}/publish-now`)
+        toast.success(res.data?.message || 'Published live!')
+      } else {
+        if (selectedPlatformsForSchedule.length === 0) {
+          toast.error('Please select at least one platform to publish.')
+          return
+        }
+        await api.post('/calendar/posts/batch', {
+          platforms: selectedPlatformsForSchedule,
+          caption: formCaption,
+          media_url: formMediaUrl || null,
+          scheduled_at: new Date().toISOString(),
+          status: 'Scheduled',
+        })
+        toast.success(`Publishing triggered for ${selectedPlatformsForSchedule.length} platform(s)!`)
+      }
+      await fetchPosts()
+      setIsDrawerOpen(false)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail?.message || err.response?.data?.detail || 'Publishing failed.')
+    } finally {
+      setIsPublishingNow(false)
     }
   }
 
@@ -1192,25 +1233,59 @@ export default function CalendarPage() {
 
                   {/* Platform Selection */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted uppercase tracking-wider">
-                      Target Platform
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-muted uppercase tracking-wider">
+                        Target Platforms {isCreating && `(${selectedPlatformsForSchedule.length}/${PLATFORMS.length})`}
+                      </label>
+                      {isCreating && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedPlatformsForSchedule.length === PLATFORMS.length) {
+                              setSelectedPlatformsForSchedule([])
+                            } else {
+                              setSelectedPlatformsForSchedule(PLATFORMS.map(p => p.id))
+                            }
+                          }}
+                          className="text-[11px] font-bold text-primary-light hover:underline"
+                        >
+                          {selectedPlatformsForSchedule.length === PLATFORMS.length ? 'Deselect All' : 'Select All Platforms'}
+                        </button>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       {PLATFORMS.map(p => {
-                        const isSelected = formPlatform === p.id
+                        const isSelected = isCreating
+                          ? selectedPlatformsForSchedule.includes(p.id)
+                          : formPlatform === p.id
                         return (
                           <button
                             key={p.id}
                             type="button"
-                            onClick={() => setFormPlatform(p.id)}
-                            className={`p-2.5 rounded-xl border flex items-center gap-2 transition text-left ${
+                            onClick={() => {
+                              if (isCreating) {
+                                if (selectedPlatformsForSchedule.includes(p.id)) {
+                                  setSelectedPlatformsForSchedule(selectedPlatformsForSchedule.filter(id => id !== p.id))
+                                } else {
+                                  setSelectedPlatformsForSchedule([...selectedPlatformsForSchedule, p.id])
+                                }
+                              } else {
+                                setFormPlatform(p.id)
+                              }
+                            }}
+                            className={`p-2.5 rounded-xl border flex items-center justify-between transition text-left ${
                               isSelected
                                 ? 'bg-primary/20 border-primary text-text shadow-sm'
                                 : 'bg-surface-secondary border-border text-muted hover:text-text hover:bg-surface-hover'
                             }`}
                           >
-                            <SocialIcon platform={p.id} className="h-4 w-4 shrink-0" />
-                            <span className="text-xs font-bold truncate">{p.label}</span>
+                            <div className="flex items-center gap-2 truncate">
+                              <SocialIcon platform={p.id} className="h-4 w-4 shrink-0" />
+                              <span className="text-xs font-bold truncate">{p.label}</span>
+                            </div>
+                            {isSelected && (
+                              <Check className="h-3.5 w-3.5 text-primary-light shrink-0" />
+                            )}
                           </button>
                         )
                       })}
@@ -1336,18 +1411,29 @@ export default function CalendarPage() {
                     <div />
                   )}
 
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePublishNow}
+                      disabled={isPublishingNow || savingPost}
+                      className="px-4 py-2.5 bg-accent/15 hover:bg-accent/25 border border-accent/40 text-accent font-extrabold text-xs rounded-xl transition flex items-center gap-1.5 disabled:opacity-50"
+                      title="Publish immediately live to selected platforms"
+                    >
+                      {isPublishingNow ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                      <span>{isPublishingNow ? 'Publishing...' : 'Post Now'}</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => setIsDrawerOpen(false)}
-                      className="px-4 py-2.5 rounded-xl text-xs font-bold text-muted hover:text-text hover:bg-surface-secondary transition"
+                      className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-muted hover:text-text hover:bg-surface-secondary transition"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={handleSavePost}
-                      disabled={savingPost}
+                      disabled={savingPost || isPublishingNow}
                       className="px-5 py-2.5 bg-accent hover:bg-accent-hover text-black font-extrabold text-xs rounded-xl transition duration-200 shadow-accent-glow flex items-center gap-1.5 disabled:opacity-50"
                     >
                       <Save className="h-3.5 w-3.5 text-black" />

@@ -158,6 +158,125 @@ def update_scheduled_post(
     return post
 
 
+class BatchScheduledPostCreate(BaseModel):
+    platforms: List[str]
+    caption: Optional[str] = None
+    media_url: Optional[str] = None
+    scheduled_at: datetime
+    status: Optional[str] = "Scheduled"
+    post_id: Optional[str] = None
+    platform_copy_id: Optional[str] = None
+
+
+@router.post("/posts/batch")
+def create_scheduled_posts_batch(
+    req: BatchScheduledPostCreate,
+    brand_id: Optional[str] = Query(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Schedule across multiple platforms simultaneously in one click."""
+    brand = resolve_user_brand(user, db, brand_id=brand_id)
+    if not brand:
+        brand = Brand(user_id=user.id, business_name=user.full_name or "My Brand", name=user.full_name or "My Brand")
+        db.add(brand)
+        db.commit()
+        db.refresh(brand)
+        user.active_brand_id = brand.id
+        db.commit()
+
+    if not req.platforms:
+        raise HTTPException(status_code=400, detail="Select at least one platform to schedule.")
+
+    created_posts = []
+    valid_statuses = {"Draft", "Scheduled", "Publishing", "Published", "Failed"}
+    normalized_status = req.status.capitalize() if req.status else "Scheduled"
+    if normalized_status not in valid_statuses:
+        normalized_status = "Scheduled"
+
+    for plat in req.platforms:
+        clean_plat = plat.strip().lower()
+        post = ScheduledPost(
+            id=str(uuid.uuid4()),
+            brand_id=brand.id,
+            post_id=req.post_id,
+            platform_copy_id=req.platform_copy_id,
+            platform=clean_plat,
+            caption=req.caption,
+            media_url=req.media_url,
+            scheduled_at=req.scheduled_at,
+            status=normalized_status
+        )
+        db.add(post)
+        created_posts.append(post)
+
+    db.commit()
+    for p in created_posts:
+        db.refresh(p)
+
+    return {
+        "status": "success",
+        "count": len(created_posts),
+        "posts": [
+            {
+                "id": p.id,
+                "platform": p.platform,
+                "scheduled_at": p.scheduled_at.isoformat() if p.scheduled_at else None,
+                "status": p.status
+            }
+            for p in created_posts
+        ]
+    }
+
+
+@router.post("/posts/{post_id}/publish-now")
+async def publish_scheduled_post_now(
+    post_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Immediately publish a scheduled post live without waiting."""
+    post = db.query(ScheduledPost).filter(ScheduledPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Scheduled post not found")
+
+    brand = resolve_user_brand(user, db, brand_id=post.brand_id)
+    if not brand:
+        raise HTTPException(status_code=403, detail="You do not have access to this scheduled post.")
+
+    from services.publishing.publish_service import execute_social_publish
+    post.status = "Publishing"
+    db.commit()
+
+    result = await execute_social_publish(
+        db=db,
+        platform=post.platform,
+        brand_id=post.brand_id,
+        caption=post.caption,
+        image_url=post.media_url,
+        platform_copy_id=post.platform_copy_id,
+        scheduled_post_id=post.id
+    )
+
+    if result.success:
+        return {
+            "status": "published",
+            "message": f"Successfully published live to {post.platform.capitalize()}!",
+            "external_post_id": result.external_post_id,
+            "permalink": result.permalink
+        }
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": result.error or "Publishing failed.",
+                "status": post.status,
+                "platform": post.platform,
+                "error_code": result.error_code
+            }
+        )
+
+
 @router.delete("/posts/{post_id}")
 def delete_scheduled_post(
     post_id: str,

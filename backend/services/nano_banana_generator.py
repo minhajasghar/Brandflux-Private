@@ -47,11 +47,21 @@ class NanoBananaGenerator:
 
     @property
     def model_id(self) -> str:
+        if self._model_override:
+            return self._model_override
+        try:
+            from services.admin_service import get_ai_credentials
+            creds = get_ai_credentials()
+            if creds.get("image_model"):
+                m = str(creds["image_model"]).strip()
+                return m if m.startswith("models/") else f"models/{m}"
+        except Exception:
+            pass
         return "models/gemini-nano-banana-2.1"
 
     @model_id.setter
     def model_id(self, val: str):
-        self._model_override = "models/gemini-nano-banana-2.1"
+        self._model_override = val
 
     @property
     def api_key(self) -> str:
@@ -61,7 +71,7 @@ class NanoBananaGenerator:
             from services.admin_service import get_ai_credentials
             creds = get_ai_credentials()
             if creds.get("gemini_api_key"):
-                return creds["gemini_api_key"]
+                return creds["gemini_api_key"].strip().strip('"').strip("'")
         except Exception:
             pass
         return os.getenv("GEMINI_API_KEY", GEMINI_API_KEY or "").strip().strip('"').strip("'")
@@ -203,14 +213,18 @@ class NanoBananaGenerator:
 
         self.validate_api_key()
         api_key = self.get_api_key()
+        active_model = self.get_active_model()
+        clean_model = active_model if active_model.startswith("models/") else f"models/{active_model}"
+
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": api_key
         }
+        if api_key.startswith("AQ.") or api_key.startswith("ya29."):
+            headers["Authorization"] = f"Bearer {api_key}"
 
-        # Exclusively call gemini-nano-banana-2.1 generateContent with 1K image quality
         api_aspect_ratio = aspect_ratio if aspect_ratio in ("1:1", "4:5", "9:16", "16:9") else "1:1"
-        content_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent"
+        content_url = f"https://generativelanguage.googleapis.com/v1beta/{clean_model}:generateContent?key={api_key}"
         content_payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
@@ -233,17 +247,17 @@ class NanoBananaGenerator:
                         inline = part.get("inlineData", {})
                         if inline.get("data"):
                             return base64.b64decode(inline["data"])
-                raise Exception("gemini-nano-banana-2.1 returned 200 OK but no image was found in response.")
-            elif res.status_code in (400, 402, 403, 429):
+                raise Exception(f"{clean_model} returned 200 OK but no image was found in response.")
+            elif res.status_code in (400, 401, 402, 403, 429):
                 err_text = res.text
-                if any(kw in err_text.lower() for kw in ("billing", "quota", "resource_exhausted", "permission_denied", "payment")):
+                if any(kw in err_text.lower() for kw in ("billing", "quota", "resource_exhausted", "permission_denied", "payment", "depleted")):
                     raise GeminiBillingError(
                         f"Gemini API image generation failed ({res.status_code}): Billing must be enabled on your "
-                        f"Google Cloud / AI Studio project for model 'gemini-nano-banana-2.1'. Details: {err_text}"
+                        f"Google Cloud / AI Studio project for model '{clean_model}'. Details: {err_text}"
                     )
-                raise Exception(f"gemini-nano-banana-2.1 error ({res.status_code}): {err_text}")
+                raise Exception(f"{clean_model} error ({res.status_code}): {err_text}")
             else:
-                raise Exception(f"gemini-nano-banana-2.1 returned HTTP {res.status_code}: {res.text}")
+                raise Exception(f"{clean_model} returned HTTP {res.status_code}: {res.text}")
 
     async def generate_background_with_retry(
         self,

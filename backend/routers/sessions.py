@@ -760,10 +760,11 @@ async def generate_session_variants(
         "clean_logo_url": brand.clean_logo_url
     }
 
-    # 3. Determine variant count (strictly 2 AI variants by default; 3rd only via 'Show another option')
+    # 3. Determine variant count (strictly 2 AI variants)
+    max_allowed = 2
     default_variants = 2
     requested_variants = req.variant_count if req.variant_count is not None else default_variants
-    count = min(max(requested_variants, 1), 3)  # strictly 2 by default, max 3 on request
+    count = min(max(requested_variants, 1), 2)  # strictly 2 variants
     selected_styles = VARIANT_STYLES[:count]
 
     # 4. Generate copy / captions once (shared across variants)

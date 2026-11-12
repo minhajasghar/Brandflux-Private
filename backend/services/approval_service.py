@@ -473,6 +473,23 @@ async def edit_and_approve_post(
     creator = db.query(User).filter(User.id == post.user_id).first() or db.query(User).filter(User.id == brand.user_id).first()
     if creator:
         try:
+            from services.notification_service import create_notification
+            note_text = f": \"{notes.strip()}\"" if notes and notes.strip() else "."
+            create_notification(
+                user_id=creator.id,
+                brand_id=brand.id,
+                title="Post Edited & Approved by Approver",
+                message=f"{user.full_name or user.email} made minor adjustments and approved your post{note_text}",
+                type="success",
+                action_type="open_approvals",
+                action_payload={"post_id": post.id, "notes": notes},
+                idempotency_key=f"notif_edit_appr_{post.id}_v{version.version_number}",
+                db=db
+            )
+        except Exception as notif_err:
+            logger.warning(f"Error creating edit & approved in-app notification: {notif_err}")
+
+        try:
             await send_email(
                 to=creator.email,
                 template="post_approved",
@@ -567,6 +584,27 @@ async def request_changes_post(
     # Notify creator
     creator = db.query(User).filter(User.id == post.user_id).first() or db.query(User).filter(User.id == brand.user_id).first()
     if creator:
+        try:
+            from services.notification_service import create_notification
+            chips_text = f" (Focus: {', '.join(chips)})" if chips else ""
+            create_notification(
+                user_id=creator.id,
+                brand_id=brand.id,
+                title="Approver Requested Revisions",
+                message=f"{user.full_name or user.email} requested changes: \"{comment.strip()}\"{chips_text}",
+                type="warning",
+                action_type="open_approvals",
+                action_payload={
+                    "post_id": post.id,
+                    "comment": comment.strip(),
+                    "chips": chips or []
+                },
+                idempotency_key=f"notif_chg_{post.id}_v{latest_version.version_number}",
+                db=db
+            )
+        except Exception as notif_err:
+            logger.warning(f"Error creating in-app revisions notification: {notif_err}")
+
         try:
             await send_email(
                 to=creator.email,

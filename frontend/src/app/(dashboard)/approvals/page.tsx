@@ -1196,6 +1196,17 @@ function ApprovalsContent() {
               Update your copy based on the approver&apos;s feedback. This will create a new version snapshot and alert approvers for sign-off.
             </p>
 
+            {/* Approver Feedback Box */}
+            {postDetail?.versions?.[postDetail.versions.length - 1]?.decision_notes && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>Approver&apos;s Revision Instructions:</span>
+                </div>
+                <p className="italic bg-black/30 p-2.5 rounded-lg">&ldquo;{postDetail.versions[postDetail.versions.length - 1].decision_notes}&rdquo;</p>
+              </div>
+            )}
+
             <div className="space-y-3">
               {postDetail?.platform_copies?.map((c: any) => (
                 <div key={c.platform} className="space-y-1">

@@ -25,12 +25,17 @@ export default function LoginPage() {
 
     try {
       const data = await login(formData, rememberMe)
-      if (!data.is_approved && data.role !== 'admin') {
+      const isApproverUser = Boolean(data.is_approver || data.brand_role === 'approver')
+
+      if (!data.is_approved && data.role !== 'admin' && !isApproverUser) {
         window.location.href = '/payment'
         return
       }
+
       const target = data.role === 'admin' 
         ? '/admin' 
+        : isApproverUser
+        ? '/approvals'
         : data.onboarding_complete 
         ? '/dashboard' 
         : '/onboarding'

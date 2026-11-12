@@ -109,22 +109,26 @@ export async function signup(data: any) {
 
 export async function login(data: any, rememberMe: boolean = false) {
   const response = await api.post('/auth/login', data)
-  const { token, onboarding_complete, role } = response.data
+  const { token, onboarding_complete, role, is_approver, brand_role } = response.data
   const userRole = role || 'user'
+  const isAppr = Boolean(is_approver || brand_role === 'approver')
+  const isComplete = isAppr || Boolean(onboarding_complete)
   if (typeof window !== 'undefined') {
     if (rememberMe) {
       localStorage.setItem('brandflux_token', token)
       sessionStorage.removeItem('brandflux_token')
       document.cookie = `brandflux_token=${token}; path=/; max-age=604800;`
-      document.cookie = `brandflux_onboarding_complete=${onboarding_complete ? 'true' : 'false'}; path=/; max-age=604800;`
+      document.cookie = `brandflux_onboarding_complete=${isComplete ? 'true' : 'false'}; path=/; max-age=604800;`
       document.cookie = `brandflux_user_role=${userRole}; path=/; max-age=604800;`
+      document.cookie = `brandflux_brand_role=${brand_role || (isAppr ? 'approver' : 'creator')}; path=/; max-age=604800;`
     } else {
       sessionStorage.setItem('brandflux_token', token)
       localStorage.removeItem('brandflux_token')
       // Session-only cookie (no max-age/expires)
       document.cookie = `brandflux_token=${token}; path=/;`
-      document.cookie = `brandflux_onboarding_complete=${onboarding_complete ? 'true' : 'false'}; path=/;`
+      document.cookie = `brandflux_onboarding_complete=${isComplete ? 'true' : 'false'}; path=/;`
       document.cookie = `brandflux_user_role=${userRole}; path=/;`
+      document.cookie = `brandflux_brand_role=${brand_role || (isAppr ? 'approver' : 'creator')}; path=/;`
     }
   }
   return response.data
@@ -132,9 +136,14 @@ export async function login(data: any, rememberMe: boolean = false) {
 
 export async function getProfile() {
   const response = await api.get('/auth/me')
-  if (typeof window !== 'undefined' && response.data?.user?.role) {
-    const role = response.data.user.role
+  if (typeof window !== 'undefined' && response.data?.user) {
+    const role = response.data.user.role || 'user'
+    const isAppr = Boolean(response.data.user.is_approver || response.data.brand_role === 'approver')
     document.cookie = `brandflux_user_role=${role}; path=/; max-age=604800;`
+    document.cookie = `brandflux_brand_role=${isAppr ? 'approver' : 'creator'}; path=/; max-age=604800;`
+    if (isAppr) {
+      document.cookie = `brandflux_onboarding_complete=true; path=/; max-age=604800;`
+    }
   }
   return response.data
 }

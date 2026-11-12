@@ -26,6 +26,8 @@ class AuthResponse(BaseModel):
     is_verified: Optional[bool] = False
     is_approved: Optional[bool] = False
     is_non_payment: Optional[bool] = False
+    is_approver: Optional[bool] = False
+    brand_role: Optional[str] = "creator"
     dev_mode: Optional[bool] = False
     verification_token: Optional[str] = None
 

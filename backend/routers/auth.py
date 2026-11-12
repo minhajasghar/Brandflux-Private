@@ -155,14 +155,23 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid password"
         )
 
-    # 4b. Check user approval status (unapproved users will be routed to /payment screen)
+    # 4b. Resolve brand & team role (approver vs creator vs admin)
+    from services.brand_service import resolve_user_brand, get_user_brand_role
+    brand = resolve_user_brand(user, db)
     user_role = getattr(user, "role", "user") or "user"
-    is_user_approved = bool(getattr(user, "is_approved", False) or user_role in ("admin", "support_admin"))
+    brand_role = get_user_brand_role(user, brand.id, db) if brand else "creator"
+    is_approver = (brand_role == "approver")
 
-    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
-    user_role = getattr(user, "role", "user") or "user"
-    # Admins do not need brand onboarding to access the admin portal
-    is_onboarding_complete = True if user_role == "admin" else (brand.onboarding_complete if brand else False)
+    # Approvers and admins are pre-approved and do not go through new brand onboarding
+    if is_approver:
+        is_onboarding_complete = True
+        is_user_approved = True
+    elif user_role in ("admin", "support_admin"):
+        is_onboarding_complete = True
+        is_user_approved = True
+    else:
+        is_user_approved = bool(getattr(user, "is_approved", False))
+        is_onboarding_complete = brand.onboarding_complete if brand else False
 
     # 5. Generate JWT token
     token = auth_service.create_token(user.id, token_version=getattr(user, "token_version", 1) or 1)
@@ -178,7 +187,9 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         onboarding_complete=is_onboarding_complete,
         is_verified=getattr(user, "is_verified", True),
         is_approved=is_user_approved,
-        is_non_payment=getattr(user, "is_non_payment", False)
+        is_non_payment=getattr(user, "is_non_payment", False),
+        is_approver=is_approver,
+        brand_role=brand_role
     )
 
 @router.post("/verify-email")

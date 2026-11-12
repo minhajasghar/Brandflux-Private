@@ -44,14 +44,24 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
-  // 4. If token exists but onboarding is not complete -> force onboarding (exempt payment & verify)
-  if (!isAdminRole && !onboardingComplete && pathname !== '/onboarding' && pathname !== '/payment' && pathname !== '/verify') {
+  const brandRole = request.cookies.get('brandflux_brand_role')?.value || 'creator'
+  const isApprover = brandRole === 'approver'
+
+  // 3b. Approver Boundary: Approvers land on /approvals and cannot access onboarding or generator
+  if (isApprover) {
+    if (pathname === '/onboarding' || pathname === '/session' || pathname === '/pricing' || pathname === '/dashboard') {
+      return NextResponse.redirect(new URL('/approvals', request.url))
+    }
+  }
+
+  // 4. If token exists but onboarding is not complete -> force onboarding (exempt payment & verify & approvers)
+  if (!isAdminRole && !isApprover && !onboardingComplete && pathname !== '/onboarding' && pathname !== '/payment' && pathname !== '/verify') {
     return NextResponse.redirect(new URL('/onboarding', request.url))
   }
 
   // 5. If token exists and onboarding is complete, but user tries to access onboarding -> redirect to dashboard
   if (!isAdminRole && onboardingComplete && pathname === '/onboarding') {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    return NextResponse.redirect(new URL(isApprover ? '/approvals' : '/dashboard', request.url))
   }
 
   return NextResponse.next()

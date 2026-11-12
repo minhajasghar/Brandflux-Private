@@ -26,7 +26,8 @@ import {
   getBankDetails, 
   getAvailablePlans, 
   submitPaymentRequest, 
-  getMyPaymentRequest 
+  getMyPaymentRequest,
+  downloadReceiptPdf
 } from '@/lib/api'
 
 export default function PaymentPage() {
@@ -134,9 +135,18 @@ export default function PaymentPage() {
     }
   }
 
-  const handleDownloadReceipt = () => {
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const handleDownloadReceipt = async () => {
     if (!existingPayment?.id) return
-    window.open(`/api/py/billing/payment-requests/${existingPayment.id}/receipt-pdf`, '_blank')
+    try {
+      setDownloadingPdf(true)
+      await downloadReceiptPdf(existingPayment.id)
+      toast.success('Official PDF receipt downloaded!')
+    } catch (err) {
+      toast.error('Failed to download PDF receipt. Please try again.')
+    } finally {
+      setDownloadingPdf(false)
+    }
   }
 
   const currentSelectedPlan = plans.find(p => p.id === selectedPlanId) || {

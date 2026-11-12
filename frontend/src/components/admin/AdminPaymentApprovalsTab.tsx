@@ -20,7 +20,8 @@ import { toast } from 'react-hot-toast'
 import { 
   getAdminPaymentRequests, 
   adminApprovePayment, 
-  adminRejectPayment 
+  adminRejectPayment,
+  downloadReceiptPdf
 } from '@/lib/api'
 
 export default function AdminPaymentApprovalsTab() {
@@ -99,8 +100,14 @@ export default function AdminPaymentApprovalsTab() {
     }
   }
 
-  const handleDownloadReceipt = (id: string) => {
-    window.open(`/api/py/billing/payment-requests/${id}/receipt-pdf`, '_blank')
+  const handleDownloadReceipt = async (id: string) => {
+    try {
+      toast.loading('Generating receipt...', { id: 'pdf-toast' })
+      await downloadReceiptPdf(id)
+      toast.success('Official PDF receipt downloaded!', { id: 'pdf-toast' })
+    } catch (err) {
+      toast.error('Failed to download PDF receipt.', { id: 'pdf-toast' })
+    }
   }
 
   const pendingCount = payments.filter(p => p.status === 'pending').length

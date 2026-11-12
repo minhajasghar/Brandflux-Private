@@ -1021,5 +1021,20 @@ export async function adminCreateFreeUser(payload: {
   return response.data
 }
 
+export async function downloadReceiptPdf(paymentId: string) {
+  const response = await api.get(`/billing/payment-requests/${paymentId}/receipt-pdf`, {
+    responseType: 'blob'
+  })
+  const blob = new Blob([response.data], { type: 'application/pdf' })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `Brandflux_Receipt_${paymentId.slice(0, 8).toUpperCase()}.pdf`
+  document.body.appendChild(a)
+  a.click()
+  window.URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+}
+
 export { api }
 export default api

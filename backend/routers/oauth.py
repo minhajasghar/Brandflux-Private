@@ -1,6 +1,8 @@
 import os
 import uuid
 import logging
+import hashlib
+import base64
 from datetime import datetime, timedelta
 from typing import List, Optional
 from urllib.parse import urlencode
@@ -58,6 +60,10 @@ def get_tiktok_credentials():
     redirect_uri = os.getenv("TIKTOK_REDIRECT_URI", "https://brandflux-oauth.loca.lt/oauth/tiktok/callback").strip()
     return client_key, client_secret, redirect_uri
 
+TWITTER_PKCE_VERIFIER = "brandflux_oauth2_pkce_challenge_secret_verifier_secure_key_12345678"
+_tw_digest = hashlib.sha256(TWITTER_PKCE_VERIFIER.encode("ascii")).digest()
+TWITTER_PKCE_CHALLENGE = base64.urlsafe_b64encode(_tw_digest).decode("ascii").rstrip("=")
+
 def get_twitter_credentials():
     from dotenv import load_dotenv
     env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
@@ -65,7 +71,9 @@ def get_twitter_credentials():
         load_dotenv(env_file, override=True)
     client_id = os.getenv("TWITTER_CLIENT_ID", "").strip()
     client_secret = os.getenv("TWITTER_CLIENT_SECRET", "").strip()
-    redirect_uri = os.getenv("TWITTER_REDIRECT_URI", "http://localhost:8000/oauth/twitter/callback").strip()
+    base_url = (os.getenv("APP_BASE_URL") or os.getenv("BACKEND_BASE_URL") or "").rstrip("/")
+    default_redirect = f"{base_url}/oauth/twitter/callback" if base_url else "http://localhost:8000/oauth/twitter/callback"
+    redirect_uri = os.getenv("TWITTER_REDIRECT_URI", default_redirect).strip()
     return client_id, client_secret, redirect_uri
 
 FRONTEND_SETTINGS_URL = os.getenv("FRONTEND_URL", os.getenv("APP_BASE_URL", "http://localhost:3000")).rstrip("/") + "/settings?tab=connected"
@@ -221,8 +229,8 @@ def get_authorization_url(
             "redirect_uri": tw_redirect,
             "scope": " ".join(scopes),
             "state": state,
-            "code_challenge": "challenge",
-            "code_challenge_method": "plain"
+            "code_challenge": TWITTER_PKCE_CHALLENGE,
+            "code_challenge_method": "S256"
         }
         auth_url = f"https://twitter.com/i/oauth2/authorize?{urlencode(params)}"
         return {"authorization_url": auth_url, "auth_url": auth_url, "state": state}
@@ -716,7 +724,7 @@ async def twitter_oauth_callback(
             "grant_type": "authorization_code",
             "client_id": client_id,
             "redirect_uri": redirect_uri,
-            "code_verifier": "challenge"
+            "code_verifier": TWITTER_PKCE_VERIFIER
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         auth = (client_id, client_secret) if client_secret else None

@@ -8,6 +8,7 @@ import api from '@/lib/api'
 import BrandfluxLogo from '@/components/shared/BrandfluxLogo'
 import { Loader2, User, Mail, Lock, Globe, Briefcase, Zap, CheckCircle2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
+import Cookies from 'js-cookie'
 
 const BUSINESS_TYPES = [
   'Restaurant',
@@ -73,19 +74,24 @@ export default function SignupPage() {
     try {
       const res = await signup(formData)
 
-      toast.success('Account created! Awaiting administrator approval.', {
+      // Store authentication token so user can submit payment proof
+      if (res.token) {
+        localStorage.setItem('brandflux_token', res.token)
+        sessionStorage.setItem('brandflux_token', res.token)
+        Cookies.set('brandflux_token', res.token, { expires: 7 })
+        Cookies.set('brandflux_user_role', res.role || 'user', { expires: 7 })
+        Cookies.set('brandflux_onboarding_complete', 'false', { expires: 7 })
+      }
+
+      toast.success('Account created! Please submit bank transfer details to activate.', {
         duration: 4500,
-        icon: '⏳',
+        icon: '💳',
       })
 
-      // Route to verification screen
-      const verifyUrl = res.verification_token 
-        ? `/verify?email=${encodeURIComponent(formData.email)}&token=${res.verification_token}`
-        : `/verify?email=${encodeURIComponent(formData.email)}`
-
+      // Route directly to payment & proof submission page
       setTimeout(() => {
-        router.push(verifyUrl)
-      }, 1000)
+        router.push('/payment')
+      }, 800)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Something went wrong. Please try again.')
       setIsLoading(false)

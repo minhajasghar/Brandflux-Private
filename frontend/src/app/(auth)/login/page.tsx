@@ -25,6 +25,10 @@ export default function LoginPage() {
 
     try {
       const data = await login(formData, rememberMe)
+      if (!data.is_approved && data.role !== 'admin') {
+        window.location.href = '/payment'
+        return
+      }
       const target = data.role === 'admin' 
         ? '/admin' 
         : data.onboarding_complete 

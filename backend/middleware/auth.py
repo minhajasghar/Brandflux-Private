@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime, timedelta
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
@@ -58,9 +59,16 @@ def get_current_user(
             detail="Your account has been suspended by an administrator. Please contact support.",
         )
 
-    # 2b. Block unapproved accounts until admin approval (except admins)
+    # 2b. Block unapproved accounts until admin approval (exempt billing, payment proof and auth)
+    path = request.url.path.lower()
+    is_exempt = any(path.startswith(prefix) for prefix in [
+        "/billing", 
+        "/auth",
+        "/api/py/billing",
+        "/api/py/auth"
+    ])
     user_role = getattr(user, "role", "user") or "user"
-    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
+    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin") and not is_exempt:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account is locked pending administrator approval.",

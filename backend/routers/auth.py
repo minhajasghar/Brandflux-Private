@@ -57,7 +57,7 @@ async def signup(req: SignupRequest, background_tasks: BackgroundTasks, db: Sess
         email=req.email.strip().lower(),
         password_hash=auth_service.hash_password(req.password),
         full_name=req.full_name,
-        is_verified=False,
+        is_verified=True,
         verification_token=verify_token,
         verification_token_expires_at=datetime.utcnow() + timedelta(hours=24),
         welcome_sent=False
@@ -149,13 +149,9 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid password"
         )
 
-    # 4b. Block unapproved accounts until admin approval
+    # 4b. Check user approval status (unapproved users will be routed to /payment screen)
     user_role = getattr(user, "role", "user") or "user"
-    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is locked pending administrator approval. Please wait for an administrator to review and approve your registration."
-        )
+    is_user_approved = bool(getattr(user, "is_approved", False) or user_role in ("admin", "support_admin"))
 
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     user_role = getattr(user, "role", "user") or "user"
@@ -175,7 +171,7 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         is_suspended=getattr(user, "is_suspended", False) or False,
         onboarding_complete=is_onboarding_complete,
         is_verified=getattr(user, "is_verified", True),
-        is_approved=getattr(user, "is_approved", False),
+        is_approved=is_user_approved,
         is_non_payment=getattr(user, "is_non_payment", False)
     )
 
@@ -237,14 +233,6 @@ async def verify_email_endpoint(
     db.commit()
     db.refresh(user)
 
-    # 4b. Block unapproved accounts until admin approval
-    user_role = getattr(user, "role", "user") or "user"
-    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is locked pending administrator approval. Please wait for an administrator to review and approve your registration."
-        )
-
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     user_role = getattr(user, "role", "user") or "user"
     is_onboarding_complete = True if user_role == "admin" else (brand.onboarding_complete if brand else False)
@@ -302,14 +290,6 @@ async def resend_verification(
     user.verification_token = new_token
     user.verification_token_expires_at = datetime.utcnow() + timedelta(hours=24)
     db.commit()
-
-    # 4b. Block unapproved accounts until admin approval
-    user_role = getattr(user, "role", "user") or "user"
-    if not getattr(user, "is_approved", False) and user_role not in ("admin", "support_admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is locked pending administrator approval. Please wait for an administrator to review and approve your registration."
-        )
 
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     verification_url = f"{APP_BASE_URL}/verify?token={new_token}"

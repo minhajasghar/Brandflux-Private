@@ -13,6 +13,8 @@ export function middleware(request: NextRequest) {
     pathname === '/login' ||
     pathname === '/signup' ||
     pathname === '/pricing' ||
+    pathname === '/payment' ||
+    pathname === '/verify' ||
     pathname === '/brand-preview' ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
@@ -42,8 +44,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
-  // 4. If token exists but onboarding is not complete -> force onboarding
-  if (!isAdminRole && !onboardingComplete && pathname !== '/onboarding') {
+  // 4. If token exists but onboarding is not complete -> force onboarding (exempt payment & verify)
+  if (!isAdminRole && !onboardingComplete && pathname !== '/onboarding' && pathname !== '/payment' && pathname !== '/verify') {
     return NextResponse.redirect(new URL('/onboarding', request.url))
   }
 

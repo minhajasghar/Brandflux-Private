@@ -934,45 +934,58 @@ async def generate_session_variants(
 
     b_name = brand.business_name or "our team"
 
+    def _with_tags(c_text: str, t_list: list) -> str:
+        c_clean = (c_text or "").strip()
+        if not t_list or "#" in c_clean:
+            return c_clean
+        tag_str = " ".join(t if t.startswith("#") else f"#{t}" for t in t_list if t)
+        return f"{c_clean}\n\n{tag_str}".strip() if tag_str else c_clean
+
+    ig_tags = ig_data.get("hashtags") or hashtags
+    li_tags = li_data.get("hashtags") or ["#Leadership", "#Innovation", "#BusinessGrowth", "#Strategy"]
+    fb_tags = fb_data.get("hashtags") or ["#Community", "#BrandUpdates", "#Innovation"]
+    tw_tags = tw_data.get("hashtags") or ["#Innovation", "#Tech"]
+    tt_tags = tt_data.get("hashtags") or ["#fyp", "#trending", "#innovation", "#creative"]
+
     platform_posts = {
         "instagram_post": {
             "platform_name": "Instagram",
-            "caption": ig_data.get("caption") or caption,
-            "hashtags": ig_data.get("hashtags") or hashtags,
+            "caption": _with_tags(ig_data.get("caption") or caption, ig_tags),
+            "hashtags": ig_tags,
             "call_to_action": ig_data.get("call_to_action") or overlay_cta or "Link in bio to discover more",
             "best_time": f"{ig_data.get('best_day', 'Today')} {ig_data.get('best_time', '7:00 PM')}".strip()
         },
         "linkedin_post": {
             "platform_name": "LinkedIn",
-            "caption": li_data.get("caption") or (
+            "caption": _with_tags(li_data.get("caption") or (
                 f"At {b_name}, we focus on high-impact execution and measurable value.\n\n"
                 f"Key insight for today: Consistency and innovation compound over time. How is your team approaching growth this quarter?"
-            ),
-            "hashtags": li_data.get("hashtags") or ["#Leadership", "#Innovation", "#BusinessGrowth", "#Strategy"],
+            ), li_tags),
+            "hashtags": li_tags,
             "call_to_action": li_data.get("call_to_action") or "Share your perspectives below",
             "best_time": f"{li_data.get('best_day', 'Tuesday')} {li_data.get('best_time', '9:00 AM')}".strip()
         },
         "facebook_post": {
             "platform_name": "Facebook",
-            "caption": fb_data.get("caption") or (
+            "caption": _with_tags(fb_data.get("caption") or (
                 f"Hello community! 👋 We're proud to share our latest updates from {b_name}. "
                 f"Thank you all for being part of our story. What are you building this week?"
-            ),
-            "hashtags": fb_data.get("hashtags") or ["#Community", "#BrandUpdates", "#Innovation"],
+            ), fb_tags),
+            "hashtags": fb_tags,
             "call_to_action": fb_data.get("call_to_action") or "Leave a comment below!",
             "best_time": f"{fb_data.get('best_day', 'Today')} {fb_data.get('best_time', '1:00 PM')}".strip()
         },
         "twitter_post": {
             "platform_name": "Twitter / X",
-            "caption": tw_data.get("caption") or f"Precision, craft, and consistency compound faster than you think. Build the future with {b_name}. 🚀",
-            "hashtags": tw_data.get("hashtags") or ["#Innovation", "#Tech"],
+            "caption": _with_tags(tw_data.get("caption") or f"Precision, craft, and consistency compound faster than you think. Build the future with {b_name}. 🚀", tw_tags),
+            "hashtags": tw_tags,
             "call_to_action": tw_data.get("call_to_action") or "RT if you agree",
             "best_time": f"{tw_data.get('best_day', 'Today')} {tw_data.get('best_time', '12:00 PM')}".strip()
         },
         "tiktok": {
             "platform_name": "TikTok",
-            "caption": tt_data.get("caption") or f"Never stop building at the highest level 🔥 {b_name} #fyp #trends",
-            "hashtags": tt_data.get("hashtags") or ["#fyp", "#trending", "#innovation", "#creative"],
+            "caption": _with_tags(tt_data.get("caption") or f"Never stop building at the highest level 🔥 {b_name}", tt_tags),
+            "hashtags": tt_tags,
             "call_to_action": tt_data.get("call_to_action") or "Follow for daily tips",
             "best_time": f"{tt_data.get('best_day', 'Today')} {tt_data.get('best_time', '8:00 PM')}".strip()
         }
@@ -1307,6 +1320,84 @@ def select_session_variant(
         "hashtags": final_hashtags,
         "credit_deducted": credit_deducted,
         "source": getattr(variant, "source", "ai")
+    }
+
+
+@router.post("/post-now")
+async def session_post_now(
+    req: SelectVariantRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Direct 1-click Post Now from Studio:
+    1. Selects and persists the chosen variant, copies, and image.
+    2. Immediately triggers live publishing to connected social accounts for the selected platforms.
+    3. Never asks for caption or image again - publishes the generated content live.
+    4. Reports which platforms succeeded and which are skipped due to disconnection.
+    """
+    sel_res = select_session_variant(req=req, user=user, db=db)
+    post_id = sel_res.get("post_id")
+    if not post_id:
+        raise HTTPException(status_code=400, detail="Failed to persist selected variant")
+
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    copies = db.query(PlatformCopy).filter(PlatformCopy.post_id == post.id).all()
+    if not copies:
+        raise HTTPException(status_code=400, detail="No platform copies found to publish.")
+
+    from services.publishing.publish_service import execute_social_publish
+    results = []
+    errors = []
+    skipped_disconnected = []
+
+    for copy in copies:
+        try:
+            pub_caption = copy.caption or ""
+            if copy.hashtags and isinstance(copy.hashtags, list) and "#" not in pub_caption:
+                tag_str = " ".join(t if t.startswith("#") else f"#{t}" for t in copy.hashtags if t)
+                if tag_str:
+                    pub_caption = f"{pub_caption.strip()}\n\n{tag_str}"
+
+            res = await execute_social_publish(
+                db=db,
+                platform=copy.platform,
+                brand_id=post.brand_id,
+                caption=pub_caption,
+                image_url=copy.image_url,
+                platform_copy_id=copy.id,
+                force=True
+            )
+            if res.success and copy.status == "published":
+                results.append({
+                    "platform": copy.platform,
+                    "external_post_id": res.external_post_id,
+                    "permalink": res.permalink
+                })
+            elif res.status == "needs_reconnect" or "not connected" in str(res.error).lower():
+                skipped_disconnected.append(copy.platform.capitalize())
+            else:
+                errors.append(f"{copy.platform.capitalize()}: {res.error or 'Failed'}")
+        except Exception as e:
+            errors.append(f"{copy.platform.capitalize()}: {str(e)}")
+
+    published_platforms = [r["platform"].capitalize() for r in results if r.get("platform")]
+
+    if published_platforms:
+        post.status = "published"
+        db.commit()
+
+    return {
+        "success": len(published_platforms) > 0,
+        "published_platforms": published_platforms,
+        "skipped_disconnected": skipped_disconnected,
+        "errors": errors,
+        "message": f"Published to {', '.join(published_platforms)}!" if published_platforms else (
+            f"{', '.join(skipped_disconnected)} not connected in Settings." if skipped_disconnected else "Failed to publish."
+        )
     }
 
 

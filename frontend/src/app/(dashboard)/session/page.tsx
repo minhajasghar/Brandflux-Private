@@ -342,34 +342,49 @@ export default function SessionPage() {
 
           // Multi-channel copy state initialization
           const rawPosts = res.platform_posts || {}
+
+          const formatWithTags = (caption?: string, tags?: string[]) => {
+            const cap = (caption || '').trim()
+            if (!tags || tags.length === 0) return cap
+            if (cap.includes('#')) return cap
+            const tagStr = tags.map(t => t.startsWith('#') ? t : `#${t}`).join(' ')
+            return cap ? `${cap}\n\n${tagStr}` : tagStr
+          }
+
+          const rawIgTags = rawPosts.instagram_post?.hashtags || res.hashtags || []
+          const rawLiTags = rawPosts.linkedin_post?.hashtags || (res.hashtags || []).slice(0, 5)
+          const rawFbTags = rawPosts.facebook_post?.hashtags || (res.hashtags || []).slice(0, 3)
+          const rawTwTags = rawPosts.twitter_post?.hashtags || (res.hashtags || []).slice(0, 2)
+          const rawTtTags = rawPosts.tiktok?.hashtags || ['#fyp', '#trending', '#viral', ...(res.hashtags || []).slice(0, 2)]
+
           const initialCopies: Record<string, any> = {
             instagram_post: {
-              caption: rawPosts.instagram_post?.caption || res.caption || '',
-              hashtags: rawPosts.instagram_post?.hashtags || res.hashtags || [],
+              caption: formatWithTags(rawPosts.instagram_post?.caption || res.caption || '', rawIgTags),
+              hashtags: rawIgTags,
               best_time: rawPosts.instagram_post?.best_time || res.posting_time_suggestion || 'Today 7:00 PM',
               call_to_action: rawPosts.instagram_post?.call_to_action || res.call_to_action
             },
             linkedin_post: {
-              caption: rawPosts.linkedin_post?.caption || res.caption || '',
-              hashtags: rawPosts.linkedin_post?.hashtags || (res.hashtags || []).slice(0, 5),
+              caption: formatWithTags(rawPosts.linkedin_post?.caption || res.caption || '', rawLiTags),
+              hashtags: rawLiTags,
               best_time: rawPosts.linkedin_post?.best_time || 'Tuesday 9:00 AM',
               call_to_action: rawPosts.linkedin_post?.call_to_action || 'Share your thoughts below'
             },
             facebook_post: {
-              caption: rawPosts.facebook_post?.caption || res.caption || '',
-              hashtags: rawPosts.facebook_post?.hashtags || (res.hashtags || []).slice(0, 3),
+              caption: formatWithTags(rawPosts.facebook_post?.caption || res.caption || '', rawFbTags),
+              hashtags: rawFbTags,
               best_time: rawPosts.facebook_post?.best_time || 'Today 1:00 PM',
               call_to_action: rawPosts.facebook_post?.call_to_action || 'Comment below!'
             },
             twitter_post: {
-              caption: rawPosts.twitter_post?.caption || (res.caption ? res.caption.slice(0, 240) : ''),
-              hashtags: rawPosts.twitter_post?.hashtags || (res.hashtags || []).slice(0, 2),
+              caption: formatWithTags(rawPosts.twitter_post?.caption || (res.caption ? res.caption.slice(0, 220) : ''), rawTwTags),
+              hashtags: rawTwTags,
               best_time: rawPosts.twitter_post?.best_time || 'Today 12:00 PM',
               call_to_action: rawPosts.twitter_post?.call_to_action || 'RT if you agree'
             },
             tiktok: {
-              caption: rawPosts.tiktok?.caption || (res.caption ? `${res.caption.split('\n')[0]} 👀 Drop your thoughts below! 👇` : ''),
-              hashtags: rawPosts.tiktok?.hashtags || ['#fyp', '#trending', '#viral', ...(res.hashtags || []).slice(0, 2)],
+              caption: formatWithTags(rawPosts.tiktok?.caption || (res.caption ? `${res.caption.split('\n')[0]} 👀 Drop your thoughts below! 👇` : ''), rawTtTags),
+              hashtags: rawTtTags,
               best_time: rawPosts.tiktok?.best_time || 'Today 8:00 PM',
               call_to_action: rawPosts.tiktok?.call_to_action || 'Follow for daily tips'
             }
@@ -460,8 +475,13 @@ export default function SessionPage() {
 
     const target = platformCopies[platformKey]
     if (target) {
-      setCaptionText(target.caption || '')
-      setHashtagsList(target.hashtags || [])
+      const cap = target.caption || ''
+      const tags = target.hashtags || []
+      const finalCap = (!cap.includes('#') && tags.length > 0)
+        ? `${cap}\n\n${tags.map((t: string) => t.startsWith('#') ? t : `#${t}`).join(' ')}`.trim()
+        : cap
+      setCaptionText(finalCap)
+      setHashtagsList(tags)
     }
   }
 
@@ -527,6 +547,45 @@ export default function SessionPage() {
       setSubmittingApproval(false)
     }
   }
+
+  const [postingNow, setPostingNow] = useState(false)
+
+  const handlePostNow = async () => {
+    if (!variantSessionData || !selectedVariantId) return
+    setPostingNow(true)
+    try {
+      const res = await api.post('/sessions/post-now', {
+        variant_id: selectedVariantId,
+        session_id: variantSessionData.session_id,
+        adjusted_caption: captionText,
+        adjusted_hashtags: hashtagsList,
+        target_platform: activePlatformTab,
+        platform_copies: platformCopies,
+        selected_platforms: selectedPlatforms
+      })
+
+      const data = res.data
+      if (data.published_platforms && data.published_platforms.length > 0) {
+        toast.success(`🚀 Published live to ${data.published_platforms.join(', ')}!`)
+      }
+      if (data.skipped_disconnected && data.skipped_disconnected.length > 0) {
+        toast(`ℹ️ ${data.skipped_disconnected.join(', ')}: Not connected in Settings`, { icon: 'ℹ️', duration: 6000 })
+      }
+      if ((!data.published_platforms || data.published_platforms.length === 0) && (!data.skipped_disconnected || data.skipped_disconnected.length === 0)) {
+        toast.error(data.message || 'No connected platforms available to post.')
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('brandflux:credits_updated'))
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Failed to publish post live.'
+      toast.error(msg)
+    } finally {
+      setPostingNow(false)
+    }
+  }
+
 
   // ─── Regenerate Single Variant / More Like This ────────────────────────────
   const handleRegenerateVariant = async (variant: SessionVariantItem, moreLikeThis: boolean = false) => {
@@ -1437,12 +1496,31 @@ export default function SessionPage() {
                     )}
                     <button
                       type="button"
+                      disabled={postingNow}
+                      onClick={handlePostNow}
+                      className="w-full py-3.5 px-4 bg-primary hover:bg-primary/90 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-lg disabled:opacity-50"
+                    >
+                      {postingNow ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Publishing Live to Connected Platforms...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="h-4 w-4 text-accent fill-accent" />
+                          <span>⚡ Post Now to Connected Platforms</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
                       disabled={submittingApproval}
                       onClick={handleSubmitForApproval}
-                      className="w-full py-3.5 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-accent-glow disabled:opacity-50"
+                      className="w-full py-3 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-accent-glow disabled:opacity-50"
                     >
                       <ShieldCheck className="h-4 w-4" />
-                      <span>{submittingApproval ? 'Submitting for Approval...' : 'Submit for Approval'}</span>
+                      <span>{submittingApproval ? 'Submitting for Approval...' : 'Submit for Team Approval'}</span>
                     </button>
 
                     <button

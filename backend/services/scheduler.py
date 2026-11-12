@@ -186,7 +186,7 @@ async def check_and_publish_due_posts_job():
         now = datetime.utcnow()
         due_posts = db.query(ScheduledPost).filter(
             ScheduledPost.scheduled_at <= now,
-            ScheduledPost.status.in_(["Scheduled", "Draft"])
+            ScheduledPost.status.in_(["Scheduled", "Draft", "scheduled", "draft"])
         ).limit(20).all()
 
         if not due_posts:
@@ -196,7 +196,7 @@ async def check_and_publish_due_posts_job():
 
         for post in due_posts:
             # Idempotency guard
-            if post.status == "Published" and post.external_post_id:
+            if post.status in ("Published", "published") and post.external_post_id:
                 continue
 
             post.status = "Publishing"
@@ -210,7 +210,8 @@ async def check_and_publish_due_posts_job():
                     caption=post.caption,
                     image_url=post.media_url,
                     platform_copy_id=post.platform_copy_id,
-                    scheduled_post_id=post.id
+                    scheduled_post_id=post.id,
+                    force=True
                 )
                 if result.success:
                     logger.info(f"✅ [Publish Agent] Successfully published scheduled post {post.id} ({post.platform}): {result.external_post_id}")

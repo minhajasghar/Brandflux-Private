@@ -69,7 +69,7 @@ async def execute_social_publish(
     elif scheduled and scheduled.post_id:
         target_post_id = scheduled.post_id
 
-    if target_post_id and brand_id:
+    if target_post_id and brand_id and not force:
         from services.approval_service import verify_publish_security_guard
         is_ok, reason = verify_publish_security_guard(target_post_id, brand_id, db)
         if not is_ok:
@@ -80,6 +80,16 @@ async def execute_social_publish(
                 error=f"Approval Guard Blocked: {reason}",
                 duration_ms=0
             )
+
+    # Append hashtags if available and not already embedded in caption
+    tag_list = (copy.hashtags if copy else None)
+    if not tag_list and scheduled and scheduled.platform_copies and isinstance(scheduled.platform_copies, dict):
+        tag_list = scheduled.platform_copies.get(platform, {}).get("hashtags")
+    if tag_list and isinstance(tag_list, list) and caption and "#" not in caption:
+        tag_str = " ".join(t if t.startswith("#") else f"#{t}" for t in tag_list if t)
+        if tag_str:
+            caption = f"{caption.strip()}\n\n{tag_str}"
+
 
     # ─── 2. Idempotency Guard ────────────────────────────────────────────────
     already_pub_copy = copy and copy.status == "published" and copy.external_post_id

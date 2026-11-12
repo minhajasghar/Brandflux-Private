@@ -28,14 +28,19 @@ def get_plan_brand_limit(plan: Optional[str]) -> int:
 def get_user_brand_role(user: User, brand_id: str, db: Session) -> Optional[str]:
     """
     Determine the user's role for a specific brand ('creator' or 'approver').
-    Approver membership takes precedence if user was invited or added as approver.
+    Brand owner (creator) always takes precedence.
     """
     if not user or not brand_id:
         return None
 
     clean_email = (user.email or "").strip().lower()
 
-    # 1. Check active/invited brand membership first (approver)
+    # 1. Direct brand ownership ALWAYS means creator
+    brand = db.query(Brand).filter(Brand.id == brand_id).first()
+    if brand and brand.user_id == user.id:
+        return "creator"
+
+    # 2. Check active/invited brand membership (approver)
     member = db.query(BrandMember).filter(
         BrandMember.brand_id == brand_id,
         (BrandMember.user_id == user.id) | (func.lower(BrandMember.invited_email) == clean_email),
@@ -43,11 +48,6 @@ def get_user_brand_role(user: User, brand_id: str, db: Session) -> Optional[str]
     ).first()
     if member:
         return member.role
-
-    # 2. Check direct brand ownership
-    brand = db.query(Brand).filter(Brand.id == brand_id).first()
-    if brand and brand.user_id == user.id:
-        return "creator"
 
     return None
 
@@ -59,10 +59,10 @@ def resolve_user_brand(
 ) -> Optional[Brand]:
     """
     Resolve the active brand for a user:
-    1. If user is an approver for ANY brand (by user_id or email), prioritize creator's brand.
-    2. If explicit brand_id provided, verify membership or ownership.
-    3. Else if user.active_brand_id is set, verify membership or ownership.
-    4. Else fallback to user's first owned brand.
+    1. If explicit brand_id provided, verify ownership or membership.
+    2. If user owns a completed brand, resolve their owned brand (Creator).
+    3. If user is an approver for a brand, resolve the creator's brand (Approver).
+    4. Fallback to user.active_brand_id or user's first brand.
     """
     if not user:
         return None
@@ -75,28 +75,12 @@ def resolve_user_brand(
         if not isinstance(brand_id, str):
             brand_id = None
 
-    # Step 1: Check if user is an Approver for any brand.
-    # Approvers belong under the creator's brand and must review the creator's posts.
-    approver_membership = db.query(BrandMember).filter(
-        (BrandMember.user_id == user.id) | (func.lower(BrandMember.invited_email) == clean_email),
-        BrandMember.role == "approver",
-        BrandMember.status.in_(["active", "invited"])
-    ).order_by(BrandMember.created_at.desc()).first()
-
-    if approver_membership:
-        # Link user_id and activate membership
-        if approver_membership.user_id != user.id or approver_membership.status != "active":
-            approver_membership.user_id = user.id
-            approver_membership.status = "active"
-        
-        member_brand = db.query(Brand).filter(Brand.id == approver_membership.brand_id).first()
-        if member_brand:
-            if user.active_brand_id != member_brand.id:
-                user.active_brand_id = member_brand.id
-            db.commit()
-            return member_brand
-
+    # 1. Explicit brand_id provided
     if brand_id:
+        # Check ownership
+        brand = db.query(Brand).filter(Brand.id == brand_id, Brand.user_id == user.id).first()
+        if brand:
+            return brand
         # Check active membership
         membership = db.query(BrandMember).filter(
             BrandMember.brand_id == brand_id,
@@ -105,19 +89,43 @@ def resolve_user_brand(
         ).first()
         if membership:
             return db.query(Brand).filter(Brand.id == brand_id).first()
-        # Check ownership
-        brand = db.query(Brand).filter(Brand.id == brand_id, Brand.user_id == user.id).first()
+
+    # 2. If user owns a completed brand, they are the Creator of that brand
+    owned_completed_brand = db.query(Brand).filter(
+        Brand.user_id == user.id,
+        Brand.onboarding_complete == True
+    ).first()
+    if owned_completed_brand:
+        return owned_completed_brand
+
+    # 3. Check if user is an Approver for any brand (Approver account)
+    approver_membership = db.query(BrandMember).filter(
+        (BrandMember.user_id == user.id) | (func.lower(BrandMember.invited_email) == clean_email),
+        BrandMember.role == "approver",
+        BrandMember.status.in_(["active", "invited"])
+    ).order_by(BrandMember.created_at.desc()).first()
+
+    if approver_membership:
+        if approver_membership.user_id != user.id or approver_membership.status != "active":
+            approver_membership.user_id = user.id
+            approver_membership.status = "active"
+
+        member_brand = db.query(Brand).filter(Brand.id == approver_membership.brand_id).first()
+        if member_brand:
+            if user.active_brand_id != member_brand.id:
+                user.active_brand_id = member_brand.id
+            db.commit()
+            return member_brand
+
+    # 4. Fallback to user.active_brand_id
+    if user.active_brand_id:
+        brand = db.query(Brand).filter(Brand.id == user.active_brand_id).first()
         if brand:
             return brand
 
-    if user.active_brand_id:
-        membership = db.query(BrandMember).filter(
-            BrandMember.brand_id == user.active_brand_id,
-            (BrandMember.user_id == user.id) | (func.lower(BrandMember.invited_email) == clean_email),
-            BrandMember.status.in_(["active", "invited"])
-        ).first()
-        if membership:
-            return db.query(Brand).filter(Brand.id == user.active_brand_id).first()
+    # 5. Fallback to any owned brand
+    return db.query(Brand).filter(Brand.user_id == user.id).first()
+
         brand = db.query(Brand).filter(Brand.id == user.active_brand_id, Brand.user_id == user.id).first()
         if brand:
             return brand

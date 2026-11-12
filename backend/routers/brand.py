@@ -610,16 +610,19 @@ async def upload_brand_logo(
         db.add(brand)
 
     contents = await file.read()
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "png"
-    filename = f"logo_{user.id[:8]}_{logo_type}_{uuid.uuid4().hex[:6]}.{ext}"
 
-    content_type = file.content_type or "image/png"
-    public_url = storage_service.upload_image(contents, filename, content_type=content_type)
+    # Automatically remove background for clean transparent logo
+    from services.image_processor import remove_background
+    clean_bytes = remove_background(contents) or contents
+
+    clean_filename = f"logo_{user.id[:8]}_{logo_type}_{uuid.uuid4().hex[:6]}_clean.png"
+    public_url = storage_service.upload_image(clean_bytes, clean_filename, content_type="image/png")
 
     if logo_type == "alt":
         brand.clean_logo_url = public_url
     else:
         brand.logo_url = public_url
+        brand.clean_logo_url = public_url
 
     brand.brand_kit = build_brand_kit_dict(brand)
     db.commit()

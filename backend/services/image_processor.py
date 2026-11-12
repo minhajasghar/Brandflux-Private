@@ -62,17 +62,80 @@ def analyze_logo_style(image_bytes: bytes) -> Dict[str, Any]:
 
 
 def remove_background(image_bytes: bytes) -> Optional[bytes]:
-    """Remove background from logo image using rembg."""
+    """
+    Remove background from logo image to produce transparent PNG.
+    1. Tries rembg if available with onnxruntime.
+    2. Fallback to intelligent PIL corner-chroma flood fill:
+       Detects corner background color (black, dark, white, light grey, or solid),
+       and makes matching background pixels transparent with smooth edge feathering.
+    """
     try:
         from rembg import remove
         output = remove(image_bytes)
-        return output
-    except ImportError:
-        logger.warning("rembg not installed — skipping background removal")
-        return None
+        if output:
+            return output
     except Exception as e:
-        logger.error(f"Error removing background: {str(e)}")
-        return None
+        logger.debug(f"rembg not available or failed: {e}; using PIL intelligent background removal")
+
+    try:
+        from PIL import Image
+        import numpy as np
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+        width, height = img.size
+        if width < 2 or height < 2:
+            return image_bytes
+
+        # Sample corner pixels (0,0), (w-1, 0), (0, h-1), (w-1, h-1)
+        corners = [
+            img.getpixel((0, 0)),
+            img.getpixel((width - 1, 0)),
+            img.getpixel((0, height - 1)),
+            img.getpixel((width - 1, height - 1))
+        ]
+
+        # Calculate average corner RGB
+        avg_r = sum(c[0] for c in corners) / 4.0
+        avg_g = sum(c[1] for c in corners) / 4.0
+        avg_b = sum(c[2] for c in corners) / 4.0
+
+        diffs = [
+            ((c[0] - avg_r)**2 + (c[1] - avg_g)**2 + (c[2] - avg_b)**2)**0.5
+            for c in corners
+        ]
+        is_uniform = max(diffs) < 55.0 or (avg_r < 35 and avg_g < 35 and avg_b < 35) or (avg_r > 225 and avg_g > 225 and avg_b > 225)
+
+        data = np.array(img, dtype=np.uint8)
+        r, g, b, a = data[:, :, 0], data[:, :, 1], data[:, :, 2], data[:, :, 3]
+
+        if is_uniform:
+            dist = np.sqrt(
+                (r.astype(float) - avg_r)**2 +
+                (g.astype(float) - avg_g)**2 +
+                (b.astype(float) - avg_b)**2
+            )
+            tolerance = 35.0
+            feather = 16.0
+            mask = np.clip((dist - tolerance) / max(feather, 1.0), 0.0, 1.0)
+            data[:, :, 3] = (a.astype(float) * mask).astype(np.uint8)
+        else:
+            white_dist = np.sqrt((r.astype(float) - 255)**2 + (g.astype(float) - 255)**2 + (b.astype(float) - 255)**2)
+            black_dist = np.sqrt(r.astype(float)**2 + g.astype(float)**2 + b.astype(float)**2)
+            if np.mean(white_dist[:5, :]) < 40:
+                mask = np.clip((white_dist - 35.0) / 20.0, 0.0, 1.0)
+                data[:, :, 3] = (a.astype(float) * mask).astype(np.uint8)
+            elif np.mean(black_dist[:5, :]) < 40:
+                mask = np.clip((black_dist - 35.0) / 20.0, 0.0, 1.0)
+                data[:, :, 3] = (a.astype(float) * mask).astype(np.uint8)
+
+        result_img = Image.fromarray(data, "RGBA")
+        out_buf = io.BytesIO()
+        result_img.save(out_buf, format="PNG")
+        return out_buf.getvalue()
+    except Exception as exc:
+        logger.error(f"PIL background removal failed: {exc}")
+        return image_bytes
+
 
 
 async def process_logo(logo_url: str, brand_id: str) -> Dict[str, Any]:

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
+from pydantic import BaseModel
 import uuid
 
 from database import get_db

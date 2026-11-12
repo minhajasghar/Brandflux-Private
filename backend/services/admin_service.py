@@ -11,7 +11,9 @@ from sqlalchemy import func, desc, or_
 from models.models import (
     User, Brand, Usage, AuditLog, GeneratedPost, ScheduledPost, DailySession,
     ContentIdea, WebsiteScan, SocialAccount, SystemSetting, SessionVariant,
-    UserAnswer, BrandScanLog, AutopilotConfig, AutopilotLog, SavedTemplate
+    UserAnswer, BrandScanLog, AutopilotConfig, AutopilotLog, SavedTemplate,
+    PaymentRequest, Notification, EmailLog, CreditLedger, BrandMember,
+    ContentGuidance, SmartQuestion, Post, PostApproval, PostVersion, PublishAttempt
 )
 from services.auth_service import hash_password
 from services.storage import storage_service
@@ -888,6 +890,28 @@ def permanently_purge_user(
         {"target_email": "anonymized_user@brandflux.ai", "target_id": anonymized_target_id},
         synchronize_session=False
     )
+
+    # 8b. Clean up all user-linked foreign key dependencies to prevent foreign key errors:
+    try:
+        db.query(PaymentRequest).filter(PaymentRequest.user_id == user_id).delete(synchronize_session=False)
+        db.query(PaymentRequest).filter(PaymentRequest.reviewed_by_id == user_id).update({"reviewed_by_id": None}, synchronize_session=False)
+        db.query(Notification).filter(Notification.user_id == user_id).delete(synchronize_session=False)
+        db.query(EmailLog).filter(EmailLog.user_id == user_id).update({"user_id": None}, synchronize_session=False)
+        db.query(CreditLedger).filter(CreditLedger.user_id == user_id).delete(synchronize_session=False)
+        db.query(BrandMember).filter(BrandMember.user_id == user_id).delete(synchronize_session=False)
+        db.query(BrandMember).filter(BrandMember.invited_by_user_id == user_id).update({"invited_by_user_id": None}, synchronize_session=False)
+        db.query(ContentGuidance).filter(ContentGuidance.user_id == user_id).delete(synchronize_session=False)
+        db.query(SmartQuestion).filter(SmartQuestion.user_id == user_id).delete(synchronize_session=False)
+        db.query(PostApproval).filter(PostApproval.approver_id == user_id).update({"approver_id": None}, synchronize_session=False)
+        db.query(PostVersion).filter(PostVersion.submitted_by_id == user_id).update({"submitted_by_id": None}, synchronize_session=False)
+        db.query(PostVersion).filter(PostVersion.decision_by_id == user_id).update({"decision_by_id": None}, synchronize_session=False)
+        if user_brand_ids:
+            db.query(PublishAttempt).filter(PublishAttempt.brand_id.in_(user_brand_ids)).delete(synchronize_session=False)
+        db.query(Post).filter(Post.user_id == user_id).delete(synchronize_session=False)
+        db.query(User).filter(User.approved_by_id == user_id).update({"approved_by_id": None}, synchronize_session=False)
+        db.query(AuditLog).filter(AuditLog.admin_id == user_id).update({"admin_id": None}, synchronize_session=False)
+    except Exception as cleanup_err:
+        logger.warning(f"Purge sub-records cleanup warning: {cleanup_err}")
 
     # 9. Record final anonymized permanent purge audit log entry
     audit_actor_id = admin_actor.id if admin_actor else None

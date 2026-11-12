@@ -126,6 +126,7 @@ function AdminPortalContent() {
   const [selectedNewPlan, setSelectedNewPlan] = useState('starter')
   const [newPostsLimit, setNewPostsLimit] = useState(0)
   const [actionSubmitting, setActionSubmitting] = useState(false)
+  const [isPermanentDelete, setIsPermanentDelete] = useState(false)
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false)
 
   // ─── 3. Usage & Feature Flags State ─────────────────────────────────────────
@@ -626,8 +627,13 @@ function AdminPortalContent() {
           setActionSubmitting(false)
           return
         }
-        await adminDeleteUser(actionTargetUser.id, confirmEmailInput, actionReason)
-        toast.success(`User ${actionTargetUser.email} soft-deleted. Account blocked, restorable for 30 days.`)
+        if (isPermanentDelete) {
+          await adminPurgeUser(actionTargetUser.id)
+          toast.success(`User ${actionTargetUser.email} permanently purged from system.`)
+        } else {
+          await adminDeleteUser(actionTargetUser.id, confirmEmailInput, actionReason)
+          toast.success(`User ${actionTargetUser.email} soft-deleted. Account blocked, restorable for 30 days.`)
+        }
       } else if (modalType === 'restore') {
         await adminRestoreUser(actionTargetUser.id)
         toast.success(`User ${actionTargetUser.email} restored successfully`)
@@ -2133,6 +2139,23 @@ function AdminPortalContent() {
                       className="w-full bg-surface-secondary border border-border focus:border-danger rounded-xl px-3 py-2 text-xs text-text font-mono"
                     />
                   </div>
+
+                  <div className="pt-2">
+                    <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-danger/15 border border-danger/30 text-xs text-text cursor-pointer hover:bg-danger/20 transition">
+                      <input
+                        type="checkbox"
+                        checked={isPermanentDelete}
+                        onChange={e => setIsPermanentDelete(e.target.checked)}
+                        className="h-4 w-4 rounded accent-rose-500 mt-0.5 shrink-0"
+                      />
+                      <div>
+                        <span className="font-extrabold text-danger block">Permanently Purge Immediately</span>
+                        <span className="text-[11px] text-muted block leading-tight mt-0.5">
+                          Skip the 30-day soft-delete grace period and permanently delete this user and all data immediately.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
                 </div>
               )}
 
@@ -2185,7 +2208,7 @@ function AdminPortalContent() {
                   {actionSubmitting
                     ? 'Processing...'
                     : modalType === 'delete'
-                    ? 'Soft Delete User'
+                    ? (isPermanentDelete ? 'Permanently Purge Now' : 'Soft Delete User')
                     : modalType === 'purge'
                     ? 'Permanently Purge'
                     : 'Confirm Action'}

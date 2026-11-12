@@ -80,6 +80,22 @@ def resolve_user_brand(
         if membership:
             return db.query(Brand).filter(Brand.id == brand_id).first()
 
+    # Check if user is an active Approver for any brand.
+    # Approvers belong under the creator's brand and must review the creator's posts.
+    approver_membership = db.query(BrandMember).filter(
+        BrandMember.user_id == user.id,
+        BrandMember.role == "approver",
+        BrandMember.status == "active"
+    ).order_by(BrandMember.created_at.desc()).first()
+
+    if approver_membership:
+        member_brand = db.query(Brand).filter(Brand.id == approver_membership.brand_id).first()
+        if member_brand:
+            if user.active_brand_id != member_brand.id:
+                user.active_brand_id = member_brand.id
+                db.commit()
+            return member_brand
+
     if user.active_brand_id:
         brand = db.query(Brand).filter(Brand.id == user.active_brand_id, Brand.user_id == user.id).first()
         if brand:

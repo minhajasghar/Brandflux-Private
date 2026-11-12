@@ -568,6 +568,18 @@ async def create_approver_account(
             existing_user.is_verified = True
             existing_user.active_brand_id = brand.id
             target_user = existing_user
+
+            # Clean up unonboarded dummy brand from standalone signup
+            dummy_brands = db.query(Brand).filter(
+                Brand.user_id == existing_user.id,
+                Brand.id != brand.id,
+                Brand.onboarding_complete == False
+            ).all()
+            for db_item in dummy_brands:
+                try:
+                    db.delete(db_item)
+                except Exception:
+                    pass
         else:
             target_user = User(
                 id=str(uuid.uuid4()),

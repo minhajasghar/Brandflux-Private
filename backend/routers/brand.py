@@ -1090,6 +1090,19 @@ def accept_invitation(req: AcceptInviteRequest, db: Session = Depends(get_db)):
     member.invitation_token = None
     member.accepted_at = datetime.utcnow()
     user.active_brand_id = brand.id
+
+    # Clean up any unonboarded dummy brand from standalone signup
+    dummy_brands = db.query(Brand).filter(
+        Brand.user_id == user.id,
+        Brand.id != brand.id,
+        Brand.onboarding_complete == False
+    ).all()
+    for db_item in dummy_brands:
+        try:
+            db.delete(db_item)
+        except Exception:
+            pass
+
     db.commit()
 
     token = create_token(user.id, user.token_version)

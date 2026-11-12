@@ -829,9 +829,9 @@ def permanently_purge_user(
 
         # Brand logos
         for brand in db.query(Brand).filter(Brand.user_id == user_id).all():
-            if brand.logo_url:
+            if getattr(brand, "logo_url", None):
                 images_to_delete.add(brand.logo_url)
-            if brand.clean_logo_url:
+            if getattr(brand, "clean_logo_url", None):
                 images_to_delete.add(brand.clean_logo_url)
 
         # Generated posts
@@ -841,15 +841,16 @@ def permanently_purge_user(
 
         # Session variants
         for variant in db.query(SessionVariant).filter(SessionVariant.user_id == user_id).all():
-            if variant.image_url:
+            if getattr(variant, "image_url", None):
                 images_to_delete.add(variant.image_url)
-            if variant.background_url:
+            if getattr(variant, "background_url", None):
                 images_to_delete.add(variant.background_url)
 
-        # Daily sessions (reference uploads)
+        # Daily sessions (reference uploads if present)
         for sess in db.query(DailySession).filter(DailySession.user_id == user_id).all():
-            if sess.reference_images and isinstance(sess.reference_images, list):
-                for ref in sess.reference_images:
+            ref_imgs = getattr(sess, "reference_images", None)
+            if ref_imgs and isinstance(ref_imgs, list):
+                for ref in ref_imgs:
                     if isinstance(ref, dict) and ref.get("url"):
                         images_to_delete.add(ref["url"])
 

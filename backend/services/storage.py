@@ -50,7 +50,17 @@ class StorageService:
 
     def get_public_base_url(self) -> str:
         """Resolve public backend URL for media delivery."""
-        base = os.getenv("BACKEND_PUBLIC_URL") or os.getenv("API_BASE_URL") or os.getenv("PUBLIC_API_URL")
+        import config
+        for candidate in (
+            os.getenv("BACKEND_PUBLIC_URL"),
+            os.getenv("API_BASE_URL"),
+            os.getenv("PUBLIC_API_URL"),
+            getattr(config, "BACKEND_BASE_URL", None),
+            getattr(config, "APP_BASE_URL", None),
+        ):
+            if candidate and "localhost" not in candidate and "127.0.0.1" not in candidate:
+                return candidate.rstrip("/")
+        base = os.getenv("BACKEND_PUBLIC_URL") or os.getenv("API_BASE_URL") or os.getenv("PUBLIC_API_URL") or getattr(config, "BACKEND_BASE_URL", None)
         if base:
             return base.rstrip("/")
         return "http://localhost:8000"

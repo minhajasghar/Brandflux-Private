@@ -42,6 +42,61 @@ class MetaPublisher(PlatformPublisher):
             return image_url
         return None
 
+    def _prepare_instagram_image_url(self, image_url: str) -> tuple[Optional[str], Optional[str]]:
+        """
+        Ensure Instagram receives a publicly reachable JPEG URL.
+        Meta's /media endpoint fetches image_url from its servers (cannot upload multipart bytes
+        like Facebook) and rejects localhost URLs and some RGBA PNGs.
+        Returns (resolved_url, error_message).
+        """
+        if not image_url:
+            return None, "No image URL provided for Instagram post."
+
+        from services.storage import storage_service
+
+        local_path = self._resolve_local_image_path(image_url)
+        is_localhost_url = (
+            image_url.startswith("/")
+            or "://localhost" in image_url
+            or "://127.0.0.1" in image_url
+        )
+
+        # If we have the file on disk, convert to RGB JPEG for maximum Meta compatibility
+        if local_path and os.path.exists(local_path):
+            try:
+                from PIL import Image
+                stem, ext = os.path.splitext(os.path.basename(local_path))
+                if ext.lower() not in (".jpg", ".jpeg"):
+                    ig_filename = f"{stem}_ig.jpg"
+                    ig_path = os.path.join(config.PROCESSED_IMAGES_DIR, ig_filename)
+                    if not os.path.exists(ig_path):
+                        with Image.open(local_path) as im:
+                            rgb = im.convert("RGB")
+                            rgb.save(ig_path, format="JPEG", quality=92, optimize=True)
+                    with open(ig_path, "rb") as f:
+                        ig_bytes = f.read()
+                    # upload_image uploads to R2 if enabled, else uses storage_service.get_public_base_url()
+                    resolved = storage_service.upload_image(ig_bytes, ig_filename, content_type="image/jpeg")
+                    if "://localhost" not in resolved and "://127.0.0.1" not in resolved:
+                        return resolved, None
+                    is_localhost_url = True
+                    image_url = resolved
+            except Exception as conv_err:
+                logger.warning(f"Instagram JPEG conversion fallback for {local_path}: {conv_err}")
+
+        # Rewrite localhost/relative URL if a public base URL is configured
+        if is_localhost_url:
+            public_base = storage_service.get_public_base_url()
+            if "localhost" not in public_base and "127.0.0.1" not in public_base:
+                filename = image_url.split("/")[-1].split("?")[0]
+                return f"{public_base.rstrip('/')}/api/media/posts/{filename}", None
+            return None, (
+                "Instagram requires a publicly reachable HTTPS image URL (received localhost). "
+                "Set BACKEND_PUBLIC_URL or BACKEND_BASE_URL in .env to your public domain (e.g. https://brandflux.tntinnov.com)."
+            )
+
+        return image_url, None
+
     async def publish_text(self, text: str, account: SocialAccount) -> PublishResult:
         start_time = time.time()
         token = self._get_token(account)
@@ -132,12 +187,23 @@ class MetaPublisher(PlatformPublisher):
             try:
                 # ─── 1. INSTAGRAM PUBLISHING (Container + Polling + Publish) ────
                 if is_instagram:
+                    ig_image_url, prep_err = self._prepare_instagram_image_url(image_url)
                     sanitized_payload = {
                         "platform": "instagram",
                         "target_id": target_id,
-                        "image_url": image_url,
+                        "image_url": ig_image_url or image_url,
                         "caption_length": len(caption or "")
                     }
+                    if prep_err or not ig_image_url:
+                        return PublishResult(
+                            success=False,
+                            status="Failed",
+                            error=prep_err or "Invalid Instagram image URL.",
+                            error_code="INVALID_IG_IMAGE_URL",
+                            http_status=400,
+                            duration_ms=int((time.time() - start_time) * 1000),
+                            sanitized_payload=sanitized_payload
+                        )
 
                     # Verify account is Instagram Professional (Business or Creator)
                     try:
@@ -166,7 +232,7 @@ class MetaPublisher(PlatformPublisher):
                     create_res = await client.post(
                         create_url,
                         data={
-                            "image_url": image_url,
+                            "image_url": ig_image_url,
                             "caption": caption or "",
                             "access_token": token
                         }

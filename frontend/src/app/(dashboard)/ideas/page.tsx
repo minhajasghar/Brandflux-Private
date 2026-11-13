@@ -920,6 +920,34 @@ export default function IdeasPage() {
 
                   {/* Drawer Tab Content */}
                   <div className="flex-1 py-6 space-y-6">
+                    {/* Platform Caption Switcher (directly above caption) */}
+                    <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-white/[0.03] border border-white/10">
+                      {([
+                        { id: 'facebook_post', label: 'Facebook', icon: '📘', available: !!sessionDetail.facebook_post },
+                        { id: 'instagram_post', label: 'Instagram', icon: '📸', available: !!sessionDetail.instagram_post },
+                        { id: 'linkedin', label: 'LinkedIn', icon: '💼', available: !!sessionDetail.linkedin },
+                        { id: 'x_twitter', label: 'X', icon: '𝕏', available: !!sessionDetail.x_twitter },
+                        { id: 'tiktok', label: 'TikTok', icon: '🎵', available: !!sessionDetail.tiktok },
+                      ] as const).filter(t => t.available).map((tab) => {
+                        const isActive = activeDetailTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveDetailTab(tab.id)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                              isActive
+                                ? 'bg-accent text-black shadow-sm'
+                                : 'text-muted hover:text-white hover:bg-white/5'
+                            }`}
+                          >
+                            <span>{tab.icon}</span>
+                            <span>{tab.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     {/* Render Instagram Post */}
                     {activeDetailTab === 'instagram_post' && sessionDetail.instagram_post && (
                       <div className="space-y-5">
@@ -1036,29 +1064,6 @@ export default function IdeasPage() {
                           <div>
                             <p className="text-[10px] font-bold uppercase text-muted">Optimal Time</p>
                             <p className="text-sm font-bold text-text mt-0.5">{sessionDetail.tiktok.best_time || '8:00 PM'}</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Render Instagram Story */}
-                    {activeDetailTab === 'instagram_story' && sessionDetail.instagram_story && (
-                      <div className="space-y-5">
-                        <div className="flex justify-between items-center">
-                          <h4 className="text-xs font-bold uppercase tracking-wider text-muted">Story Copy</h4>
-                          <CopyButton text={sessionDetail.instagram_story.text} label="Story Text" />
-                        </div>
-                        <div className="bg-surface-secondary border border-border p-6 rounded-2xl text-center italic text-base text-text font-bold">
-                          &ldquo;{sessionDetail.instagram_story.text}&rdquo;
-                        </div>
-                        <div className="bg-surface-secondary border border-border p-5 rounded-2xl space-y-3">
-                          <div>
-                            <p className="text-[10px] font-bold uppercase text-muted">Suggested CTA Swipe / Reply</p>
-                            <p className="text-sm font-bold text-text mt-1">{sessionDetail.instagram_story.cta || 'DM to access!'}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-bold uppercase text-muted">Interactive Poll Question</p>
-                            <p className="text-sm font-bold text-text mt-1">{sessionDetail.instagram_story.poll_question || 'Ask what they think!'}</p>
                           </div>
                         </div>
                       </div>

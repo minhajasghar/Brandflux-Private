@@ -17,7 +17,7 @@ import {
   RotateCcw,
   ShieldCheck
 } from 'lucide-react'
-import api, { submitPostForApproval } from '@/lib/api'
+import api, { submitPostForApproval, updatePostVariantSelection } from '@/lib/api'
 import { toast } from 'react-hot-toast'
 import CopyButton from '@/components/ui/CopyButton'
 import Skeleton from '@/components/ui/Skeleton'
@@ -835,12 +835,42 @@ export default function IdeasPage() {
 
                   {/* Creative Asset Visual Banner */}
                   {(sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url) && (
-                    <div className="relative rounded-2xl overflow-hidden aspect-video bg-black/60 border border-border mt-5 group">
-                      <img 
-                        src={resolveMediaUrl(sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url)} 
-                        alt={sessionDetail.session_theme} 
-                        className="w-full h-full object-contain" 
-                      />
+                    <div className="relative rounded-2xl overflow-hidden bg-black/60 border border-border mt-5 group">
+                      {sessionDetail.image_variants && sessionDetail.image_variants.filter((v: any) => v.is_selected).length >= 2 ? (
+                        <div className="p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-accent">
+                              Side-by-Side Single Post (2 Variants Selected)
+                            </span>
+                            <span className="text-[10px] text-muted">Published together in 1 post</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            {sessionDetail.image_variants
+                              .filter((v: any) => v.is_selected)
+                              .slice(0, 2)
+                              .map((v: any, idx: number) => (
+                                <div key={v.id || idx} className="relative rounded-xl overflow-hidden aspect-square bg-black/70 border border-accent/60">
+                                  <img
+                                    src={resolveMediaUrl(v.image_url)}
+                                    alt={`Selected Variant ${idx + 1}`}
+                                    className="w-full h-full object-contain"
+                                  />
+                                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-accent text-black font-black text-[10px]">
+                                    #{idx + 1}
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="aspect-video w-full">
+                          <img 
+                            src={resolveMediaUrl(sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url)} 
+                            alt={sessionDetail.session_theme} 
+                            className="w-full h-full object-contain" 
+                          />
+                        </div>
+                      )}
                       {((sessionDetail[activeDetailTab]?.image_url || sessionDetail.image_url)?.includes('test_') || sessionDetail.source === 'fallback') && (
                         <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-md bg-amber-500/90 text-black text-[10px] font-black uppercase tracking-wider shadow">
                           Fallback / Test Graphic
@@ -863,52 +893,98 @@ export default function IdeasPage() {
                   {/* Image Variants Gallery & Unused Image Manager */}
                   {sessionDetail.image_variants && sessionDetail.image_variants.length > 0 && (
                     <div className="bg-surface-secondary border border-border rounded-2xl p-4 space-y-3 mt-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-black uppercase tracking-wider text-text">
                             Artwork Variants ({sessionDetail.image_variants.length})
                           </span>
                           <span className="text-[10px] text-muted">
-                            Saved permanently
+                            Click to select one or both
                           </span>
                         </div>
 
-                        {sessionDetail.image_variants.some((v: any) => v.is_unused) && (
-                          <button
-                            type="button"
-                            onClick={handleDeleteUnusedImages}
-                            disabled={isDeletingUnused}
-                            className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-bold text-[11px] transition flex items-center gap-1"
-                          >
-                            {isDeletingUnused ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                            <span>Delete unused images</span>
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {sessionDetail.image_variants.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!selectedSessionId) return
+                                const allIds = sessionDetail.image_variants.map((v: any) => v.id)
+                                const currentlySelected = sessionDetail.image_variants.filter((v: any) => v.is_selected).map((v: any) => v.id)
+                                const nextIds = currentlySelected.length === allIds.length ? [allIds[0]] : allIds
+                                try {
+                                  const res = await updatePostVariantSelection(selectedSessionId, nextIds)
+                                  if (res) {
+                                    const updated = await api.get(`/content/history/${selectedSessionId}`)
+                                    setSessionDetail(updated.data)
+                                    fetchHistory(true)
+                                    toast.success(nextIds.length > 1 ? 'Both variants selected side-by-side!' : 'Single variant selected!')
+                                  }
+                                } catch (e: any) {
+                                  toast.error(e.response?.data?.detail || 'Failed to update variant selection.')
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] border transition ${
+                                sessionDetail.image_variants.filter((v: any) => v.is_selected).length >= 2
+                                  ? 'bg-accent text-black border-accent'
+                                  : 'bg-white/5 hover:bg-white/10 text-text border-border'
+                              }`}
+                            >
+                              {sessionDetail.image_variants.filter((v: any) => v.is_selected).length >= 2
+                                ? '✓ Both Selected (Side-by-Side)'
+                                : 'Select Both (Side-by-Side)'}
+                            </button>
+                          )}
+
+                          {sessionDetail.image_variants.some((v: any) => v.is_unused) && (
+                            <button
+                              type="button"
+                              onClick={handleDeleteUnusedImages}
+                              disabled={isDeletingUnused}
+                              className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-bold text-[11px] transition flex items-center gap-1"
+                            >
+                              {isDeletingUnused ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                              <span>Delete unused images</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                         {sessionDetail.image_variants.map((v: any, idx: number) => (
                           <div 
                             key={v.id || idx}
-                            className={`relative rounded-xl overflow-hidden aspect-square border ${
+                            onClick={async () => {
+                              if (!selectedSessionId || !v.id) return
+                              try {
+                                await updatePostVariantSelection(selectedSessionId, [v.id])
+                                const updated = await api.get(`/content/history/${selectedSessionId}`)
+                                setSessionDetail(updated.data)
+                                fetchHistory(true)
+                                toast.success(`Variant ${idx + 1} selected!`)
+                              } catch (e: any) {
+                                toast.error(e.response?.data?.detail || 'Failed to select variant.')
+                              }
+                            }}
+                            className={`relative rounded-xl overflow-hidden aspect-square border cursor-pointer transition bg-black/50 ${
                               v.is_selected 
                                 ? 'border-accent ring-2 ring-accent' 
-                                : 'border-border opacity-70 hover:opacity-100'
+                                : 'border-border opacity-75 hover:opacity-100 hover:border-white/30'
                             }`}
                           >
                             <img 
                               src={resolveMediaUrl(v.image_url)} 
                               alt={`Variant ${idx + 1}`}
-                              className="w-full h-full object-cover" 
+                              className="w-full h-full object-contain" 
                             />
-                            <div className="absolute top-1 left-1">
+                            <div className="absolute top-1.5 left-1.5">
                               {v.is_selected ? (
                                 <span className="px-1.5 py-0.5 rounded bg-accent text-black font-black text-[9px]">
                                   Selected
                                 </span>
                               ) : (
                                 <span className="px-1.5 py-0.5 rounded bg-black/70 text-zinc-300 font-bold text-[9px]">
-                                  Unused
+                                  Click to Select
                                 </span>
                               )}
                             </div>
@@ -925,8 +1001,8 @@ export default function IdeasPage() {
                       {([
                         { id: 'facebook_post', label: 'Facebook', icon: '📘', available: !!sessionDetail.facebook_post },
                         { id: 'instagram_post', label: 'Instagram', icon: '📸', available: !!sessionDetail.instagram_post },
-                        { id: 'linkedin', label: 'LinkedIn', icon: '💼', available: !!sessionDetail.linkedin },
-                        { id: 'x_twitter', label: 'X', icon: '𝕏', available: !!sessionDetail.x_twitter },
+                        { id: 'linkedin_post', label: 'LinkedIn', icon: '💼', available: !!(sessionDetail.linkedin_post || sessionDetail.linkedin) },
+                        { id: 'twitter_post', label: 'X', icon: '𝕏', available: !!(sessionDetail.twitter_post || sessionDetail.x_twitter) },
                         { id: 'tiktok', label: 'TikTok', icon: '🎵', available: !!sessionDetail.tiktok },
                       ] as const).filter(t => t.available).map((tab) => {
                         const isActive = activeDetailTab === tab.id;

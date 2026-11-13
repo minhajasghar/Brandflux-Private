@@ -423,6 +423,8 @@ async def update_brand_website(
     brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="Brand profile not found")
+    if get_user_brand_role(user, brand.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approver accounts have review-only access and cannot modify brand website settings.")
 
     brand.website_url = req.website_url.strip()
 
@@ -567,6 +569,8 @@ def update_brand_kit(
     if not brand:
         brand = Brand(user_id=user.id, business_name=req.business_name or "My Brand", name=req.name or req.business_name or "My Brand")
         db.add(brand)
+    elif get_user_brand_role(user, brand.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approver accounts have review-only access and cannot modify brand kit settings.")
 
     update_data = req.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -607,6 +611,8 @@ async def upload_brand_logo(
     if not brand:
         brand = Brand(user_id=user.id, business_name="My Brand", name="My Brand")
         db.add(brand)
+    elif get_user_brand_role(user, brand.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approver accounts have review-only access and cannot upload brand logos.")
 
     contents = await file.read()
 
@@ -917,6 +923,11 @@ def remove_team_member(
             )
 
     member.status = "removed"
+    member.invitation_token = None
+    if member.user_id:
+        removed_u = db.query(User).filter(User.id == member.user_id).first()
+        if removed_u and removed_u.active_brand_id == brand.id:
+            removed_u.active_brand_id = None
     db.commit()
 
     log_approval_audit(
@@ -1069,6 +1080,8 @@ def accept_invitation(req: AcceptInviteRequest, db: Session = Depends(get_db)):
             # If password provided, verify it
             if not verify_password(req.password, user.password_hash):
                 raise HTTPException(status_code=400, detail="Invalid credentials for existing user.")
+        user.is_approved = True
+        user.is_verified = True
         member.user_id = user.id
     else:
         # Create new approver user directly with onboarding_complete=True
@@ -1080,6 +1093,7 @@ def accept_invitation(req: AcceptInviteRequest, db: Session = Depends(get_db)):
             password_hash=hash_password(req.password),
             full_name=req.full_name or target_email.split("@")[0].capitalize(),
             plan="free",
+            is_approved=True,
             is_verified=True,
             active_brand_id=brand.id
         )

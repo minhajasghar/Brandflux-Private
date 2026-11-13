@@ -169,17 +169,30 @@ def generate_payment_receipt_pdf(payment, bank_details: dict = None) -> bytes:
     if proof_url and not str(proof_url).startswith("data:application/pdf"):
         try:
             img_bytes = None
-            if str(proof_url).startswith("data:image") and ";base64," in str(proof_url):
-                b64_part = str(proof_url).split(";base64,", 1)[1]
+            proof_str = str(proof_url).strip()
+            if proof_str.startswith("data:image") and ";base64," in proof_str:
+                b64_part = proof_str.split(";base64,", 1)[1]
                 img_bytes = base64.b64decode(b64_part)
-            elif str(proof_url).startswith(("http://", "https://")):
+            elif "/api/media/posts/" in proof_str or "/media/posts/" in proof_str:
+                fn = proof_str.split("/posts/")[-1].split("?")[0]
+                backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                for candidate_path in [
+                    os.path.join(backend_dir, "media", "posts", fn),
+                    os.path.join("media", "posts", fn),
+                    os.path.join("backend", "media", "posts", fn),
+                ]:
+                    if os.path.exists(candidate_path):
+                        with open(candidate_path, "rb") as f:
+                            img_bytes = f.read()
+                        break
+            elif proof_str.startswith(("http://", "https://")):
                 import httpx
                 with httpx.Client(timeout=10.0) as client:
-                    resp = client.get(str(proof_url))
+                    resp = client.get(proof_str)
                     if resp.status_code == 200:
                         img_bytes = resp.content
             else:
-                local_rel = str(proof_url).lstrip("/")
+                local_rel = proof_str.lstrip("/")
                 if local_rel.startswith("api/media/"):
                     local_rel = local_rel.replace("api/media/", "media/", 1)
                 if os.path.exists(local_rel):
@@ -217,5 +230,18 @@ def generate_payment_receipt_pdf(payment, bank_details: dict = None) -> bytes:
 
     doc.build(story)
     buffer.seek(0)
-    return buffer.getvalue()
+    pdf_bytes = buffer.getvalue()
+
+    # Persist generated PDF to disk under media/receipts/
+    try:
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        receipts_dir = os.path.join(backend_dir, "media", "receipts")
+        os.makedirs(receipts_dir, exist_ok=True)
+        pdf_filename = f"Brandflux_Receipt_{payment.id[:8].upper()}.pdf"
+        with open(os.path.join(receipts_dir, pdf_filename), "wb") as pf:
+            pf.write(pdf_bytes)
+    except Exception:
+        pass
+
+    return pdf_bytes
 

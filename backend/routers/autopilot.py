@@ -352,6 +352,16 @@ def get_weekly_plan_cards(
 
 # ─── Card Interactive Edit Operations ────────────────────────────────────────
 
+def _verify_card_ownership(db: Session, card_id: str, brand_id: str) -> ScheduledPost:
+    card = db.query(ScheduledPost).filter(
+        ScheduledPost.id == card_id,
+        ScheduledPost.brand_id == brand_id
+    ).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Scheduled card not found for this brand")
+    return card
+
+
 @router.post("/cards/{card_id}/edit-prompt")
 async def edit_card_with_prompt(
     card_id: str,
@@ -366,6 +376,7 @@ async def edit_card_with_prompt(
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+    _verify_card_ownership(db, card_id, brand.id)
 
     try:
         post = await autopilot_agent.edit_post_with_prompt(
@@ -392,6 +403,7 @@ def update_card_caption(
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+    _verify_card_ownership(db, card_id, brand.id)
 
     try:
         post = autopilot_agent.update_card_caption(
@@ -413,12 +425,13 @@ def change_card_image(
     db: Session = Depends(get_db)
 ):
     """
-    (c) Change image: pick the other variant, pick from library, or set uploaded image.
+    (c) Change image: pick the other variant, combine both variants side-by-side, pick from library, or set uploaded image.
     Picking a library image removes its 7-day auto-delete tag. Resets status to Pending Approval.
     """
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+    _verify_card_ownership(db, card_id, brand.id)
 
     try:
         post = autopilot_agent.change_card_image(
@@ -443,9 +456,12 @@ async def upload_card_custom_image(
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+    _verify_card_ownership(db, card_id, brand.id)
 
     content = await file.read()
-    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "png"
+    ext = file.filename.split(".")[-1].lower() if file.filename and "." in file.filename else "png"
+    if ext not in ("png", "jpg", "jpeg", "webp"):
+        ext = "png"
     filename = f"upload_card_{card_id[:8]}_{uuid.uuid4().hex[:6]}.{ext}"
     url = storage_service.upload_image(content, filename)
 
@@ -470,6 +486,7 @@ def skip_card_day(
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+    _verify_card_ownership(db, card_id, brand.id)
 
     post = autopilot_agent.skip_card(post_id=card_id, db=db)
     return {"status": "success", "card": autopilot_agent.serialize_scheduled_post(post)}
@@ -488,6 +505,7 @@ def reschedule_card_day(
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+    _verify_card_ownership(db, card_id, brand.id)
 
     post = autopilot_agent.reschedule_card(post_id=card_id, new_datetime=req.scheduled_at, db=db)
     return {"status": "success", "card": autopilot_agent.serialize_scheduled_post(post)}
@@ -506,6 +524,7 @@ def toggle_card_status(
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+    _verify_card_ownership(db, card_id, brand.id)
 
     if brand.require_approval:
         raise HTTPException(
@@ -540,19 +559,68 @@ def approve_all_cards(
 @router.post("/cards/{card_id}/publish-now")
 async def publish_card_now_verified(
     card_id: str,
+    platform: Optional[str] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Verified Publishing execution for card:
-    Publishes to official connected platform API (Facebook Page, etc.) and returns genuine permalink.
+    Publishes to official connected platform API (Facebook Page, Instagram, X, LinkedIn, TikTok) and returns genuine permalink.
+    """
+    brand = db.query(Brand).filter(Brand.user_id == user.id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    _verify_card_ownership(db, card_id, brand.id)
+
+    res = await autopilot_agent.publish_card_now_verified(
+        post_id=card_id,
+        db=db,
+        target_platform=platform
+    )
+    return res
+
+
+@router.post("/auto-publish")
+async def agent_auto_publish_or_schedule(
+    payload: Optional[Dict[str, Any]] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Autonomous AI Agent action to retrieve generated content, identify selected image variants (1 or both side-by-side),
+    captions, hashtags, and connected platforms, and either publish immediately or schedule for future execution.
     """
     brand = db.query(Brand).filter(Brand.user_id == user.id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
 
-    res = await autopilot_agent.publish_card_now_verified(post_id=card_id, db=db)
-    return res
+    body = payload or {}
+    post_id = body.get("post_id")
+    variant_ids = body.get("variant_ids")
+    platforms = body.get("platforms")
+    schedule_at_raw = body.get("scheduled_at") or body.get("schedule_at")
+    schedule_dt = None
+    if schedule_at_raw:
+        try:
+            schedule_dt = datetime.fromisoformat(str(schedule_at_raw).replace("Z", "+00:00")).replace(tzinfo=None)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at datetime format")
+
+    try:
+        res = await autopilot_agent.auto_publish_or_schedule_post(
+            db=db,
+            brand_id=brand.id,
+            post_id=post_id,
+            schedule_at=schedule_dt,
+            variant_ids=variant_ids,
+            platforms=platforms
+        )
+        return res
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Agent auto-publish error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ─── Image Library & Audit Logs ──────────────────────────────────────────────

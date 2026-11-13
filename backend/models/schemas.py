@@ -270,6 +270,7 @@ class SessionGenerationRequest(BaseModel):
 
 class SelectVariantRequest(BaseModel):
     variant_id: str
+    variant_ids: Optional[List[str]] = None
     session_id: str
     adjusted_caption: Optional[str] = None
     adjusted_hashtags: Optional[List[str]] = None

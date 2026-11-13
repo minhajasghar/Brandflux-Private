@@ -238,6 +238,66 @@ class StorageService:
         # Local fallback signed mock/static URL
         return f"{self.get_public_base_url()}/api/media/references/{filename}"
 
+    def create_side_by_side_image(self, image_urls: list) -> Optional[str]:
+        """
+        Combine two (or more) selected image variants side by side into a single high-resolution
+        post graphic (1920x1080, 1.78:1 aspect ratio — valid across Instagram, Facebook, LinkedIn, X, TikTok),
+        preserving each variant's original quality and aspect ratio without cropping.
+        """
+        if not image_urls:
+            return None
+        clean_urls = [u for u in image_urls if u]
+        if len(clean_urls) == 1:
+            return clean_urls[0]
+
+        import hashlib
+        from PIL import ImageOps
+
+        local_paths = []
+        for u in clean_urls[:2]:
+            fname = os.path.basename(str(u).split("?")[0])
+            p = os.path.join(PROCESSED_IMAGES_DIR, fname)
+            if not os.path.exists(p) or os.path.getsize(p) < 500:
+                fb_bytes = self.generate_fallback_image(headline=fname[:12])
+                try:
+                    with open(p, "wb") as f:
+                        f.write(fb_bytes)
+                except Exception:
+                    pass
+            if os.path.exists(p):
+                local_paths.append(p)
+
+        if len(local_paths) < 2:
+            return clean_urls[0]
+
+        digest = hashlib.md5("|".join(os.path.basename(p) for p in local_paths).encode("utf-8")).hexdigest()[:12]
+        out_filename = f"sidebyside_{digest}.png"
+        out_path = os.path.join(PROCESSED_IMAGES_DIR, out_filename)
+
+        try:
+            canvas_w, canvas_h = 1920, 1080
+            pad = 24
+            gap = 24
+            slot_w = (canvas_w - (pad * 2) - gap) // 2
+            slot_h = canvas_h - (pad * 2)
+
+            canvas = Image.new("RGB", (canvas_w, canvas_h), color=(13, 15, 22))
+            for idx, p in enumerate(local_paths[:2]):
+                with Image.open(p) as im:
+                    rgb = im.convert("RGB")
+                    fitted = ImageOps.contain(rgb, (slot_w, slot_h), method=Image.Resampling.LANCZOS)
+                    slot_x = pad + idx * (slot_w + gap)
+                    x_off = slot_x + (slot_w - fitted.width) // 2
+                    y_off = pad + (slot_h - fitted.height) // 2
+                    canvas.paste(fitted, (x_off, y_off))
+
+            buf = io.BytesIO()
+            canvas.save(buf, format="PNG", optimize=True)
+            return self.upload_image(buf.getvalue(), out_filename, content_type="image/png")
+        except Exception as e:
+            logger.error(f"Failed to create side-by-side composite image: {e}")
+            return clean_urls[0]
+
 
 # Singleton instance
 storage_service = StorageService()

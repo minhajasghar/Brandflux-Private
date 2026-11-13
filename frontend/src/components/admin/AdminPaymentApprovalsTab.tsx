@@ -23,6 +23,7 @@ import {
   adminRejectPayment,
   downloadReceiptPdf
 } from '@/lib/api'
+import { resolveMediaUrl } from '@/lib/media'
 
 export default function AdminPaymentApprovalsTab() {
   const [loading, setLoading] = useState(true)
@@ -328,7 +329,7 @@ export default function AdminPaymentApprovalsTab() {
                 </div>
               ) : (
                 <img
-                  src={viewingProof.proof_image_url}
+                  src={resolveMediaUrl(viewingProof.proof_image_url)}
                   alt="Transfer Receipt Proof"
                   className="max-h-[70vh] rounded-xl border border-border object-contain shadow-lg"
                 />

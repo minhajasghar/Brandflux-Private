@@ -31,17 +31,42 @@ class XPublisher(PlatformPublisher):
         redirect_uri = os.getenv("TWITTER_REDIRECT_URI", TWITTER_REDIRECT_URI).strip()
         return client_id, client_secret, redirect_uri
 
+    def _resolve_local_image_path(self, image_url: str) -> Optional[str]:
+        """Resolves local media URLs or file names to an absolute file path on disk."""
+        if not image_url:
+            return None
+        import config
+        filename = image_url.split("/")[-1].split("?")[0]
+        possible_dirs = [
+            config.PROCESSED_IMAGES_DIR,
+            os.path.join(config.BASE_DIR, "processed_images"),
+            os.path.join(config.BASE_DIR, "uploads"),
+            os.path.join(config.BASE_DIR, "media"),
+        ]
+        for d in possible_dirs:
+            p = os.path.join(d, filename)
+            if os.path.exists(p):
+                return p
+        if os.path.exists(image_url):
+            return image_url
+        return None
+
     async def _get_valid_token(self, account: SocialAccount, db: Optional[Session] = None) -> Tuple[str, Optional[str]]:
         """
         Returns (access_token, error_message).
-        If token is near expiry and refresh token is available, automatically refreshes it.
+        If token is near expiry and refresh token is available, automatically refreshes it
+        and commits the rotated token to the database.
         """
         raw_token = decrypt_token(account.access_token_encrypted)
-        
+        has_refresh = bool(
+            getattr(account, "refresh_token_encrypted", None)
+            or (account.metadata_json or {}).get("refresh_token_encrypted")
+        )
+
         # Check expiry
         now = datetime.utcnow()
         if account.token_expires_at and account.token_expires_at <= (now + timedelta(minutes=5)):
-            if account.refresh_token_encrypted:
+            if has_refresh:
                 logger.info(f"X (Twitter) token for account {account.account_name} is expiring/expired. Attempting automatic refresh...")
                 refreshed_token = await self._refresh_access_token(account, db)
                 if refreshed_token:
@@ -56,8 +81,10 @@ class XPublisher(PlatformPublisher):
     async def _refresh_access_token(self, account: SocialAccount, db: Optional[Session] = None) -> Optional[str]:
         """
         Refreshes OAuth 2.0 token using offline.access refresh token.
+        Always persists rotated tokens to SQLAlchemy session so one-time refresh tokens are never lost.
         """
-        if not account.refresh_token_encrypted:
+        enc_refresh = getattr(account, "refresh_token_encrypted", None) or (account.metadata_json or {}).get("refresh_token_encrypted")
+        if not enc_refresh:
             return None
 
         client_id, client_secret, _ = self._get_credentials()
@@ -65,7 +92,7 @@ class XPublisher(PlatformPublisher):
             logger.error("Cannot refresh X token: TWITTER_CLIENT_ID is not configured.")
             return None
 
-        refresh_token = decrypt_token(account.refresh_token_encrypted)
+        refresh_token = decrypt_token(enc_refresh)
         token_url = f"{TWITTER_API_BASE}/2/oauth2/token"
         data = {
             "grant_type": "refresh_token",
@@ -86,13 +113,19 @@ class XPublisher(PlatformPublisher):
 
                     account.access_token_encrypted = encrypt_token(new_access)
                     if new_refresh:
-                        account.refresh_token_encrypted = encrypt_token(new_refresh)
+                        enc_new_ref = encrypt_token(new_refresh)
+                        account.refresh_token_encrypted = enc_new_ref
+                        meta = dict(account.metadata_json or {})
+                        meta["refresh_token_encrypted"] = enc_new_ref
+                        account.metadata_json = meta
                     account.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
                     account.is_active = True
 
-                    if db:
-                        db.commit()
-                        db.refresh(account)
+                    from sqlalchemy.orm import object_session
+                    sess = db or object_session(account)
+                    if sess:
+                        sess.commit()
+                        sess.refresh(account)
 
                     logger.info(f"Successfully refreshed X token for {account.account_name}")
                     return new_access
@@ -133,29 +166,47 @@ class XPublisher(PlatformPublisher):
 
         return cleaned
 
-    async def _upload_media(self, image_url: str, account: SocialAccount) -> Optional[str]:
+    async def _upload_media(self, image_url: str, account: SocialAccount, token: Optional[str] = None) -> Optional[str]:
         """
-        Attempts media upload to Twitter v1.1 upload endpoint if credentials allow,
-        or returns None so tweet is gracefully dispatched as text.
+        Attempts media upload to X v2 media endpoint (OAuth 2.0 Bearer compatible) or v1.1 fallback,
+        resolving local disk images first so localhost/internal URLs work reliably.
         """
         if not image_url:
             return None
 
-        # Fetch image bytes
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                img_res = await client.get(image_url)
-                if img_res.status_code != 200:
-                    logger.warning(f"Failed to fetch image for X upload: {image_url} (HTTP {img_res.status_code})")
-                    return None
-                img_bytes = img_res.content
+            local_path = self._resolve_local_image_path(image_url)
+            if local_path and os.path.exists(local_path):
+                with open(local_path, "rb") as f:
+                    img_bytes = f.read()
+            else:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    img_res = await client.get(image_url)
+                    if img_res.status_code != 200:
+                        logger.warning(f"Failed to fetch image for X upload: {image_url} (HTTP {img_res.status_code})")
+                        return None
+                    img_bytes = img_res.content
 
-            token, _ = await self._get_valid_token(account)
-            upload_url = "https://upload.twitter.com/1.1/media/upload.json"
-            files = {"media": ("image.png", img_bytes, "image/png")}
+            if not token:
+                token, _ = await self._get_valid_token(account)
+            if not token:
+                return None
+
             headers = {"Authorization": f"Bearer {token}"}
+            files = {"media": ("image.png", img_bytes, "image/png")}
 
             async with httpx.AsyncClient(timeout=45.0) as client:
+                # 1. Try X API v2 media upload (supports OAuth 2.0 User Context tokens with media.write)
+                v2_url = f"{TWITTER_API_BASE}/2/media/upload"
+                v2_res = await client.post(v2_url, data={"media_category": "tweet_image"}, files=files, headers=headers)
+                if v2_res.status_code in (200, 201, 202):
+                    v2_json = v2_res.json() if v2_res.headers.get("content-type", "").startswith("application/json") else {}
+                    media_id = (v2_json.get("data") or {}).get("id") or v2_json.get("media_id_string") or v2_json.get("id")
+                    if media_id:
+                        return str(media_id)
+
+                # 2. Fallback to legacy v1.1 media upload
+                upload_url = "https://upload.twitter.com/1.1/media/upload.json"
                 up_res = await client.post(upload_url, files=files, headers=headers)
                 if up_res.status_code in (200, 201, 202):
                     media_id = up_res.json().get("media_id_string")
@@ -222,7 +273,7 @@ class XPublisher(PlatformPublisher):
             )
 
         tweet_body = self.prepare_tweet_text(caption, allow_links=False)
-        media_id = await self._upload_media(image_url, account)
+        media_id = await self._upload_media(image_url, account, token=token)
 
         url = f"{TWITTER_API_BASE}/2/tweets"
         headers = {

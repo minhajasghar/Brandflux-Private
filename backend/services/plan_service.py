@@ -19,17 +19,17 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "price_annual_usd": 182,
         "credits": 30,
         "brands": 1,
-        "platforms": 3,
+        "platforms": 5,
         "max_posts_per_day": 2,
         "daily_generation_cap": 10,
         "reroll_pool": 15,
-        "x_allowed": False,
-        "x_monthly_allowance": 0,
+        "x_allowed": True,
+        "x_monthly_allowance": 50,
         "max_approvers": 1,
         "features": [
             "30 Post Credits / month (60 visuals)",
             "1 Brand Kit & Voice Profile",
-            "3 Connected Social Platforms",
+            "5 Connected Social Platforms",
             "15 Image Re-rolls / month",
             "Auto Logo Background Removal",
             "1-Click Post Now & Calendar Scheduler",
@@ -43,17 +43,17 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "price_annual_usd": 182,
         "credits": 30,
         "brands": 1,
-        "platforms": 3,
+        "platforms": 5,
         "max_posts_per_day": 2,
         "daily_generation_cap": 10,
         "reroll_pool": 15,
-        "x_allowed": False,
-        "x_monthly_allowance": 0,
+        "x_allowed": True,
+        "x_monthly_allowance": 50,
         "max_approvers": 1,
         "features": [
             "30 Post Credits / month (60 visuals)",
             "1 Brand Kit & Voice Profile",
-            "3 Connected Social Platforms",
+            "5 Connected Social Platforms",
             "15 Image Re-rolls / month",
             "Auto Logo Background Removal",
             "1-Click Post Now & Calendar Scheduler",
@@ -71,8 +71,8 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "max_posts_per_day": 5,
         "daily_generation_cap": 25,
         "reroll_pool": 60,
-        "x_allowed": False,
-        "x_monthly_allowance": 0,
+        "x_allowed": True,
+        "x_monthly_allowance": 100,
         "max_approvers": 3,
         "features": [
             "100 Post Credits / month (200 visuals)",
@@ -118,7 +118,7 @@ def get_plan(db: Session, plan_id: str) -> Plan:
         clean_id = "trial"
 
     plan = db.query(Plan).filter(Plan.id == clean_id).first()
-    if plan and not plan.x_allowed and clean_id == "trial":
+    if plan and (not plan.x_allowed or plan.platforms < 5):
         plan.x_allowed = True
         plan.platforms = max(plan.platforms, 5)
         try:

@@ -1110,9 +1110,31 @@ def select_session_variant(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    requested_ids = []
+    if req.variant_ids and isinstance(req.variant_ids, list):
+        for vid in req.variant_ids:
+            if vid and vid not in requested_ids:
+                requested_ids.append(vid)
+    if not requested_ids:
+        requested_ids = [req.variant_id]
+
+    selected_variants = db.query(SessionVariant).filter(
+        SessionVariant.id.in_(requested_ids),
+        SessionVariant.user_id == user.id
+    ).order_by(SessionVariant.variant_index.asc()).all()
+    if not selected_variants:
+        selected_variants = [variant]
+
     # Update is_selected across session variants
     db.query(SessionVariant).filter(SessionVariant.session_id == req.session_id).update({"is_selected": False})
-    variant.is_selected = True
+    for sv in selected_variants:
+        sv.is_selected = True
+
+    selected_image_urls = [sv.image_url for sv in selected_variants if sv.image_url]
+    if len(selected_image_urls) >= 2:
+        effective_image_url = storage_service.create_side_by_side_image(selected_image_urls) or variant.image_url
+    else:
+        effective_image_url = selected_image_urls[0] if selected_image_urls else variant.image_url
 
     final_caption = req.adjusted_caption or variant.caption or ""
     final_hashtags = req.adjusted_hashtags if req.adjusted_hashtags is not None else variant.hashtags
@@ -1166,7 +1188,7 @@ def select_session_variant(
         if existing:
             existing.caption = cap
             existing.hashtags = tags
-            existing.image_url = variant.image_url
+            existing.image_url = effective_image_url
             existing.updated_at = datetime.utcnow()
         else:
             db.add(PlatformCopy(
@@ -1175,8 +1197,8 @@ def select_session_variant(
                 platform=plat,
                 caption=cap,
                 hashtags=tags,
-                image_url=variant.image_url,
-                aspect_ratio="9:16" if plat in ("tiktok", "story") else "1:1",
+                image_url=effective_image_url,
+                aspect_ratio="9:16" if plat in ("tiktok", "story") else ("16:9" if len(selected_image_urls) >= 2 else "1:1"),
                 status="draft",
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
@@ -1232,7 +1254,7 @@ def select_session_variant(
         post.caption = final_caption
         post.hashtags = final_hashtags
         post.call_to_action = variant.call_to_action
-        post.post_image_url = variant.image_url
+        post.post_image_url = effective_image_url
     else:
         post = GeneratedPost(
             idea_id=idea.id,
@@ -1242,7 +1264,7 @@ def select_session_variant(
             caption=final_caption,
             hashtags=final_hashtags,
             call_to_action=variant.call_to_action,
-            post_image_url=variant.image_url,
+            post_image_url=effective_image_url,
             status="draft"
         )
         db.add(post)
@@ -1264,7 +1286,7 @@ def select_session_variant(
                     other_post.hashtags = plat_hashtags
                     other_post.call_to_action = plat_cta
                     other_post.posting_time_suggestion = plat_time
-                    other_post.post_image_url = variant.image_url
+                    other_post.post_image_url = effective_image_url
                 else:
                     other_post = GeneratedPost(
                         idea_id=idea.id,
@@ -1275,13 +1297,13 @@ def select_session_variant(
                         hashtags=plat_hashtags,
                         call_to_action=plat_cta,
                         posting_time_suggestion=plat_time,
-                        post_image_url=variant.image_url,
+                        post_image_url=effective_image_url,
                         status="draft"
                     )
                     db.add(other_post)
 
     # Verify image reachability in storage before deducting credit!
-    filename = os.path.basename(variant.image_url.split("?")[0]) if variant.image_url else ""
+    filename = os.path.basename(effective_image_url.split("?")[0]) if effective_image_url else ""
     if not storage_service.verify_image_reachable(filename):
         raise HTTPException(
             status_code=400,
@@ -1302,32 +1324,35 @@ def select_session_variant(
     # Sync selection to PostImage records
     from models.models import PostImage
     db.query(PostImage).filter(PostImage.post_id == parent_post.id).update({"is_selected": False})
-    sel_img = db.query(PostImage).filter(
-        PostImage.post_id == parent_post.id,
-        PostImage.image_url == variant.image_url
-    ).first()
-    if sel_img:
-        sel_img.is_selected = True
-    else:
-        db.add(PostImage(
-            id=str(uuid.uuid4()),
-            post_id=parent_post.id,
-            image_url=variant.image_url,
-            is_selected=True,
-            expires_at=None,
-            created_at=datetime.utcnow()
-        ))
+    for sel_url in selected_image_urls:
+        sel_img = db.query(PostImage).filter(
+            PostImage.post_id == parent_post.id,
+            PostImage.image_url == sel_url
+        ).first()
+        if sel_img:
+            sel_img.is_selected = True
+        else:
+            db.add(PostImage(
+                id=str(uuid.uuid4()),
+                post_id=parent_post.id,
+                image_url=sel_url,
+                is_selected=True,
+                expires_at=None,
+                created_at=datetime.utcnow()
+            ))
 
     db.commit()
 
     return {
         "success": True,
-        "message": "Variant selected and saved to your history and calendar queue.",
+        "message": "Variant(s) selected and saved to your history and calendar queue.",
         "post_id": parent_post.id,
         "parent_post_id": parent_post.id,
         "legacy_post_id": post.id,
         "selected_variant_id": variant.id,
-        "image_url": variant.image_url,
+        "selected_variant_ids": [sv.id for sv in selected_variants],
+        "image_url": effective_image_url,
+        "selected_image_urls": selected_image_urls,
         "caption": final_caption,
         "hashtags": final_hashtags,
         "credit_deducted": credit_deducted,

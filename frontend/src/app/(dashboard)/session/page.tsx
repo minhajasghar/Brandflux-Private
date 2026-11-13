@@ -104,6 +104,7 @@ export default function SessionPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [variantSessionData, setVariantSessionData] = useState<MultiVariantSessionResult | null>(null)
   const [selectedVariantId, setSelectedVariantId] = useState<string>('')
+  const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([])
   const [selectedVariantImage, setSelectedVariantImage] = useState<string>('')
   const [imageLoadError, setImageLoadError] = useState(false)
   const [cardImageErrors, setCardImageErrors] = useState<Record<string, boolean>>({})
@@ -118,24 +119,21 @@ export default function SessionPage() {
   // Helper to ensure public, stable media resolution across devices
   const resolveMediaUrl = (url?: string | null): string => {
     if (!url) return ''
-    // If it's already a relative path, use directly
-    if (url.startsWith('/')) {
-      return url
-    }
     // Extract relative /api/media/... or /static/... path to avoid mixed content (HTTP on HTTPS) and avoid closed backend ports
     if (url.includes('/api/media/')) {
       return url.substring(url.indexOf('/api/media/'))
     }
+    if (url.includes('/media/posts/')) {
+      return '/api' + url.substring(url.indexOf('/media/posts/'))
+    }
+    if (url.includes('/media/references/')) {
+      return '/api' + url.substring(url.indexOf('/media/references/'))
+    }
     if (url.includes('/static/')) {
       return url.substring(url.indexOf('/static/'))
     }
-    try {
-      const parsed = new URL(url)
-      if (parsed.pathname.startsWith('/api/media/') || parsed.pathname.startsWith('/static/')) {
-        return parsed.pathname + parsed.search
-      }
-    } catch {
-      // not a full URL
+    if (url.startsWith('/')) {
+      return url
     }
     return url
   }
@@ -399,6 +397,7 @@ export default function SessionPage() {
           const initialSelected = res.variants?.find(v => v.is_selected) || res.variants?.[0]
           if (initialSelected) {
             setSelectedVariantId(initialSelected.id)
+            setSelectedVariantIds([initialSelected.id])
             setSelectedVariantImage(initialSelected.image_url)
           }
 
@@ -423,24 +422,29 @@ export default function SessionPage() {
     }
   }
 
-  // ─── Select A Variant ─────────────────────────────────────────────────────
-  const handleSelectVariant = async (variant: SessionVariantItem) => {
-    setSelectedVariantId(variant.id)
-    setSelectedVariantImage(variant.image_url)
+  // ─── Select One or Both Variants ──────────────────────────────────────────
+  const commitVariantSelection = async (ids: string[]) => {
+    if (!variantSessionData || ids.length === 0) return
+    const primaryVar = variantSessionData.variants.find(v => v.id === ids[0]) || variantSessionData.variants[0]
+    if (!primaryVar) return
 
-    if (!variantSessionData) return
+    setSelectedVariantId(primaryVar.id)
+    setSelectedVariantIds(ids)
+    setSelectedVariantImage(primaryVar.image_url)
+
     setVariantSessionData(prev => prev ? ({
       ...prev,
       variants: prev.variants.map(v => ({
         ...v,
-        is_selected: v.id === variant.id
+        is_selected: ids.includes(v.id)
       }))
     }) : null)
 
     try {
       setSavingSelection(true)
-      await selectSessionVariant({
-        variant_id: variant.id,
+      const res = await selectSessionVariant({
+        variant_id: primaryVar.id,
+        variant_ids: ids,
         session_id: variantSessionData.session_id,
         adjusted_caption: captionText,
         adjusted_hashtags: hashtagsList,
@@ -448,7 +452,13 @@ export default function SessionPage() {
         platform_copies: platformCopies,
         selected_platforms: selectedPlatforms
       })
-      toast.success('Saved as active selected post for download & calendar!')
+      if (res?.image_url) {
+        setSelectedVariantImage(res.image_url)
+      }
+      if (res?.post_id) {
+        setSavedPostId(res.post_id)
+      }
+      toast.success(ids.length > 1 ? 'Both variants selected side-by-side for single post!' : 'Saved as active selected post!')
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('brandflux:credits_updated'))
       }
@@ -456,6 +466,32 @@ export default function SessionPage() {
       console.error('Failed to commit variant selection:', err)
     } finally {
       setSavingSelection(false)
+    }
+  }
+
+  const handleSelectVariant = async (variant: SessionVariantItem, toggleMulti: boolean = false) => {
+    if (!variantSessionData) return
+    let nextIds: string[] = [variant.id]
+    if (toggleMulti) {
+      if (selectedVariantIds.includes(variant.id)) {
+        const remaining = selectedVariantIds.filter(id => id !== variant.id)
+        nextIds = remaining.length > 0 ? remaining : [variant.id]
+      } else {
+        nextIds = variantSessionData.variants
+          .filter(v => selectedVariantIds.includes(v.id) || v.id === variant.id)
+          .map(v => v.id)
+      }
+    }
+    await commitVariantSelection(nextIds)
+  }
+
+  const handleSelectBothVariants = async () => {
+    if (!variantSessionData) return
+    const allIds = variantSessionData.variants.map(v => v.id)
+    if (selectedVariantIds.length === allIds.length && allIds.length > 1) {
+      await commitVariantSelection([allIds[0]])
+    } else {
+      await commitVariantSelection(allIds)
     }
   }
 
@@ -501,6 +537,7 @@ export default function SessionPage() {
       try {
         const res = await selectSessionVariant({
           variant_id: selectedVariantId,
+          variant_ids: selectedVariantIds.length > 0 ? selectedVariantIds : [selectedVariantId],
           session_id: variantSessionData.session_id,
           adjusted_caption: captionText,
           adjusted_hashtags: hashtagsList,
@@ -524,6 +561,7 @@ export default function SessionPage() {
     try {
       const res = await selectSessionVariant({
         variant_id: selectedVariantId,
+        variant_ids: selectedVariantIds.length > 0 ? selectedVariantIds : [selectedVariantId],
         session_id: variantSessionData.session_id,
         adjusted_caption: captionText,
         adjusted_hashtags: hashtagsList,
@@ -580,6 +618,7 @@ export default function SessionPage() {
       let postId = savedPostId
       const selRes = await selectSessionVariant({
         variant_id: selectedVariantId,
+        variant_ids: selectedVariantIds.length > 0 ? selectedVariantIds : [selectedVariantId],
         session_id: variantSessionData.session_id,
         adjusted_caption: captionText,
         adjusted_hashtags: hashtagsList,
@@ -597,7 +636,7 @@ export default function SessionPage() {
         platforms: selectedPlatforms,
         caption: captionText,
         hashtags: hashtagsList,
-        media_url: activeVar?.image_url || null,
+        media_url: selRes?.image_url || selectedVariantImage || activeVar?.image_url || null,
         scheduled_at: new Date(scheduleDateTime).toISOString(),
         status: 'Scheduled',
         post_id: postId || undefined,
@@ -631,6 +670,7 @@ export default function SessionPage() {
     try {
       const res = await api.post('/sessions/post-now', {
         variant_id: selectedVariantId,
+        variant_ids: selectedVariantIds.length > 0 ? selectedVariantIds : [selectedVariantId],
         session_id: variantSessionData.session_id,
         adjusted_caption: captionText,
         adjusted_hashtags: hashtagsList,
@@ -1245,38 +1285,69 @@ export default function SessionPage() {
 
             {/* ─── VARIANTS GRID WITH SKELETON LOADERS & SELECTION ─────────── */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Layers className="h-4 w-4 text-accent" />
                   <h2 className="text-lg font-black text-text">Image Variants ({variantSessionData.variants.length})</h2>
                 </div>
-                <span className="text-xs text-muted">
-                  Click to select • Highlighting with <strong className="text-accent">lime border</strong>
-                </span>
+                <div className="flex items-center gap-3">
+                  {variantSessionData.variants.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleSelectBothVariants}
+                      disabled={savingSelection}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition flex items-center gap-1.5 ${
+                        selectedVariantIds.length >= 2
+                          ? 'bg-accent text-black border-accent shadow-accent-glow'
+                          : 'bg-surface-secondary text-text border-border hover:border-accent'
+                      }`}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>{selectedVariantIds.length >= 2 ? 'Both Selected (Side-by-Side)' : 'Select Both (Side-by-Side)'}</span>
+                    </button>
+                  )}
+                  <span className="text-xs text-muted">
+                    Select one or both variants • <strong className="text-accent">Lime border</strong> = active
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                 {variantSessionData.variants.map((v) => {
-                  const isSelected = v.id === selectedVariantId
+                  const isSelected = selectedVariantIds.includes(v.id) || v.id === selectedVariantId
                   const isRegenerating = regeneratingId === v.id
 
                   return (
                     <motion.div
                       key={v.id}
                       whileHover={{ scale: 1.01 }}
-                      onClick={() => handleSelectVariant(v)}
+                      onClick={() => handleSelectVariant(v, false)}
                       className={`relative rounded-3xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between border ${isSelected
                           ? 'border-accent bg-surface-secondary shadow-accent-glow ring-2 ring-accent'
                           : 'border-border bg-surface hover:border-border-light'
                         }`}
                     >
-                      {/* Active Selection Badge */}
-                      {isSelected && (
-                        <div className="absolute top-6 left-6 z-10 px-2.5 py-1 rounded-full bg-accent text-black font-black text-[11px] flex items-center gap-1 shadow-lg">
-                          <Check className="h-3.5 w-3.5 stroke-[3]" />
-                          Selected Variant
-                        </div>
-                      )}
+                      {/* Active Selection Badge & Multi-Select Toggle */}
+                      <div className="absolute top-6 left-6 right-6 z-10 flex items-center justify-between pointer-events-none">
+                        {isSelected ? (
+                          <div className="px-2.5 py-1 rounded-full bg-accent text-black font-black text-[11px] flex items-center gap-1 shadow-lg">
+                            <Check className="h-3.5 w-3.5 stroke-[3]" />
+                            Selected
+                          </div>
+                        ) : <div />}
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleSelectVariant(v, true) }}
+                          className={`pointer-events-auto px-2 py-1 rounded-lg text-[10px] font-bold border transition ${
+                            isSelected
+                              ? 'bg-black/80 text-accent border-accent'
+                              : 'bg-black/75 text-white border-white/20 hover:border-accent'
+                          }`}
+                          title="Toggle multi-select (include in side-by-side post)"
+                        >
+                          {isSelected ? '✓ In Post' : '+ Add to Post'}
+                        </button>
+                      </div>
 
                       {/* Image Preview & Full Screen Action */}
                       <div className="space-y-3">
@@ -1387,17 +1458,44 @@ export default function SessionPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
                 {/* Left: Graphic display */}
                 <div className="space-y-3">
-                  <div className="relative rounded-2xl overflow-hidden aspect-square border-2 border-accent bg-surface-secondary">
-                    {selectedVariantImage ? (
-                      <img
-                        src={resolveMediaUrl(selectedVariantImage)}
-                        alt="Selected Variant"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <Skeleton width="100%" height="100%" rounded="2xl" />
-                    )}
-                  </div>
+                  {selectedVariantIds.length >= 2 ? (
+                    <div className="rounded-2xl overflow-hidden border-2 border-accent bg-surface-secondary p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-accent">
+                          Side-by-Side Single Post Preview (2 Variants)
+                        </span>
+                        <span className="text-[10px] text-muted">Published together in 1 post</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {variantSessionData.variants
+                          .filter(v => selectedVariantIds.includes(v.id))
+                          .map((v, i) => (
+                            <div key={v.id} className="relative rounded-xl overflow-hidden aspect-square bg-black/50 border border-border">
+                              <img
+                                src={resolveMediaUrl(v.image_url)}
+                                alt={`Selected Variant ${i + 1}`}
+                                className="w-full h-full object-contain"
+                              />
+                              <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/80 text-accent font-black text-[10px]">
+                                #{i + 1}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-2xl overflow-hidden aspect-square border-2 border-accent bg-surface-secondary">
+                      {selectedVariantImage ? (
+                        <img
+                          src={resolveMediaUrl(selectedVariantImage)}
+                          alt="Selected Variant"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <Skeleton width="100%" height="100%" rounded="2xl" />
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span>All variants saved permanently to your library</span>
                     {variantSessionData.variants.find(v => v.id === selectedVariantId)?.source === 'fallback' ? (

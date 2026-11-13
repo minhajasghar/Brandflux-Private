@@ -2055,8 +2055,8 @@ async def admin_approve_payment(
         user.plan = payment.plan_id
 
         plan = db.query(Plan).filter(Plan.id == payment.plan_id).first()
-        from services.credit_service import ensure_user_ledger_initialized
-        ensure_user_ledger_initialized(user, db)
+        from services.credit_service import sync_ledger_for_plan_upgrade
+        sync_ledger_for_plan_upgrade(user, payment.plan_id, f"pay_approve_{payment.id}", db)
         user.posts_used_this_month = 0
         user.rerolls_used_this_month = 0
         user.x_posts_used_this_month = 0
@@ -2085,6 +2085,13 @@ async def admin_approve_payment(
         db.add(notif)
 
     db.commit()
+
+    try:
+        from routers.billing import get_system_bank_details
+        from services.pdf_receipt_service import generate_payment_receipt_pdf
+        generate_payment_receipt_pdf(payment, get_system_bank_details(db))
+    except Exception:
+        pass
 
     log_audit_action(
         db=db,

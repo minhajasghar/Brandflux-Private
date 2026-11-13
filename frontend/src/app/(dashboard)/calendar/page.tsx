@@ -29,6 +29,7 @@ import api, {
   uploadBrandLogo
 } from '@/lib/api'
 import { SocialIcon } from '@/components/shared/SocialIcons'
+import { resolveMediaUrl } from '@/lib/media'
 
 interface ScheduledPost {
   id: string
@@ -435,7 +436,7 @@ export default function CalendarPage() {
     setSelectedPlatformsForSchedule(PLATFORMS.map(p => p.id))
     setFormCaption('')
     setFormMediaUrl('')
-    setFormStatus('Draft')
+    setFormStatus('Scheduled')
 
     if (overrideDate) {
       setFormScheduledAt(`${overrideDate}T10:00`)
@@ -898,7 +899,7 @@ export default function CalendarPage() {
                               <div className="h-16 w-full rounded-lg bg-surface-secondary border border-border overflow-hidden">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src={post.media_url}
+                                  src={resolveMediaUrl(post.media_url)}
                                   alt="Post thumbnail"
                                   className="h-full w-full object-cover"
                                 />
@@ -1077,7 +1078,7 @@ export default function CalendarPage() {
                       <div className="h-14 w-14 rounded-xl bg-surface border border-border overflow-hidden shrink-0">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={post.media_url}
+                          src={resolveMediaUrl(post.media_url)}
                           alt="Post thumbnail"
                           className="h-full w-full object-cover"
                         />
@@ -1334,7 +1335,7 @@ export default function CalendarPage() {
                       <div className="relative h-44 w-full rounded-2xl bg-surface-secondary border border-border overflow-hidden p-2 group">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={formMediaUrl}
+                          src={resolveMediaUrl(formMediaUrl)}
                           alt="Scheduled media preview"
                           className="h-full w-full object-contain rounded-xl"
                         />

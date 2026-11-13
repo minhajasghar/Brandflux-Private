@@ -106,6 +106,8 @@ app.mount("/static", StaticFiles(directory=PROCESSED_IMAGES_DIR), name="static")
 
 @app.get("/api/media/posts/{filename}")
 @app.head("/api/media/posts/{filename}")
+@app.get("/api/py/api/media/posts/{filename}")
+@app.head("/api/py/api/media/posts/{filename}")
 @app.get("/api/py/media/posts/{filename}")
 @app.head("/api/py/media/posts/{filename}")
 @app.get("/media/posts/{filename}")
@@ -117,14 +119,21 @@ def serve_post_media(filename: str):
     """
     clean_name = os.path.basename(filename)
     local_path = os.path.join(PROCESSED_IMAGES_DIR, clean_name)
+    ext = os.path.splitext(clean_name)[1].lower()
+    if ext in (".jpg", ".jpeg"):
+        mime = "image/jpeg"
+    elif ext == ".webp":
+        mime = "image/webp"
+    else:
+        mime = "image/png"
     headers = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Cache-Control": "public, max-age=31536000, immutable",
-        "Content-Type": "image/png"
+        "Content-Type": mime
     }
     if os.path.exists(local_path) and os.path.getsize(local_path) >= 500:
-        return FileResponse(local_path, media_type="image/png", headers=headers)
+        return FileResponse(local_path, media_type=mime, headers=headers)
 
     # Dynamic fallback generation so browsers NEVER get a broken 404 image
     fallback_bytes = storage_service.generate_fallback_image(

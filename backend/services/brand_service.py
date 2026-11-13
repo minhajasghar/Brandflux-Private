@@ -75,7 +75,7 @@ def resolve_user_brand(
         if not isinstance(brand_id, str):
             brand_id = None
 
-    # 1. Explicit brand_id provided
+    # 1. Explicit brand_id provided — must strictly belong to user or active membership
     if brand_id:
         # Check ownership
         brand = db.query(Brand).filter(Brand.id == brand_id, Brand.user_id == user.id).first()
@@ -89,6 +89,7 @@ def resolve_user_brand(
         ).first()
         if membership:
             return db.query(Brand).filter(Brand.id == brand_id).first()
+        return None
 
     # 2. If user owns a completed brand, they are the Creator of that brand
     owned_completed_brand = db.query(Brand).filter(
@@ -117,11 +118,22 @@ def resolve_user_brand(
             db.commit()
             return member_brand
 
-    # 4. Fallback to user.active_brand_id
+    # 4. Fallback to user.active_brand_id (only if owned or active member)
     if user.active_brand_id:
         brand = db.query(Brand).filter(Brand.id == user.active_brand_id).first()
         if brand:
-            return brand
+            if brand.user_id == user.id:
+                return brand
+            active_mem = db.query(BrandMember).filter(
+                BrandMember.brand_id == brand.id,
+                (BrandMember.user_id == user.id) | (func.lower(BrandMember.invited_email) == clean_email),
+                BrandMember.status.in_(["active", "invited"])
+            ).first()
+            if active_mem:
+                return brand
+            # Clear stale active_brand_id if membership was revoked
+            user.active_brand_id = None
+            db.commit()
 
     # 5. Fallback to any owned brand
     return db.query(Brand).filter(Brand.user_id == user.id).first()

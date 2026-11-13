@@ -48,6 +48,7 @@ import {
   getImageLibrary,
   getAutopilotLogs
 } from '@/lib/api'
+import { resolveMediaUrl } from '@/lib/media'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -306,17 +307,30 @@ export default function AutopilotTab() {
     }
   }
 
-  // (c) Image actions: Swap Variant
+  // (c) Image actions: Swap Variant or Select Both Side-by-Side
   const handleSwapVariant = async (cardId: string) => {
     try {
       const res = await changeCardImage(cardId, 'swap_variant')
       if (res?.card) {
         setCards(prev => prev.map(c => c.id === cardId ? res.card : c))
       }
-      toast.success('Swapped to alternate image variant! Reset to Pending Approval.')
+      toast.success('Swapped image variant! Reset to Pending Approval.')
       fetchData()
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to swap variant.')
+    }
+  }
+
+  const handleSelectBothVariants = async (cardId: string) => {
+    try {
+      const res = await changeCardImage(cardId, 'select_both')
+      if (res?.card) {
+        setCards(prev => prev.map(c => c.id === cardId ? res.card : c))
+      }
+      toast.success('Both variants combined side-by-side in one post! Reset to Pending Approval.')
+      fetchData()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to combine both variants.')
     }
   }
 
@@ -433,13 +447,14 @@ export default function AutopilotTab() {
   }
 
   // Verified publish test
-  const handlePublishNowTest = async (cardId: string) => {
+  const handlePublishNowTest = async (cardId: string, targetPlatform?: string) => {
     try {
       setPublishingCardId(cardId)
-      toast.loading('Publishing verified post live to official API...', { id: `pub-${cardId}` })
-      const res = await publishCardNowVerified(cardId)
+      const plat = targetPlatform || activePlatformTab[cardId]
+      toast.loading(`Publishing verified post live to ${(plat || 'Social Platform').toUpperCase()}...`, { id: `pub-${cardId}` })
+      const res = await publishCardNowVerified(cardId, plat)
       if (res?.success) {
-        toast.success(`Published live on ${res.platform || 'Social Platform'}!`, { id: `pub-${cardId}` })
+        toast.success(`Published live on ${(res.platform || plat || 'Social Platform').toUpperCase()}!`, { id: `pub-${cardId}` })
       } else {
         toast.error(`Publishing failed: ${res.error || 'Check account connection'}`, { id: `pub-${cardId}` })
       }
@@ -940,13 +955,13 @@ export default function AutopilotTab() {
                   <div className="space-y-2.5">
                     <div className="h-56 rounded-xl overflow-hidden border border-border bg-black/50 relative group">
                       <img
-                        src={card.media_url}
+                        src={resolveMediaUrl(card.media_url)}
                         alt="Card creative"
                         className="w-full h-full object-contain"
                       />
                       {card.variant_image_url && (
                         <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 text-[10px] font-bold text-accent border border-accent/30 backdrop-blur-sm">
-                          2 Variants Ready
+                          {(card.media_url || '').includes('sidebyside_') ? 'Both Variants (Side-by-Side)' : '2 Variants Ready'}
                         </div>
                       )}
                     </div>
@@ -954,15 +969,30 @@ export default function AutopilotTab() {
                     {/* Change Image Action Bar */}
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       {card.variant_image_url && (
-                        <button
-                          type="button"
-                          onClick={() => handleSwapVariant(card.id)}
-                          className="px-3 py-1.5 rounded-lg bg-surface-secondary border border-border hover:border-accent text-text text-[11px] font-bold transition flex items-center gap-1.5"
-                          title="Switch between Variant 1 and Variant 2"
-                        >
-                          <RefreshCw className="h-3 w-3 text-accent" />
-                          <span>Swap Variant</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleSwapVariant(card.id)}
+                            className="px-3 py-1.5 rounded-lg bg-surface-secondary border border-border hover:border-accent text-text text-[11px] font-bold transition flex items-center gap-1.5"
+                            title="Switch between Variant 1 and Variant 2"
+                          >
+                            <RefreshCw className="h-3 w-3 text-accent" />
+                            <span>Swap Variant</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectBothVariants(card.id)}
+                            className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition flex items-center gap-1.5 ${
+                              (card.media_url || '').includes('sidebyside_')
+                                ? 'bg-accent text-black border-accent font-extrabold'
+                                : 'bg-surface-secondary border-border hover:border-accent text-text'
+                            }`}
+                            title="Combine Variant 1 & Variant 2 side-by-side in a single post"
+                          >
+                            <Check className="h-3 w-3" />
+                            <span>Select Both (Side-by-Side)</span>
+                          </button>
+                        </>
                       )}
 
                       <button
@@ -988,13 +1018,13 @@ export default function AutopilotTab() {
 
                   {/* (b) Manual Caption Edit Per Platform */}
                   <div className="space-y-2 pt-1">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-1.5">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-muted">
                         Platform Captions
                       </span>
                       {/* Platform Tabs */}
-                      <div className="flex gap-1">
-                        {(config.connected_platforms || ['facebook', 'linkedin', 'tiktok']).map((p: string) => (
+                      <div className="flex flex-wrap gap-1">
+                        {['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok'].map((p: string) => (
                           <button
                             key={p}
                             type="button"
@@ -1011,7 +1041,7 @@ export default function AutopilotTab() {
                                 : 'bg-surface-secondary text-muted hover:text-text'
                             }`}
                           >
-                            {p}
+                            {p === 'twitter' ? 'X' : p}
                           </button>
                         ))}
                       </div>
@@ -1112,12 +1142,12 @@ export default function AutopilotTab() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => handlePublishNowTest(card.id)}
+                          onClick={() => handlePublishNowTest(card.id, currentPlat)}
                           disabled={publishingCardId === card.id}
                           className="px-3 py-1.5 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary-light font-extrabold text-xs rounded-xl transition flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50"
                         >
                           <Send className="h-3 w-3" />
-                          <span>{publishingCardId === card.id ? 'Publishing...' : 'Test Publish Now'}</span>
+                          <span>{publishingCardId === card.id ? 'Publishing...' : `Publish Now (${currentPlat === 'twitter' ? 'X' : currentPlat.toUpperCase()})`}</span>
                         </button>
                       )}
                     </div>
@@ -1228,7 +1258,7 @@ export default function AutopilotTab() {
                       onClick={() => handleSelectLibraryImage(img.url)}
                       className="group cursor-pointer rounded-xl overflow-hidden border border-border hover:border-accent transition bg-black/40 relative aspect-square"
                     >
-                      <img src={img.url} alt="Creative" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <img src={resolveMediaUrl(img.url)} alt="Creative" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <span className="px-3 py-1.5 rounded-lg bg-accent text-black font-extrabold text-xs shadow-glow">
                           Select Image

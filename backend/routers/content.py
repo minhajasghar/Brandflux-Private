@@ -464,6 +464,23 @@ async def get_content_history_detail(
         # Fetch all image variants associated with this post (both selected and unselected)
         from models.models import PostImage
         img_rows = db.query(PostImage).filter(PostImage.post_id == post.id).order_by(PostImage.created_at.asc()).all()
+        if not img_rows and post.session_id:
+            sv_rows = db.query(SessionVariant).filter(SessionVariant.session_id == post.session_id).order_by(SessionVariant.variant_index.asc()).all()
+            for sv in sv_rows:
+                if sv.image_url:
+                    pi = PostImage(
+                        id=str(uuid.uuid4()),
+                        post_id=post.id,
+                        image_url=sv.image_url,
+                        is_selected=bool(sv.is_selected),
+                        expires_at=None,
+                        created_at=datetime.utcnow()
+                    )
+                    db.add(pi)
+                    img_rows.append(pi)
+            if img_rows:
+                db.commit()
+
         content["image_variants"] = [
             {
                 "id": img.id,
@@ -575,6 +592,78 @@ async def delete_unused_images(
 
     db.commit()
     return {"status": "success", "deleted_count": count, "message": f"Deleted {count} unused images."}
+
+
+class UpdatePostVariantSelectionRequest(BaseModel):
+    variant_ids: List[str]
+
+
+@router.post("/posts/{post_id}/select-variants")
+async def update_post_variant_selection(
+    post_id: str,
+    req: UpdatePostVariantSelectionRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update selected image variant(s) (1 or both) for a post in Content History.
+    If 2 variants are selected, generates and attaches a side-by-side composite image.
+    """
+    post = db.query(Post).filter(Post.id == post_id, Post.user_id == user.id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    if not req.variant_ids:
+        raise HTTPException(status_code=400, detail="Please select at least one image variant.")
+
+    from models.models import PostImage
+    from services.storage import storage_service
+
+    all_imgs = db.query(PostImage).filter(PostImage.post_id == post.id).order_by(PostImage.created_at.asc()).all()
+    if not all_imgs:
+        raise HTTPException(status_code=404, detail="No image variants found for this post")
+
+    selected_urls = []
+    for img in all_imgs:
+        is_sel = img.id in req.variant_ids
+        img.is_selected = is_sel
+        if is_sel and img.image_url:
+            selected_urls.append(img.image_url)
+
+    if not selected_urls:
+        all_imgs[0].is_selected = True
+        selected_urls = [all_imgs[0].image_url]
+
+    if len(selected_urls) >= 2:
+        effective_url = storage_service.create_side_by_side_image(selected_urls) or selected_urls[0]
+    else:
+        effective_url = selected_urls[0]
+
+    for copy in post.platform_copies:
+        copy.image_url = effective_url
+        copy.aspect_ratio = "9:16" if copy.platform in ("tiktok", "story") else ("16:9" if len(selected_urls) >= 2 else "1:1")
+        copy.updated_at = datetime.utcnow()
+
+    sched_rows = db.query(ScheduledPost).filter(ScheduledPost.post_id == post.id).all()
+    for s in sched_rows:
+        s.media_url = effective_url
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "image_url": effective_url,
+        "selected_image_urls": selected_urls,
+        "image_variants": [
+            {
+                "id": img.id,
+                "image_url": img.image_url,
+                "is_selected": bool(img.is_selected),
+                "is_unused": not bool(img.is_selected)
+            }
+            for img in all_imgs
+        ]
+    }
 
 # ─── Per-Platform Actions: Publish, Schedule, Retry ────────────────────────
 from pydantic import BaseModel

@@ -210,7 +210,7 @@ def get_approvals_team(
             "name": member_name or (member_email.split("@")[0] if member_email else "Member"),
             "role": m.role,
             "status": m.status,
-            "invitation_token": m.invitation_token,
+            "invitation_token": m.invitation_token if user_role in ("creator", "admin") else None,
             "invitation_expires_at": m.invitation_expires_at.isoformat() if m.invitation_expires_at else None,
             "accepted_at": m.accepted_at.isoformat() if m.accepted_at else None,
             "created_at": m.created_at.isoformat() if m.created_at else None
@@ -455,6 +455,10 @@ def remove_approver_member(
 
     member.status = "removed"
     member.invitation_token = None
+    if member.user_id:
+        removed_u = db.query(User).filter(User.id == member.user_id).first()
+        if removed_u and removed_u.active_brand_id == brand.id:
+            removed_u.active_brand_id = None
     db.commit()
 
     log_approval_audit(
@@ -706,6 +710,10 @@ async def resubmit_post_endpoint(
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
 
+    user_role = get_user_brand_role(user, brand.id, db)
+    if user_role not in ("creator", "admin") and user.id != brand.user_id:
+        raise HTTPException(status_code=403, detail="Only the brand creator can modify and resubmit posts.")
+
     # Update copies if provided
     copies = db.query(PlatformCopy).filter(PlatformCopy.post_id == post.id).all()
     if req.captions:
@@ -749,6 +757,10 @@ async def publish_approved_post_now(
     brand = db.query(Brand).filter(Brand.id == post.brand_id).first()
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
+
+    user_role = get_user_brand_role(user, brand.id, db)
+    if user_role not in ("creator", "admin") and user.id != brand.user_id:
+        raise HTTPException(status_code=403, detail="Only the brand creator can modify and resubmit posts.")
 
     user_role = get_user_brand_role(user, brand.id, db)
     if not user_role:

@@ -174,11 +174,13 @@ async def check_approval_deadlines_job():
 async def check_and_publish_due_posts_job():
     """
     Periodic job running every 30 seconds directly in AsyncIOScheduler.
-    Finds ScheduledPost records whose scheduled_at <= utcnow() and status in ('Scheduled', 'Draft')
-    and publishes them via the canonical execute_social_publish function.
+    Finds ScheduledPost records whose scheduled_at <= utcnow() and status in ('Scheduled', 'scheduled')
+    and due PlatformCopy records, and publishes them via execute_social_publish.
     """
-    from models.models import ScheduledPost
+    from models.models import ScheduledPost, Post, PlatformCopy, PostImage
     from services.publishing.publish_service import execute_social_publish
+    from services.autopilot.agent import autopilot_agent
+    from services.storage import storage_service
     from datetime import datetime
 
     db = SessionLocal()
@@ -186,13 +188,11 @@ async def check_and_publish_due_posts_job():
         now = datetime.utcnow()
         due_posts = db.query(ScheduledPost).filter(
             ScheduledPost.scheduled_at <= now,
-            ScheduledPost.status.in_(["Scheduled", "Draft", "scheduled", "draft"])
+            ScheduledPost.status.in_(["Scheduled", "scheduled"])
         ).limit(20).all()
 
-        if not due_posts:
-            return
-
-        logger.info(f"⏰ [Publish Agent] Found {len(due_posts)} due scheduled post(s) to publish live.")
+        if due_posts:
+            logger.info(f"⏰ [Publish Agent] Found {len(due_posts)} due scheduled post(s) to publish live.")
 
         for post in due_posts:
             # Idempotency guard
@@ -203,24 +203,133 @@ async def check_and_publish_due_posts_job():
             db.commit()
 
             try:
+                raw_plat = (post.platform or "facebook").lower().strip()
+                norm_plat = (
+                    "instagram" if raw_plat.startswith("instagram") else
+                    "twitter" if raw_plat in ("x", "twitter_post", "twitter") else
+                    "linkedin" if raw_plat.startswith("linkedin") else
+                    raw_plat
+                )
+
+                caption_to_use = autopilot_agent._extract_platform_caption_text(post, norm_plat)
+                image_to_use = post.media_url
+
+                if post.post_id:
+                    parent_post = db.query(Post).filter(Post.id == post.post_id).first()
+                    if parent_post:
+                        sel_imgs = db.query(PostImage).filter(
+                            PostImage.post_id == parent_post.id,
+                            PostImage.is_selected == True
+                        ).order_by(PostImage.created_at.asc()).all()
+                        if len(sel_imgs) >= 2 and (not image_to_use or "sidebyside_" not in image_to_use):
+                            combined = storage_service.create_side_by_side_image([i.image_url for i in sel_imgs[:2]])
+                            if combined:
+                                image_to_use = combined
+                                post.media_url = combined
+                                parent_post.image_url = combined
+                        elif not image_to_use:
+                            image_to_use = parent_post.image_url
+
                 result = await execute_social_publish(
                     db=db,
-                    platform=post.platform,
+                    platform=norm_plat,
                     brand_id=post.brand_id,
-                    caption=post.caption,
-                    image_url=post.media_url,
+                    caption=caption_to_use,
+                    image_url=image_to_use,
                     platform_copy_id=post.platform_copy_id,
                     scheduled_post_id=post.id,
                     force=True
                 )
+
+                # Retry once on transient network timeout
+                if not result.success and not result.needs_reconnect and result.error and "timed out" in result.error.lower():
+                    result = await execute_social_publish(
+                        db=db,
+                        platform=norm_plat,
+                        brand_id=post.brand_id,
+                        caption=caption_to_use,
+                        image_url=image_to_use,
+                        platform_copy_id=post.platform_copy_id,
+                        scheduled_post_id=post.id,
+                        force=True
+                    )
+
+                autopilot_agent._log_decision(
+                    db=db,
+                    brand_id=post.brand_id,
+                    run_id=post.autopilot_run_id or "scheduler_dispatch",
+                    stage="SCHEDULED_PUBLISH",
+                    status="SUCCESS" if result.success else "ERROR",
+                    summary=(
+                        f"Scheduled post for {norm_plat.upper()}: "
+                        f"{'Published live (' + (result.permalink or result.external_post_id or '') + ')' if result.success else 'Failed (' + (result.error or '') + ')'}"
+                    ),
+                    details={
+                        "scheduled_post_id": post.id,
+                        "platform": norm_plat,
+                        "external_post_id": result.external_post_id,
+                        "permalink": result.permalink,
+                        "error": result.error
+                    }
+                )
+
                 if result.success:
-                    logger.info(f"✅ [Publish Agent] Successfully published scheduled post {post.id} ({post.platform}): {result.external_post_id}")
+                    logger.info(f"✅ [Publish Agent] Successfully published scheduled post {post.id} ({norm_plat}): {result.external_post_id}")
                 else:
-                    logger.warning(f"⚠️ [Publish Agent] Failed publishing post {post.id} ({post.platform}): {result.error}")
+                    logger.warning(f"⚠️ [Publish Agent] Failed publishing post {post.id} ({norm_plat}): {result.error}")
             except Exception as pub_err:
                 logger.error(f"❌ [Publish Agent] Error publishing post {post.id}: {pub_err}")
                 post.status = "Failed"
                 post.error = str(pub_err)
+                db.commit()
+
+        # Also check any PlatformCopy records with status == 'scheduled' and scheduled_at <= now
+        # that do not have an active ScheduledPost record
+        due_copies = db.query(PlatformCopy).filter(
+            PlatformCopy.status == "scheduled",
+            PlatformCopy.scheduled_at != None,
+            PlatformCopy.scheduled_at <= now
+        ).limit(20).all()
+
+        for copy in due_copies:
+            linked_sched = db.query(ScheduledPost).filter(
+                ScheduledPost.platform_copy_id == copy.id,
+                ScheduledPost.status.in_(["Scheduled", "scheduled", "Publishing"])
+            ).first()
+            if linked_sched:
+                continue
+
+            parent_post = db.query(Post).filter(Post.id == copy.post_id).first()
+            if not parent_post:
+                continue
+
+            raw_plat = (copy.platform or "facebook").lower().strip()
+            norm_plat = (
+                "instagram" if raw_plat.startswith("instagram") else
+                "twitter" if raw_plat in ("x", "twitter_post", "twitter") else
+                "linkedin" if raw_plat.startswith("linkedin") else
+                raw_plat
+            )
+
+            full_cap = (copy.caption or parent_post.caption or "").strip()
+            tags = copy.hashtags if isinstance(copy.hashtags, list) else []
+            if tags:
+                tag_str = " ".join(str(t) if str(t).startswith("#") else f"#{t}" for t in tags if t)
+                if tag_str and tag_str not in full_cap:
+                    full_cap = f"{full_cap}\n\n{tag_str}".strip()
+
+            img_url = copy.image_url or parent_post.image_url
+            res = await execute_social_publish(
+                db=db,
+                platform=norm_plat,
+                brand_id=parent_post.brand_id,
+                caption=full_cap,
+                image_url=img_url,
+                platform_copy_id=copy.id,
+                force=True
+            )
+            if res.success:
+                parent_post.is_posted = True
                 db.commit()
     except Exception as e:
         logger.error(f"❌ [Publish Agent] check_and_publish_due_posts_job error: {e}")

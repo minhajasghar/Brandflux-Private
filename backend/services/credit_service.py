@@ -46,6 +46,27 @@ def ensure_user_ledger_initialized(user: User, db: Session):
         db.add(entry)
         db.commit()
 
+
+def sync_ledger_for_plan_upgrade(user: User, new_plan_id: str, reference_id: str, db: Session):
+    """Ensures user receives full credit quota upon plan approval or upgrade."""
+    ensure_user_ledger_initialized(user, db)
+    target_quota = get_plan_quota(new_plan_id, db)
+    current_balance = db.query(func.coalesce(func.sum(CreditLedger.delta), 0)).filter(
+        CreditLedger.user_id == user.id
+    ).scalar() or 0
+    if current_balance < target_quota:
+        diff = target_quota - current_balance
+        entry = CreditLedger(
+            id=str(uuid.uuid4()),
+            user_id=user.id,
+            delta=diff,
+            reason="plan_activation",
+            reference_id=reference_id,
+            created_at=datetime.utcnow()
+        )
+        db.add(entry)
+        db.commit()
+
 def get_user_credit_balance(user_id: str, db: Session) -> Dict[str, Any]:
     """
     Computes post credits balance from credit_ledger.

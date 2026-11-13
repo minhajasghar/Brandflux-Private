@@ -402,8 +402,22 @@ export async function toggleCardStatus(cardId: string) {
   return response.data
 }
 
-export async function publishCardNowVerified(cardId: string) {
-  const response = await api.post(`/autopilot/cards/${cardId}/publish-now`, null, { timeout: 60000 })
+export async function publishCardNowVerified(cardId: string, platform?: string) {
+  const response = await api.post(
+    `/autopilot/cards/${cardId}/publish-now`,
+    null,
+    { params: platform ? { platform } : undefined, timeout: 60000 }
+  )
+  return response.data
+}
+
+export async function agentAutoPublish(data?: {
+  post_id?: string
+  variant_ids?: string[]
+  platforms?: string[]
+  scheduled_at?: string
+}) {
+  const response = await api.post('/autopilot/auto-publish', data || {}, { timeout: 90000 })
   return response.data
 }
 
@@ -660,6 +674,7 @@ export async function generateSessionVariants(payload: {
 
 export async function selectSessionVariant(payload: {
   variant_id: string
+  variant_ids?: string[]
   session_id: string
   adjusted_caption?: string
   adjusted_hashtags?: string[]
@@ -668,6 +683,13 @@ export async function selectSessionVariant(payload: {
   selected_platforms?: string[]
 }) {
   const response = await api.post('/sessions/select-variant', payload)
+  return response.data
+}
+
+export async function updatePostVariantSelection(postId: string, variantIds: string[]) {
+  const response = await api.post(`/content/posts/${postId}/select-variants`, {
+    variant_ids: variantIds
+  })
   return response.data
 }
 

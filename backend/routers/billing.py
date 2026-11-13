@@ -240,6 +240,11 @@ async def submit_payment_request(
     Submit manual bank transfer proof for account activation.
     Stores submission, dispatches notification emails to User and Admin.
     """
+    from services.brand_service import resolve_user_brand, get_user_brand_role
+    active_b = resolve_user_brand(user, db)
+    if active_b and get_user_brand_role(user, active_b.id, db) == "approver":
+        raise HTTPException(status_code=403, detail="Approvers do not have access to billing or payment submissions.")
+
     clean_plan_id = req.plan_id.lower().strip()
     plan = db.query(Plan).filter(Plan.id == clean_plan_id).first()
     if not plan:
@@ -249,6 +254,29 @@ async def submit_payment_request(
     is_annual = (req.billing_cycle or "monthly").lower().strip() == "annual"
     amount = float(plan.price_annual_usd if is_annual else plan.price_usd)
     currency = "USD"
+
+    # Save uploaded base64 screenshot image to private payments directory on disk
+    saved_proof_url = req.proof_image_url
+    if saved_proof_url and str(saved_proof_url).startswith("data:image") and ";base64," in str(saved_proof_url):
+        try:
+            import os as _os
+            import base64 as _b64
+            import uuid as _uuid
+            header_part, b64_part = str(saved_proof_url).split(";base64,", 1)
+            ext = "png"
+            if "jpeg" in header_part or "jpg" in header_part:
+                ext = "jpg"
+            elif "webp" in header_part:
+                ext = "webp"
+            raw_bytes = _b64.b64decode(b64_part)
+            backend_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+            payments_dir = _os.path.join(backend_dir, "media", "payments")
+            _os.makedirs(payments_dir, exist_ok=True)
+            fn = f"payment_proof_{user.id[:8]}_{_uuid.uuid4().hex[:8]}.{ext}"
+            with open(_os.path.join(payments_dir, fn), "wb") as pf:
+                pf.write(raw_bytes)
+        except Exception:
+            pass
 
     # Create Payment Request record
     payment = PaymentRequest(
@@ -263,7 +291,7 @@ async def submit_payment_request(
         sender_account_name=req.sender_account_name.strip(),
         sender_account_number=(req.sender_account_number or "").strip(),
         transaction_reference=req.transaction_reference.strip(),
-        proof_image_url=req.proof_image_url,
+        proof_image_url=saved_proof_url,
         notes=req.notes,
         status="pending"
     )
@@ -315,11 +343,24 @@ async def submit_payment_request(
         action_payload={"url": "/payment"}
     )
     db.add(notif)
+
+    # In-app notification for all Admins
+    admins = db.query(User).filter(User.role.in_(["admin", "support_admin"]), User.is_deleted == False).all()
+    for adm in admins:
+        if adm.id != user.id:
+            db.add(Notification(
+                user_id=adm.id,
+                title="New Payment Proof Submitted 💳",
+                message=f"{user.full_name or user.email} submitted payment proof for {plan.name} (${amount:.2f} {currency}, Ref: {payment.transaction_reference}).",
+                type="info",
+                action_type="link",
+                action_payload={"url": "/admin"}
+            ))
     db.commit()
 
-    # Automatically generate official PDF containing payment details + uploaded screenshot
+    # Automatically generate official PDF containing payment details + uploaded screenshot and save to disk
     try:
-        bank_details = get_active_bank_details()
+        bank_details = get_system_bank_details(db)
         generate_payment_receipt_pdf(payment, bank_details)
     except Exception:
         pass
@@ -417,4 +458,71 @@ def download_payment_receipt_pdf(
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
     )
+
+
+@router.get("/payment-requests/{payment_id}/proof-image")
+def download_payment_proof_image(
+    request: Request,
+    payment_id: str,
+    token: Optional[str] = Query(None),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
+    db: Session = Depends(get_db)
+):
+    """Protected endpoint to view/download a payment proof image (accessible ONLY to the creator and admin)."""
+    jwt_raw = None
+    if credentials and credentials.credentials:
+        jwt_raw = credentials.credentials
+    elif token:
+        jwt_raw = token.strip()
+    elif request.cookies.get("brandflux_token"):
+        jwt_raw = request.cookies.get("brandflux_token").strip()
+
+    if not jwt_raw:
+        raise HTTPException(status_code=401, detail="Authentication token required to view payment proof.")
+
+    from services.auth_service import decode_token_payload, get_current_user_from_db
+    payload = decode_token_payload(jwt_raw)
+    if not payload or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid or expired session token.")
+
+    user = get_current_user_from_db(payload.get("sub"), db)
+    if not user:
+        raise HTTPException(status_code=401, detail="User account not found.")
+
+    payment = db.query(PaymentRequest).filter(PaymentRequest.id == payment_id).first()
+    if not payment or not payment.proof_image_url:
+        raise HTTPException(status_code=404, detail="Payment proof not found")
+
+    if payment.user_id != user.id and user.role not in ("admin", "support_admin"):
+        raise HTTPException(status_code=403, detail="Unauthorized to access this payment proof")
+
+    proof_str = str(payment.proof_image_url).strip()
+    if proof_str.startswith("data:") and ";base64," in proof_str:
+        import base64 as _b64
+        header_part, b64_part = proof_str.split(";base64,", 1)
+        mime_type = header_part.replace("data:", "") or "image/png"
+        raw_bytes = _b64.b64decode(b64_part)
+        return Response(content=raw_bytes, media_type=mime_type)
+
+    import os
+    import mimetypes
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    fname = os.path.basename(proof_str.split("?")[0])
+    candidate_paths = [
+        os.path.join(base_dir, "media", "payments", fname),
+        os.path.join(base_dir, "media", "posts", fname),
+    ]
+    payments_dir = os.path.join(base_dir, "media", "payments")
+    if os.path.isdir(payments_dir):
+        for entry in os.listdir(payments_dir):
+            if entry.startswith(f"payment_{payment.id}") or entry.startswith(payment.id[:8]):
+                candidate_paths.insert(0, os.path.join(payments_dir, entry))
+
+    for cpath in candidate_paths:
+        if os.path.isfile(cpath):
+            mime_type, _ = mimetypes.guess_type(cpath)
+            with open(cpath, "rb") as f:
+                return Response(content=f.read(), media_type=mime_type or "image/png")
+
+    raise HTTPException(status_code=404, detail="Proof image binary not available")
 

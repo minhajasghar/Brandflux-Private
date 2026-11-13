@@ -222,7 +222,7 @@ def get_authorization_url(
         if not tw_client_id:
             raise HTTPException(status_code=400, detail="TWITTER_CLIENT_ID is not configured in backend/.env. Please create a Twitter/X Developer App and add credentials.")
 
-        scopes = ["tweet.read", "tweet.write", "users.read", "offline.access"]
+        scopes = ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"]
         params = {
             "response_type": "code",
             "client_id": tw_client_id,

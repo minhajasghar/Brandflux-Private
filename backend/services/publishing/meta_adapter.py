@@ -42,6 +42,69 @@ class MetaPublisher(PlatformPublisher):
             return image_url
         return None
 
+    async def _stage_local_image_via_facebook_cdn(
+        self,
+        local_path: str,
+        token: str,
+        client: httpx.AsyncClient,
+        account: SocialAccount
+    ) -> Optional[str]:
+        """
+        Stages a local image file as an unpublished, temporary photo on the linked Facebook Page
+        and returns Meta's own public scontent.fbcdn.net JPEG URL so Instagram Graph API /media
+        can always fetch it reliably (even when running on localhost or behind a private network).
+        """
+        if not local_path or not os.path.exists(local_path):
+            return None
+        try:
+            import io
+            from PIL import Image
+            buf = io.BytesIO()
+            with Image.open(local_path) as im:
+                rgb = im.convert("RGB")
+                rgb.save(buf, format="JPEG", quality=94, optimize=True)
+            jpeg_bytes = buf.getvalue()
+
+            # Discover linked Facebook Page ID from the Page Access Token
+            page_id = (account.metadata_json or {}).get("page_id") if isinstance(account.metadata_json, dict) else None
+            if not page_id:
+                me_res = await client.get(
+                    f"{GRAPH_API_BASE}/me",
+                    params={"fields": "id", "access_token": token}
+                )
+                if me_res.status_code == 200 and me_res.headers.get("content-type", "").startswith("application/json"):
+                    me_id = me_res.json().get("id")
+                    if me_id and str(me_id) != str(account.account_id):
+                        page_id = str(me_id)
+
+            if not page_id:
+                return None
+
+            up_res = await client.post(
+                f"{GRAPH_API_BASE}/{page_id}/photos",
+                data={"published": "false", "temporary": "true", "access_token": token},
+                files={"source": ("ig_stage.jpg", jpeg_bytes, "image/jpeg")}
+            )
+            if up_res.status_code != 200:
+                return None
+            photo_id = up_res.json().get("id")
+            if not photo_id:
+                return None
+
+            img_res = await client.get(
+                f"{GRAPH_API_BASE}/{photo_id}",
+                params={"fields": "images", "access_token": token}
+            )
+            if img_res.status_code == 200:
+                images = img_res.json().get("images") or []
+                if images and isinstance(images, list) and images[0].get("source"):
+                    cdn_url = images[0]["source"]
+                    logger.info(f"Staged local image for Instagram via Meta CDN: {cdn_url[:80]}...")
+                    return cdn_url
+        except Exception as stage_err:
+            logger.debug(f"Facebook CDN staging fallback: {stage_err}")
+        return None
+
     def _prepare_instagram_image_url(self, image_url: str) -> tuple[Optional[str], Optional[str]]:
         """
         Ensure Instagram receives a publicly reachable JPEG URL.
@@ -187,7 +250,16 @@ class MetaPublisher(PlatformPublisher):
             try:
                 # ─── 1. INSTAGRAM PUBLISHING (Container + Polling + Publish) ────
                 if is_instagram:
-                    ig_image_url, prep_err = self._prepare_instagram_image_url(image_url)
+                    local_ig_path = self._resolve_local_image_path(image_url)
+                    staged_cdn_url = None
+                    if local_ig_path and os.path.exists(local_ig_path):
+                        staged_cdn_url = await self._stage_local_image_via_facebook_cdn(
+                            local_ig_path, token, client, account
+                        )
+                    if staged_cdn_url:
+                        ig_image_url, prep_err = staged_cdn_url, None
+                    else:
+                        ig_image_url, prep_err = self._prepare_instagram_image_url(image_url)
                     sanitized_payload = {
                         "platform": "instagram",
                         "target_id": target_id,

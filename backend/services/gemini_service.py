@@ -180,7 +180,6 @@ Return valid JSON strictly matching this structure:
         platform_fields = []
         if "instagram" in clean_selected:
             platform_fields.append('"instagram_post": { "caption": "Story-driven caption with visual hook, paragraph breaks, emojis, and clear CTA", "hashtags": ["#8to12", "#targeted", "#hashtags"], "best_time": "7:00 PM", "best_day": "Today", "call_to_action": "Clear Instagram CTA" }')
-            platform_fields.append('"instagram_story": { "text": "Short punchy story text", "cta": "Swipe/Tap link", "poll_question": "Engaging poll question" }')
         if "linkedin" in canonical_platforms:
             platform_fields.append('"linkedin_post": { "caption": "Professional thought-leadership article/post with strong business insight, framework, and discussion question", "hashtags": ["#3to5", "#industry", "#hashtags"], "best_day": "Tuesday", "best_time": "9:00 AM", "call_to_action": "Share your perspective below" }')
         if "facebook" in canonical_platforms:
@@ -296,14 +295,6 @@ Generate valid JSON strictly matching this structure:
                 "call_to_action": "Save this post & visit the link in bio"
             }
 
-        # --- instagram_story ---
-        if "instagram" in canonical and not data.get("instagram_story"):
-            data["instagram_story"] = {
-                "text": f"Behind the scenes at {brand_name}. Tap to see our latest work!",
-                "cta": "Tap Link",
-                "poll_question": "Ready to level up?"
-            }
-
         # --- linkedin_post ---
         if "linkedin" in canonical and not data.get("linkedin_post"):
             data["linkedin_post"] = {
@@ -350,7 +341,6 @@ Generate valid JSON strictly matching this structure:
             for p in canonical:
                 if p == "instagram":
                     allowed_keys.add("instagram_post")
-                    allowed_keys.add("instagram_story")
                 elif p == "facebook":
                     allowed_keys.add("facebook_post")
                 elif p == "linkedin":

@@ -308,9 +308,6 @@ async def generate_session_content(
     
     facebook_caption = content_data.get("facebook_post", {}).get("caption") or ""
     facebook_cta = content_data.get("facebook_post", {}).get("call_to_action") or ""
-    
-    story_text = content_data.get("instagram_story", {}).get("text") or content_data.get("instagram_story", {}).get("caption") or ""
-    story_cta = content_data.get("instagram_story", {}).get("cta") or ""
 
     daily_context = {
         "answer_1": req.answer_1,
@@ -334,16 +331,12 @@ async def generate_session_content(
         prompt, 'facebook_post', brand_profile, facebook_caption, facebook_cta, style,
         daily_context=daily_context, user_id=user.id, brand_id=brand.id, db=db
     )
-    story_task = generate_image(
-        prompt, 'instagram_story', brand_profile, story_text, story_cta, style,
-        daily_context=daily_context, user_id=user.id, brand_id=brand.id, db=db
-    )
 
     all_images = await asyncio.gather(
         instagram_task, linkedin_task,
-        facebook_task, story_task
+        facebook_task
     )
-    instagram_url, linkedin_url, facebook_url, story_url = all_images
+    instagram_url, linkedin_url, facebook_url = all_images
 
     # 7. Save everything to DB
     idea = ContentIdea(
@@ -359,7 +352,7 @@ async def generate_session_content(
     db.flush()
 
     # Save individual posts
-    platforms = ["instagram_post", "instagram_story", "linkedin_post", "facebook_post"]
+    platforms = ["instagram_post", "linkedin_post", "facebook_post"]
     for platform in platforms:
         p_data = content_data.get(platform)
         if p_data:
@@ -377,8 +370,6 @@ async def generate_session_content(
             # Add image URLs depending on the platform
             if platform == "instagram_post":
                 post.post_image_url = instagram_url
-            elif platform == "instagram_story":
-                post.story_image_url = story_url
             elif platform == "linkedin_post":
                 post.post_image_url = linkedin_url
                 post.banner_image_url = linkedin_url
@@ -399,10 +390,6 @@ async def generate_session_content(
             "best_time": content_data.get("instagram_post", {}).get("best_time") or "7:00 PM",
             "image_url": instagram_url,
             "image_status": "ready"
-        },
-        "instagram_story": {
-            "text": story_text,
-            "image_url": story_url
         },
         "linkedin": {
             "caption": linkedin_caption,
@@ -1220,31 +1207,46 @@ def select_session_variant(
                 _upsert_copy(norm_p, final_caption, final_hashtags)
 
     # Legacy ContentIdea & GeneratedPost for backwards compatibility
-    idea = ContentIdea(
-        id=parent_post.id,
-        user_id=user.id,
-        brand_id=variant.brand_id,
-        idea_title=variant.headline or "Daily Post",
-        idea_description=f"Finalized variant from session on {date.today()}",
-        content_type="session_variant",
-        template_type="ai_generated",
-        status="generated"
-    )
-    db.add(idea)
-    db.flush()
+    idea = db.query(ContentIdea).filter(ContentIdea.id == parent_post.id).first()
+    if not idea:
+        idea = ContentIdea(
+            id=parent_post.id,
+            user_id=user.id,
+            brand_id=variant.brand_id,
+            idea_title=variant.headline or "Daily Post",
+            idea_description=f"Finalized variant from session on {date.today()}",
+            content_type="session_variant",
+            template_type="ai_generated",
+            status="generated"
+        )
+        db.add(idea)
+        db.flush()
+    else:
+        idea.idea_title = variant.headline or idea.idea_title
+        idea.status = "generated"
 
-    post = GeneratedPost(
-        idea_id=idea.id,
-        user_id=user.id,
-        brand_id=variant.brand_id,
-        platform=selected_platform,
-        caption=final_caption,
-        hashtags=final_hashtags,
-        call_to_action=variant.call_to_action,
-        post_image_url=variant.image_url,
-        status="draft"
-    )
-    db.add(post)
+    post = db.query(GeneratedPost).filter(
+        GeneratedPost.idea_id == idea.id,
+        GeneratedPost.platform == selected_platform
+    ).first()
+    if post:
+        post.caption = final_caption
+        post.hashtags = final_hashtags
+        post.call_to_action = variant.call_to_action
+        post.post_image_url = variant.image_url
+    else:
+        post = GeneratedPost(
+            idea_id=idea.id,
+            user_id=user.id,
+            brand_id=variant.brand_id,
+            platform=selected_platform,
+            caption=final_caption,
+            hashtags=final_hashtags,
+            call_to_action=variant.call_to_action,
+            post_image_url=variant.image_url,
+            status="draft"
+        )
+        db.add(post)
 
     # Persist all additional platform copies to GeneratedPost history with the generated image
     if req.platform_copies and isinstance(req.platform_copies, dict):
@@ -1254,19 +1256,30 @@ def select_session_variant(
                 plat_hashtags = copy_data.get("hashtags") or []
                 plat_cta = copy_data.get("call_to_action") or variant.call_to_action
                 plat_time = copy_data.get("best_time")
-                other_post = GeneratedPost(
-                    idea_id=idea.id,
-                    user_id=user.id,
-                    brand_id=variant.brand_id,
-                    platform=plat,
-                    caption=plat_caption,
-                    hashtags=plat_hashtags,
-                    call_to_action=plat_cta,
-                    posting_time_suggestion=plat_time,
-                    post_image_url=variant.image_url,
-                    status="draft"
-                )
-                db.add(other_post)
+                other_post = db.query(GeneratedPost).filter(
+                    GeneratedPost.idea_id == idea.id,
+                    GeneratedPost.platform == plat
+                ).first()
+                if other_post:
+                    other_post.caption = plat_caption
+                    other_post.hashtags = plat_hashtags
+                    other_post.call_to_action = plat_cta
+                    other_post.posting_time_suggestion = plat_time
+                    other_post.post_image_url = variant.image_url
+                else:
+                    other_post = GeneratedPost(
+                        idea_id=idea.id,
+                        user_id=user.id,
+                        brand_id=variant.brand_id,
+                        platform=plat,
+                        caption=plat_caption,
+                        hashtags=plat_hashtags,
+                        call_to_action=plat_cta,
+                        posting_time_suggestion=plat_time,
+                        post_image_url=variant.image_url,
+                        status="draft"
+                    )
+                    db.add(other_post)
 
     # Verify image reachability in storage before deducting credit!
     filename = os.path.basename(variant.image_url.split("?")[0]) if variant.image_url else ""

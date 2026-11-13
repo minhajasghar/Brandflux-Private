@@ -195,7 +195,7 @@ class AnswerBatchRequest(BaseModel):
 # CONTENT SCHEMAS
 # ═══════════════════════════════════════════════════════════
 class ContentGenerateRequest(BaseModel):
-    platforms: List[str] = ["instagram_post", "instagram_story", "linkedin", "facebook"]
+    platforms: List[str] = ["instagram_post", "linkedin", "facebook"]
     topic: Optional[str] = None  # Optional specific topic override
 
 class GeneratedPostResponse(BaseModel):

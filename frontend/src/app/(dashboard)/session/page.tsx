@@ -549,9 +549,84 @@ export default function SessionPage() {
   }
 
   const [postingNow, setPostingNow] = useState(false)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleDateTime, setScheduleDateTime] = useState('')
+  const [scheduling, setScheduling] = useState(false)
+
+  const handleOpenScheduleModal = () => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(10, 0, 0, 0)
+    const localIso = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16)
+    setScheduleDateTime(localIso)
+    setShowScheduleModal(true)
+  }
+
+  const handleConfirmSchedule = async () => {
+    if (!scheduleDateTime) {
+      toast.error('Please select a date and time.')
+      return
+    }
+    if (selectedPlatforms.length === 0) {
+      toast.error('Please select at least one platform to schedule.')
+      return
+    }
+    if (!variantSessionData || !selectedVariantId) return
+
+    setScheduling(true)
+    try {
+      let postId = savedPostId
+      const selRes = await selectSessionVariant({
+        variant_id: selectedVariantId,
+        session_id: variantSessionData.session_id,
+        adjusted_caption: captionText,
+        adjusted_hashtags: hashtagsList,
+        target_platform: activePlatformTab,
+        platform_copies: platformCopies,
+        selected_platforms: selectedPlatforms
+      })
+      if (selRes?.post_id) {
+        postId = selRes.post_id
+        setSavedPostId(selRes.post_id)
+      }
+
+      const activeVar = variantSessionData.variants.find(v => v.id === selectedVariantId)
+      const batchRes = await api.post('/calendar/posts/batch', {
+        platforms: selectedPlatforms,
+        caption: captionText,
+        hashtags: hashtagsList,
+        media_url: activeVar?.image_url || null,
+        scheduled_at: new Date(scheduleDateTime).toISOString(),
+        status: 'Scheduled',
+        post_id: postId || undefined,
+        platform_copies: platformCopies
+      })
+
+      const count = batchRes.data?.count || 0
+      const discMsgs: string[] = batchRes.data?.disconnected_messages || []
+      if (count > 0) {
+        toast.success(`Scheduled across ${count} platform(s)!`)
+      }
+      if (discMsgs.length > 0) {
+        discMsgs.forEach(m => toast.error(m, { duration: 6000 }))
+      }
+      setShowScheduleModal(false)
+    } catch (err: any) {
+      const msg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Failed to schedule content.'
+      toast.error(msg)
+    } finally {
+      setScheduling(false)
+    }
+  }
 
   const handlePostNow = async () => {
     if (!variantSessionData || !selectedVariantId) return
+    if (selectedPlatforms.length === 0) {
+      toast.error('Please select at least one platform to publish.')
+      return
+    }
     setPostingNow(true)
     try {
       const res = await api.post('/sessions/post-now', {
@@ -568,10 +643,12 @@ export default function SessionPage() {
       if (data.published_platforms && data.published_platforms.length > 0) {
         toast.success(`🚀 Published live to ${data.published_platforms.join(', ')}!`)
       }
-      if (data.skipped_disconnected && data.skipped_disconnected.length > 0) {
-        toast(`ℹ️ ${data.skipped_disconnected.join(', ')}: Not connected in Settings`, { icon: 'ℹ️', duration: 6000 })
+      if (data.disconnected_messages && data.disconnected_messages.length > 0) {
+        data.disconnected_messages.forEach((m: string) => toast.error(m, { duration: 6000 }))
+      } else if (data.skipped_disconnected && data.skipped_disconnected.length > 0) {
+        toast.error(`Your ${data.skipped_disconnected.join(', ')} account is not connected. Please connect it before publishing.`, { duration: 6000 })
       }
-      if ((!data.published_platforms || data.published_platforms.length === 0) && (!data.skipped_disconnected || data.skipped_disconnected.length === 0)) {
+      if ((!data.published_platforms || data.published_platforms.length === 0) && (!data.disconnected_messages || data.disconnected_messages.length === 0)) {
         toast.error(data.message || 'No connected platforms available to post.')
       }
 
@@ -1489,14 +1566,23 @@ export default function SessionPage() {
                       {postingNow ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Publishing Live to Connected Platforms...</span>
+                          <span>Publishing Live...</span>
                         </>
                       ) : (
                         <>
                           <Zap className="h-4 w-4 text-accent fill-accent" />
-                          <span>⚡ Post Now to Connected Platforms</span>
+                          <span>Post Now</span>
                         </>
                       )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenScheduleModal}
+                      className="w-full py-3 px-4 bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition"
+                    >
+                      <span>Schedule</span>
+                      <ArrowRight className="h-3.5 w-3.5 text-muted" />
                     </button>
 
                     <button
@@ -1506,16 +1592,7 @@ export default function SessionPage() {
                       className="w-full py-3 px-4 bg-accent hover:bg-accent-hover text-black font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-accent-glow disabled:opacity-50"
                     >
                       <ShieldCheck className="h-4 w-4" />
-                      <span>{submittingApproval ? 'Submitting for Approval...' : 'Submit for Team Approval'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleProceedToCalendar}
-                      className="w-full py-3 px-4 bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition"
-                    >
-                      <span>Direct Schedule to Calendar</span>
-                      <ArrowRight className="h-3.5 w-3.5 text-muted" />
+                      <span>{submittingApproval ? 'Sending for Approval...' : 'Send for Approval'}</span>
                     </button>
                   </div>
                 </div>
@@ -1526,6 +1603,114 @@ export default function SessionPage() {
         )}
 
       </div>
+
+      {/* ─── DIRECT SCHEDULE MODAL (REUSES GENERATED CONTENT) ────────────── */}
+      {showScheduleModal && (
+        <div
+          onClick={() => setShowScheduleModal(false)}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-md w-full bg-surface border border-border rounded-3xl p-6 shadow-2xl space-y-5"
+          >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-text">Schedule Generated Post</h3>
+                <p className="text-[11px] text-muted">Automatically reuses your generated image, captions, and hashtags.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="p-1.5 rounded-lg bg-surface-secondary border border-border text-muted hover:text-text"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-muted uppercase">Target Platforms</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlatforms(['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok'])}
+                    className="text-[11px] font-bold text-accent hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-muted text-[10px]">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlatforms([])}
+                    className="text-[11px] font-bold text-muted hover:text-text hover:underline"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'instagram', label: 'Instagram' },
+                  { id: 'facebook', label: 'Facebook' },
+                  { id: 'linkedin', label: 'LinkedIn' },
+                  { id: 'twitter', label: 'Twitter / X' },
+                  { id: 'tiktok', label: 'TikTok' },
+                ].map(p => {
+                  const checked = selectedPlatforms.includes(p.id)
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                        checked
+                          ? 'bg-primary/15 border-primary text-text'
+                          : 'bg-surface-secondary border-border text-muted'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePlatform(p.id)}
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span>{p.label}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted uppercase block">Publish Date &amp; Time</label>
+              <input
+                type="datetime-local"
+                value={scheduleDateTime}
+                onChange={(e) => setScheduleDateTime(e.target.value)}
+                className="w-full bg-surface-secondary border border-border rounded-xl px-3.5 py-2.5 text-xs text-text focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="px-4 py-2 rounded-xl bg-surface-secondary text-muted hover:text-text text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={scheduling}
+                onClick={handleConfirmSchedule}
+                className="px-5 py-2 rounded-xl bg-accent hover:bg-accent-hover text-black font-extrabold text-xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {scheduling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                <span>{scheduling ? 'Scheduling...' : 'Confirm Schedule'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── FULL-SIZE MODAL PREVIEW ───────────────────────────────────────── */}
       <AnimatePresence>

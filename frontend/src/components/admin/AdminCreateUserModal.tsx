@@ -18,9 +18,9 @@ export default function AdminCreateUserModal({ isOpen, onClose, onSuccess }: Adm
     email: '',
     password: '',
     website_url: '',
-    business_type: 'Other',
-    plan: 'pro',
-    is_non_payment: true
+    business_type: '',
+    plan: '',
+    is_non_payment: false
   })
 
   if (!isOpen) return null
@@ -31,6 +31,10 @@ export default function AdminCreateUserModal({ isOpen, onClose, onSuccess }: Adm
       toast.error('Please fill out Name, Email, and Password')
       return
     }
+    if (!formData.plan) {
+      toast.error('Please select a subscription plan')
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -39,12 +43,12 @@ export default function AdminCreateUserModal({ isOpen, onClose, onSuccess }: Adm
         email: formData.email.trim(),
         password: formData.password.trim(),
         website_url: formData.website_url.trim() || undefined,
-        business_type: formData.business_type,
+        business_type: formData.business_type || 'Other',
         plan: formData.plan,
         is_non_payment: formData.is_non_payment
       })
 
-      toast.success(res.message || 'Free / Pre-approved account created!')
+      toast.success(res.message || 'Account created!')
       onSuccess()
       onClose()
       setFormData({
@@ -52,9 +56,9 @@ export default function AdminCreateUserModal({ isOpen, onClose, onSuccess }: Adm
         email: '',
         password: '',
         website_url: '',
-        business_type: 'Other',
-        plan: 'pro',
-        is_non_payment: true
+        business_type: '',
+        plan: '',
+        is_non_payment: false
       })
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to create user')
@@ -87,15 +91,16 @@ export default function AdminCreateUserModal({ isOpen, onClose, onSuccess }: Adm
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} autoComplete="off" className="p-6 space-y-4 text-xs">
           <div>
             <label className="font-bold text-muted block mb-1">Full Name / Brand Name *</label>
             <input
               type="text"
               required
+              autoComplete="off"
               value={formData.full_name}
               onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-              placeholder="e.g. TNT Innovations / Alex Smith"
+              placeholder="Enter full name or brand name"
               className="w-full bg-surface-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text focus:outline-none focus:border-primary"
             />
           </div>
@@ -106,9 +111,10 @@ export default function AdminCreateUserModal({ isOpen, onClose, onSuccess }: Adm
               <input
                 type="email"
                 required
+                autoComplete="off"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="internal@tntinnov.com"
+                placeholder="Enter email address"
                 className="w-full bg-surface-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text focus:outline-none focus:border-primary"
               />
             </div>
@@ -116,11 +122,12 @@ export default function AdminCreateUserModal({ isOpen, onClose, onSuccess }: Adm
             <div>
               <label className="font-bold text-muted block mb-1">Password *</label>
               <input
-                type="text"
+                type="password"
                 required
+                autoComplete="new-password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Temporary or permanent password"
+                placeholder="Enter password"
                 className="w-full bg-surface-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text focus:outline-none focus:border-primary"
               />
             </div>
@@ -131,24 +138,27 @@ export default function AdminCreateUserModal({ isOpen, onClose, onSuccess }: Adm
               <label className="font-bold text-muted block mb-1">Website URL (Optional)</label>
               <input
                 type="url"
+                autoComplete="off"
                 value={formData.website_url}
                 onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
-                placeholder="https://tntinnov.com"
+                placeholder="https://"
                 className="w-full bg-surface-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text focus:outline-none focus:border-primary"
               />
             </div>
 
             <div>
-              <label className="font-bold text-muted block mb-1">Assigned Subscription Plan</label>
+              <label className="font-bold text-muted block mb-1">Assigned Subscription Plan *</label>
               <select
+                required
                 value={formData.plan}
                 onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
                 className="w-full bg-surface-secondary border border-border rounded-xl px-3 py-2.5 text-xs text-text focus:outline-none focus:border-primary"
               >
+                <option value="">Select a plan...</option>
                 <option value="pro">Pro Plan (Unlimited Features + X)</option>
                 <option value="growth">Growth Plan</option>
                 <option value="starter">Starter Plan</option>
-                <option value="free">Free Account</option>
+                <option value="free">Basic Account</option>
               </select>
             </div>
           </div>

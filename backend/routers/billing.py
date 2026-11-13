@@ -317,11 +317,19 @@ async def submit_payment_request(
     db.add(notif)
     db.commit()
 
+    # Automatically generate official PDF containing payment details + uploaded screenshot
+    try:
+        bank_details = get_active_bank_details()
+        generate_payment_receipt_pdf(payment, bank_details)
+    except Exception:
+        pass
+
     return {
         "success": True,
         "payment_id": payment.id,
         "status": payment.status,
-        "message": "Payment proof submitted successfully! Our billing team is reviewing it."
+        "receipt_pdf_url": f"/billing/payment-requests/{payment.id}/receipt-pdf",
+        "message": "Payment proof submitted and PDF receipt generated for admin verification."
     }
 
 

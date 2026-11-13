@@ -1,9 +1,12 @@
 import io
+import os
+import base64
 from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from PIL import Image as PILImage
 
 def generate_payment_receipt_pdf(payment, bank_details: dict = None) -> bytes:
     """
@@ -160,6 +163,48 @@ def generate_payment_receipt_pdf(payment, bank_details: dict = None) -> bytes:
         ]))
         story.append(b_table)
         story.append(Spacer(1, 15))
+
+    # 4.5 Embedded Payment Proof Screenshot
+    proof_url = getattr(payment, "proof_image_url", None)
+    if proof_url and not str(proof_url).startswith("data:application/pdf"):
+        try:
+            img_bytes = None
+            if str(proof_url).startswith("data:image") and ";base64," in str(proof_url):
+                b64_part = str(proof_url).split(";base64,", 1)[1]
+                img_bytes = base64.b64decode(b64_part)
+            elif str(proof_url).startswith(("http://", "https://")):
+                import httpx
+                with httpx.Client(timeout=10.0) as client:
+                    resp = client.get(str(proof_url))
+                    if resp.status_code == 200:
+                        img_bytes = resp.content
+            else:
+                local_rel = str(proof_url).lstrip("/")
+                if local_rel.startswith("api/media/"):
+                    local_rel = local_rel.replace("api/media/", "media/", 1)
+                if os.path.exists(local_rel):
+                    with open(local_rel, "rb") as f:
+                        img_bytes = f.read()
+
+            if img_bytes:
+                pil_img = PILImage.open(io.BytesIO(img_bytes))
+                if pil_img.mode not in ("RGB", "RGBA"):
+                    pil_img = pil_img.convert("RGB")
+                png_buf = io.BytesIO()
+                pil_img.save(png_buf, format="PNG")
+                png_buf.seek(0)
+
+                iw, ih = pil_img.size
+                max_w, max_h = 460.0, 280.0
+                scale = min(max_w / max(iw, 1), max_h / max(ih, 1), 1.0)
+                draw_w, draw_h = iw * scale, ih * scale
+
+                story.append(Paragraph("4. UPLOADED PAYMENT SCREENSHOT PROOF", header_style))
+                story.append(Spacer(1, 8))
+                story.append(RLImage(png_buf, width=draw_w, height=draw_h))
+                story.append(Spacer(1, 15))
+        except Exception:
+            pass
 
     # 5. Footer Notice
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#D1D5DB'), spaceAfter=10))

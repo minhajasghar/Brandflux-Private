@@ -47,11 +47,10 @@ interface ScheduledPost {
 }
 
 const PLATFORMS = [
-  { id: 'instagram_post', label: 'Instagram Post', icon: '📸', color: '#E1306C' },
-  { id: 'instagram_story', label: 'Instagram Story', icon: '📱', color: '#C13584' },
-  { id: 'linkedin', label: 'LinkedIn', icon: '💼', color: '#0A66C2' },
+  { id: 'instagram_post', label: 'Instagram', icon: '📸', color: '#E1306C' },
   { id: 'facebook', label: 'Facebook', icon: '📘', color: '#1877F2' },
-  { id: 'twitter', label: 'X / Twitter', icon: '🐦', color: '#1DA1F2' },
+  { id: 'linkedin', label: 'LinkedIn', icon: '💼', color: '#0A66C2' },
+  { id: 'twitter', label: 'Twitter / X', icon: '🐦', color: '#1DA1F2' },
   { id: 'tiktok', label: 'TikTok', icon: '🎵', color: '#25F4EE' },
 ]
 

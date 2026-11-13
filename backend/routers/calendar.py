@@ -167,6 +167,8 @@ class BatchScheduledPostCreate(BaseModel):
     status: Optional[str] = "Scheduled"
     post_id: Optional[str] = None
     platform_copy_id: Optional[str] = None
+    platform_copies: Optional[dict] = None
+    hashtags: Optional[List[str]] = None
 
 
 @router.post("/posts/batch")
@@ -177,6 +179,8 @@ def create_scheduled_posts_batch(
     db: Session = Depends(get_db)
 ):
     """Schedule across multiple platforms simultaneously in one click."""
+    from services.publishing.publish_service import validate_social_account_connection
+
     brand = resolve_user_brand(user, db, brand_id=brand_id)
     if not brand:
         brand = Brand(user_id=user.id, business_name=user.full_name or "My Brand", name=user.full_name or "My Brand")
@@ -190,6 +194,7 @@ def create_scheduled_posts_batch(
         raise HTTPException(status_code=400, detail="Select at least one platform to schedule.")
 
     created_posts = []
+    disconnected_messages = []
     valid_statuses = {"Draft", "Scheduled", "Publishing", "Published", "Failed"}
     normalized_status = req.status.capitalize() if req.status else "Scheduled"
     if normalized_status not in valid_statuses:
@@ -197,19 +202,49 @@ def create_scheduled_posts_batch(
 
     for plat in req.platforms:
         clean_plat = plat.strip().lower()
+        if normalized_status == "Scheduled":
+            _, conn_err = validate_social_account_connection(db, brand.id, clean_plat)
+            if conn_err:
+                disconnected_messages.append(conn_err)
+                continue
+
+        # Resolve per-platform caption & hashtags if platform_copies provided
+        plat_caption = req.caption or ""
+        plat_hashtags = req.hashtags or []
+        if req.platform_copies and isinstance(req.platform_copies, dict):
+            alt_key = "instagram_post" if clean_plat in ("instagram", "instagram_post") else (
+                "linkedin_post" if clean_plat == "linkedin" else (
+                    "facebook_post" if clean_plat == "facebook" else (
+                        "twitter_post" if clean_plat in ("twitter", "x") else clean_plat
+                    )
+                )
+            )
+            copy_obj = req.platform_copies.get(clean_plat) or req.platform_copies.get(alt_key)
+            if isinstance(copy_obj, dict):
+                plat_caption = copy_obj.get("caption") or plat_caption
+                plat_hashtags = copy_obj.get("hashtags") or plat_hashtags
+
+        if plat_hashtags and isinstance(plat_hashtags, list) and plat_caption and "#" not in plat_caption:
+            tag_str = " ".join(t if str(t).startswith("#") else f"#{t}" for t in plat_hashtags if t)
+            if tag_str:
+                plat_caption = f"{plat_caption.strip()}\n\n{tag_str}"
+
         post = ScheduledPost(
             id=str(uuid.uuid4()),
             brand_id=brand.id,
             post_id=req.post_id,
             platform_copy_id=req.platform_copy_id,
             platform=clean_plat,
-            caption=req.caption,
+            caption=plat_caption,
             media_url=req.media_url,
             scheduled_at=req.scheduled_at,
             status=normalized_status
         )
         db.add(post)
         created_posts.append(post)
+
+    if normalized_status == "Scheduled" and not created_posts and disconnected_messages:
+        raise HTTPException(status_code=400, detail=" ".join(disconnected_messages))
 
     db.commit()
     for p in created_posts:
@@ -218,6 +253,7 @@ def create_scheduled_posts_batch(
     return {
         "status": "success",
         "count": len(created_posts),
+        "disconnected_messages": disconnected_messages,
         "posts": [
             {
                 "id": p.id,

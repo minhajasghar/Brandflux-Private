@@ -12,6 +12,78 @@ from services.publishing.factory import get_publisher
 
 logger = logging.getLogger(__name__)
 
+PLATFORM_LABELS = {
+    "instagram": "Instagram",
+    "instagram_post": "Instagram",
+    "ig": "Instagram",
+    "facebook": "Facebook",
+    "fb": "Facebook",
+    "linkedin": "LinkedIn",
+    "twitter": "Twitter/X",
+    "x": "Twitter/X",
+    "tiktok": "TikTok",
+}
+
+
+def format_platform_label(platform: str) -> str:
+    norm = (platform or "").lower().strip().replace("_post", "")
+    return PLATFORM_LABELS.get(norm, PLATFORM_LABELS.get((platform or "").lower().strip(), (platform or "Social").capitalize()))
+
+
+def validate_social_account_connection(db: Session, brand_id: str, platform: str) -> tuple[Optional[SocialAccount], Optional[str]]:
+    """
+    Verify that the brand has an active, non-expired SocialAccount for the requested platform
+    and that a publisher adapter exists for it.
+    Returns (account, error_message).
+    """
+    label = format_platform_label(platform)
+    if not brand_id:
+        return None, f"Your {label} account is not connected. Please connect your {label} account before publishing."
+
+    plat_lower = (platform or "").lower().strip()
+    if plat_lower not in ("facebook", "fb", "instagram", "ig", "instagram_post", "linkedin", "twitter", "x", "tiktok", "twitter_post", "linkedin_post", "facebook_post"):
+        return None, f"Publishing to {label} is not supported."
+
+    accounts = db.query(SocialAccount).filter(
+        SocialAccount.brand_id == brand_id,
+        SocialAccount.is_active == True
+    ).all()
+
+    target_account = None
+    for acc in accounts:
+        acc_plat = (acc.platform or "").lower().strip()
+        if plat_lower in ("facebook", "fb", "facebook_post"):
+            if "facebook" in acc_plat or (acc_plat == "meta" and not (acc.metadata_json or {}).get("is_instagram_only")):
+                target_account = acc
+                break
+        elif plat_lower in ("instagram", "ig", "instagram_post"):
+            if "instagram" in acc_plat:
+                target_account = acc
+                break
+        elif plat_lower in ("linkedin", "linkedin_post"):
+            if "linkedin" in acc_plat:
+                target_account = acc
+                break
+        elif plat_lower in ("twitter", "x", "twitter_post"):
+            if acc_plat in ("twitter", "x"):
+                target_account = acc
+                break
+        elif plat_lower == acc_plat:
+            target_account = acc
+            break
+
+    if not target_account:
+        return None, f"Your {label} account is not connected. Please connect your {label} account before publishing."
+
+    if target_account.token_expires_at and target_account.token_expires_at < datetime.utcnow():
+        logger.warning(f"[SharedPublish] Account '{target_account.account_name}' token expired on {target_account.token_expires_at}")
+        return None, f"Your {label} account connection has expired. Please reconnect your {label} account before publishing."
+
+    if not getattr(target_account, "access_token_encrypted", None) and not (target_account.metadata_json or {}).get("ayrshare_profile_key"):
+        return None, f"Your {label} account credentials are incomplete. Please reconnect your {label} account before publishing."
+
+    return target_account, None
+
 
 async def execute_social_publish(
     db: Session,
@@ -108,41 +180,11 @@ async def execute_social_publish(
         )
 
     # ─── 2. Find Connected & Active Social Account ───────────────────────────
-    target_account = None
-    if brand_id:
-        accounts = db.query(SocialAccount).filter(
-            SocialAccount.brand_id == brand_id,
-            SocialAccount.is_active == True
-        ).all()
-        plat_lower = platform.lower()
-
-        for acc in accounts:
-            acc_plat = acc.platform.lower()
-            if plat_lower in ("facebook", "fb"):
-                if "facebook" in acc_plat or (acc_plat == "meta" and not (acc.metadata_json or {}).get("is_instagram_only")):
-                    target_account = acc
-                    break
-            elif plat_lower in ("instagram", "ig", "instagram_post", "instagram_story"):
-                if "instagram" in acc_plat:
-                    target_account = acc
-                    break
-            elif plat_lower == "linkedin":
-                if "linkedin" in acc_plat:
-                    target_account = acc
-                    break
-            elif plat_lower == acc_plat:
-                target_account = acc
-                break
-
-    # Token expiry check
-    if target_account and target_account.token_expires_at:
-        if target_account.token_expires_at < datetime.utcnow():
-            logger.warning(f"[SharedPublish] Account '{target_account.account_name}' token expired on {target_account.token_expires_at}")
-            target_account = None
+    target_account, conn_error = validate_social_account_connection(db, brand_id, platform)
 
     # ─── 3. Disconnected / Expired Account Guard ────────────────────────────
     if not target_account:
-        err_msg = f"No active {platform.capitalize()} account connected or authentication token has expired. Please connect or reconnect in Brand Studio Settings."
+        err_msg = conn_error or f"Your {format_platform_label(platform)} account is not connected. Please connect your {format_platform_label(platform)} account before publishing."
         logger.warning(f"[SharedPublish] {err_msg}")
 
         if copy:

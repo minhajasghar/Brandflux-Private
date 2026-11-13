@@ -374,8 +374,8 @@ export default function AdminPaymentApprovalsTab() {
                 onChange={(e) => setActionReason(e.target.value)}
                 placeholder={
                   actionModal.type === 'approve'
-                    ? 'Verified bank credit receipt on Meezan portal.'
-                    : 'Transaction reference TRX-1234 not found in bank statement. Please verify sender account.'
+                    ? 'Enter internal approval notes (optional)'
+                    : 'Enter clear rejection reason for the user'
                 }
                 className="w-full bg-surface-secondary border border-border rounded-xl p-3 text-xs text-text focus:outline-none focus:border-primary"
               />

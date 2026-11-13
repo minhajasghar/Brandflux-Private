@@ -807,7 +807,6 @@ async def generate_session_variants(
     platform_key_map = {
         "instagram": "instagram_post",
         "instagram_post": "instagram_post",
-        "instagram_story": "instagram_story",
         "linkedin": "linkedin_post",
         "linkedin_post": "linkedin_post",
         "facebook": "facebook_post",
@@ -1362,12 +1361,14 @@ async def session_post_now(
     if not copies:
         raise HTTPException(status_code=400, detail="No platform copies found to publish.")
 
-    from services.publishing.publish_service import execute_social_publish
+    from services.publishing.publish_service import execute_social_publish, format_platform_label
     results = []
     errors = []
     skipped_disconnected = []
+    disconnected_messages = []
 
     for copy in copies:
+        label = format_platform_label(copy.platform)
         try:
             pub_caption = copy.caption or ""
             if copy.hashtags and isinstance(copy.hashtags, list) and "#" not in pub_caption:
@@ -1391,13 +1392,14 @@ async def session_post_now(
                     "permalink": res.permalink
                 })
             elif res.status == "needs_reconnect" or "not connected" in str(res.error).lower():
-                skipped_disconnected.append(copy.platform.capitalize())
+                skipped_disconnected.append(label)
+                disconnected_messages.append(res.error or f"Your {label} account is not connected. Please connect your {label} account before publishing.")
             else:
-                errors.append(f"{copy.platform.capitalize()}: {res.error or 'Failed'}")
+                errors.append(f"{label}: {res.error or 'Failed'}")
         except Exception as e:
-            errors.append(f"{copy.platform.capitalize()}: {str(e)}")
+            errors.append(f"{label}: {str(e)}")
 
-    published_platforms = [r["platform"].capitalize() for r in results if r.get("platform")]
+    published_platforms = [format_platform_label(r["platform"]) for r in results if r.get("platform")]
 
     if published_platforms:
         post.status = "published"
@@ -1407,9 +1409,10 @@ async def session_post_now(
         "success": len(published_platforms) > 0,
         "published_platforms": published_platforms,
         "skipped_disconnected": skipped_disconnected,
+        "disconnected_messages": disconnected_messages,
         "errors": errors,
         "message": f"Published to {', '.join(published_platforms)}!" if published_platforms else (
-            f"{', '.join(skipped_disconnected)} not connected in Settings." if skipped_disconnected else "Failed to publish."
+            " ".join(disconnected_messages) if disconnected_messages else "Failed to publish."
         )
     }
 

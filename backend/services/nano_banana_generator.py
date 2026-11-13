@@ -519,21 +519,31 @@ class NanoBananaGenerator:
                 logger.info("No brand logo bytes found to composite.")
                 return image_bytes
 
-            # 3. Open images
+            # 3. Open images and automatically remove background if logo is not already transparent
             base_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
             logo_raw = Image.open(io.BytesIO(logo_bytes))
 
-            # Auto-clean solid black background on JPG logos if needed
-            if logo_raw.mode != "RGBA":
+            needs_bg_removal = logo_raw.mode != "RGBA"
+            if not needs_bg_removal:
+                alpha_ch = logo_raw.split()[3]
+                corners = [
+                    alpha_ch.getpixel((0, 0)),
+                    alpha_ch.getpixel((max(0, logo_raw.width - 1), 0)),
+                    alpha_ch.getpixel((0, max(0, logo_raw.height - 1))),
+                    alpha_ch.getpixel((max(0, logo_raw.width - 1), max(0, logo_raw.height - 1))),
+                ]
+                if all(c > 240 for c in corners):
+                    needs_bg_removal = True
+
+            if needs_bg_removal:
+                from services.image_processor import remove_background
+                cleaned_bytes = remove_background(logo_bytes)
+                if cleaned_bytes:
+                    logo_raw = Image.open(io.BytesIO(cleaned_bytes)).convert("RGBA")
+                else:
+                    logo_raw = logo_raw.convert("RGBA")
+            else:
                 logo_raw = logo_raw.convert("RGBA")
-                datas = logo_raw.getdata()
-                new_data = []
-                for item in datas:
-                    if item[0] < 30 and item[1] < 30 and item[2] < 30:
-                        new_data.append((0, 0, 0, 0))
-                    else:
-                        new_data.append(item)
-                logo_raw.putdata(new_data)
 
             logo_img = logo_raw
             bw, bh = base_img.size
@@ -542,7 +552,7 @@ class NanoBananaGenerator:
             if lw == 0 or lh == 0:
                 return image_bytes
 
-            # Target logo size: proportional width ~18% of canvas width, max height ~14%
+            # Target logo size: proportional width ~18% of canvas width, max height ~14% (preserves aspect ratio)
             target_w = max(110, int(bw * 0.18))
             target_max_h = max(75, int(bh * 0.14))
 
@@ -556,31 +566,18 @@ class NanoBananaGenerator:
             pad_x = int(bw * 0.045)
             pad_y = int(bh * 0.045)
 
-            # 4. Clean backdrop & shadow so authentic logo is pristine and occludes any stray artifacts
-            pill_pad = 10
-            pill_w = new_w + pill_pad * 2
-            pill_h = new_h + pill_pad * 2
-            pill = Image.new("RGBA", (pill_w, pill_h), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(pill)
-            draw.rounded_rectangle([0, 0, pill_w - 1, pill_h - 1], radius=14, fill=(10, 14, 23, 215))
-            pill = pill.filter(ImageFilter.GaussianBlur(3))
-            base_img.paste(pill, (pad_x - pill_pad, pad_y - pill_pad), mask=pill)
-
             # 4. Composite the authentic brand kit logo cleanly with its natural alpha transparency
             # No artificial blurry bounding boxes, pill shapes, or square containers
             if logo_resized.mode == "RGBA":
                 alpha = logo_resized.split()[3]
                 shadow = Image.new("RGBA", (new_w + 16, new_h + 16), (0, 0, 0, 0))
-                shadow_solid = Image.new("RGBA", (new_w, new_h), (0, 0, 0, 180))
+                shadow_solid = Image.new("RGBA", (new_w, new_h), (0, 0, 0, 140))
                 shadow.paste(shadow_solid, (8, 8), mask=alpha)
                 shadow = shadow.filter(ImageFilter.GaussianBlur(4))
                 base_img.paste(shadow, (pad_x - 8, pad_y - 8), mask=shadow)
                 base_img.paste(logo_resized, (pad_x, pad_y), mask=logo_resized)
             else:
                 base_img.paste(logo_resized, (pad_x, pad_y))
-
-            # 5. Composite the official authentic brand logo
-            base_img.paste(logo_resized, (pad_x, pad_y), mask=logo_resized)
 
             output = io.BytesIO()
             base_img.save(output, format="PNG", quality=95)

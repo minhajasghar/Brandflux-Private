@@ -64,12 +64,6 @@ export interface SessionResult {
     image_url?: string
     image_status?: string
   }
-  instagram_story?: {
-    text: string
-    cta: string
-    poll_question?: string
-    image_url?: string
-  }
   linkedin?: {
     caption: string
     image_url?: string

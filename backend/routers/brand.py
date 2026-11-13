@@ -127,7 +127,6 @@ def get_brand_stats(
     platform_names = {
         "instagram": "Instagram",
         "instagram_post": "Instagram",
-        "instagram_story": "Instagram Story",
         "linkedin": "LinkedIn",
         "linkedin_post": "LinkedIn",
         "facebook": "Facebook",

@@ -760,25 +760,30 @@ async def publish_approved_post_now(
         raise HTTPException(status_code=400, detail="No platform copies found for this post.")
 
     from routers.content import publish_platform_copy
+    from services.publishing.publish_service import format_platform_label
     results = []
     errors = []
     skipped_disconnected = []
+    disconnected_messages = []
 
     for copy in copies:
+        label = format_platform_label(copy.platform)
         try:
             res = await publish_platform_copy(copy_id=copy.id, force=True, user=user, db=db)
             results.append(res)
         except HTTPException as he:
             detail = he.detail if isinstance(he.detail, dict) else {"message": str(he.detail)}
-            plat = (detail.get("platform") or copy.platform or "unknown").capitalize()
             if detail.get("status") == "needs_reconnect" or "not connected" in str(detail.get("message", "")).lower() or detail.get("error_code") == "ACCOUNT_DISCONNECTED":
-                if plat not in skipped_disconnected:
-                    skipped_disconnected.append(plat)
+                if label not in skipped_disconnected:
+                    skipped_disconnected.append(label)
+                msg = detail.get("message") or f"Your {label} account is not connected. Please connect your {label} account before publishing."
+                if msg not in disconnected_messages:
+                    disconnected_messages.append(msg)
             errors.append({"platform": copy.platform, **detail})
         except Exception as e:
             errors.append({"platform": copy.platform, "message": str(e), "status": "failed"})
 
-    published_platforms = [r.get("platform", "").capitalize() for r in results if r.get("platform")]
+    published_platforms = [format_platform_label(r.get("platform", "")) for r in results if r.get("platform")]
 
     # Mark post status as published if at least one succeeded
     if published_platforms:
@@ -786,10 +791,11 @@ async def publish_approved_post_now(
         db.commit()
 
     return {
-        "success": len(results) > 0 or len(skipped_disconnected) > 0,
+        "success": len(results) > 0,
         "published_count": len(results),
         "published_platforms": published_platforms,
         "skipped_disconnected": skipped_disconnected,
+        "disconnected_messages": disconnected_messages,
         "results": results,
         "errors": errors
     }

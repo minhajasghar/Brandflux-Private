@@ -151,52 +151,72 @@ function ApprovalsContent() {
   const [resubmitCaptions, setResubmitCaptions] = useState<Record<string, string>>({})
   const [resubmitNote, setResubmitNote] = useState('')
 
-  const fetchInbox = async (tab = activeTab) => {
+  const [showScheduleApprovedModal, setShowScheduleApprovedModal] = useState(false)
+  const [scheduleApprovedAt, setScheduleApprovedAt] = useState('')
+  const [scheduleApprovedPlatforms, setScheduleApprovedPlatforms] = useState<string[]>([
+    'instagram', 'facebook', 'linkedin', 'twitter', 'tiktok'
+  ])
+
+  const fetchInbox = async (tab = activeTab, silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const data = await getApprovalsInbox(tab)
       setInboxData(data)
     } catch (err: any) {
-      console.error('Failed to load approvals:', err)
-      toast.error(err.response?.data?.detail || 'Failed to load approvals inbox.')
+      if (!silent) {
+        console.error('Failed to load approvals:', err)
+        toast.error(err.response?.data?.detail || 'Failed to load approvals inbox.')
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
-  const fetchDetail = async (postId: string) => {
+  const fetchDetail = async (postId: string, silent = false) => {
     try {
-      setLoadingDetail(true)
+      if (!silent) setLoadingDetail(true)
       const data = await getApprovalPostDetail(postId)
       setPostDetail(data)
-      if (data.platform_copies?.length > 0) {
-        setSelectedPlatform(data.platform_copies[0].platform)
+      if (!silent) {
+        if (data.platform_copies?.length > 0) {
+          setSelectedPlatform(data.platform_copies[0].platform)
+        }
+        // Seed edit form state
+        const capMap: Record<string, string> = {}
+        data.platform_copies?.forEach((c: any) => {
+          capMap[c.platform] = c.caption || ''
+        })
+        setEditCaptions(capMap)
+        setResubmitCaptions(capMap)
+        const defaultImg = data.image_variants?.find((img: any) => img.is_selected)?.image_url || data.platform_copies?.[0]?.image_url || ''
+        setEditImage(defaultImg)
       }
-      // Seed edit form state
-      const capMap: Record<string, string> = {}
-      data.platform_copies?.forEach((c: any) => {
-        capMap[c.platform] = c.caption || ''
-      })
-      setEditCaptions(capMap)
-      setResubmitCaptions(capMap)
-      const defaultImg = data.image_variants?.find((img: any) => img.is_selected)?.image_url || data.platform_copies?.[0]?.image_url || ''
-      setEditImage(defaultImg)
     } catch (err: any) {
-      console.error('Failed to load post detail:', err)
-      toast.error(err.response?.data?.detail || 'Failed to load post details.')
-      setSelectedPostId(null)
+      if (!silent) {
+        console.error('Failed to load post detail:', err)
+        toast.error(err.response?.data?.detail || 'Failed to load post details.')
+        setSelectedPostId(null)
+      }
     } finally {
-      setLoadingDetail(false)
+      if (!silent) setLoadingDetail(false)
     }
   }
 
   useEffect(() => {
     fetchInbox(activeTab)
+    const timer = setInterval(() => {
+      fetchInbox(activeTab, true)
+    }, 5000)
+    return () => clearInterval(timer)
   }, [activeTab])
 
   useEffect(() => {
     if (selectedPostId) {
       fetchDetail(selectedPostId)
+      const detailTimer = setInterval(() => {
+        fetchDetail(selectedPostId, true)
+      }, 5000)
+      return () => clearInterval(detailTimer)
     } else {
       setPostDetail(null)
     }
@@ -773,39 +793,214 @@ function ApprovalsContent() {
                   </button>
                 )}
 
-                {/* Publish Live Button */}
+                {/* Publish Live & Schedule Buttons (Approved Post) */}
                 {(postDetail?.permissions?.can_publish || postDetail?.post?.status === 'approved') && (
-                  <button
-                    type="button"
-                    disabled={submittingAction}
-                    onClick={async () => {
-                      if (!selectedPostId) return
-                      setSubmittingAction(true)
-                      try {
-                        const res = await api.post(`/approvals/${selectedPostId}/publish-now`)
-                        const pubPlats = res.data?.published_platforms || []
-                        const discPlats = res.data?.skipped_disconnected || []
-                        if (pubPlats.length > 0) {
-                          toast.success(`Published live to ${pubPlats.join(', ')}! 🎉`)
+                  <>
+                    <button
+                      type="button"
+                      disabled={submittingAction}
+                      onClick={() => {
+                        const tomorrow = new Date()
+                        tomorrow.setDate(tomorrow.getDate() + 1)
+                        tomorrow.setHours(10, 0, 0, 0)
+                        const localIso = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000)
+                          .toISOString()
+                          .slice(0, 16)
+                        setScheduleApprovedAt(localIso)
+                        setShowScheduleApprovedModal(true)
+                      }}
+                      className="px-4 py-2 rounded-xl bg-surface-secondary hover:bg-surface-hover border border-border text-text font-bold text-xs transition flex items-center gap-1.5"
+                    >
+                      <Calendar className="h-4 w-4 text-primary" />
+                      <span>Schedule</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={submittingAction}
+                      onClick={async () => {
+                        if (!selectedPostId) return
+                        setSubmittingAction(true)
+                        try {
+                          const res = await api.post(`/approvals/${selectedPostId}/publish-now`)
+                          const pubPlats = res.data?.published_platforms || []
+                          const discMsgs: string[] = res.data?.disconnected_messages || []
+                          const discPlats = res.data?.skipped_disconnected || []
+                          if (pubPlats.length > 0) {
+                            toast.success(`Published live to ${pubPlats.join(', ')}! 🎉`)
+                          }
+                          if (discMsgs.length > 0) {
+                            discMsgs.forEach((m: string) => toast.error(m, { duration: 6000 }))
+                          } else if (discPlats.length > 0) {
+                            toast.error(`Your ${discPlats.join(', ')} account is not connected. Please connect it before publishing.`, { duration: 6000 })
+                          }
+                          await fetchInbox()
+                          if (selectedPostId) fetchDetail(selectedPostId)
+                        } catch (err: any) {
+                          toast.error(err.response?.data?.detail?.message || err.response?.data?.detail || 'Publishing failed.')
+                        } finally {
+                          setSubmittingAction(false)
                         }
-                        if (discPlats.length > 0) {
-                          toast(`${discPlats.join(', ')} not connected. Skipped safely.`, { icon: 'ℹ️' })
-                        }
-                        await fetchInbox()
-                        if (selectedPostId) fetchDetail(selectedPostId)
-                      } catch (err: any) {
-                        toast.error(err.response?.data?.detail?.message || err.response?.data?.detail || 'Publishing failed.')
-                      } finally {
-                        setSubmittingAction(false)
-                      }
-                    }}
-                    className="px-5 py-2 rounded-xl bg-accent text-black font-extrabold text-xs hover:bg-accent-hover transition shadow-accent-glow flex items-center gap-1.5"
-                  >
-                    <Zap className="h-4 w-4" />
-                    <span>Publish Live Now</span>
-                  </button>
+                      }}
+                      className="px-5 py-2 rounded-xl bg-accent text-black font-extrabold text-xs hover:bg-accent-hover transition shadow-accent-glow flex items-center gap-1.5"
+                    >
+                      <Zap className="h-4 w-4" />
+                      <span>Post Now</span>
+                    </button>
+                  </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── SCHEDULE APPROVED POST MODAL ─── */}
+      {showScheduleApprovedModal && selectedPostId && (
+        <div
+          onClick={() => setShowScheduleApprovedModal(false)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-surface max-w-md w-full rounded-3xl border border-border p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-text">Schedule Approved Content</h3>
+                <p className="text-[11px] text-muted">Automatically reuses approved image, captions, and hashtags.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleApprovedModal(false)}
+                className="p-1.5 rounded-xl hover:bg-surface-secondary text-muted hover:text-text"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-muted uppercase">Platforms</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleApprovedPlatforms(['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok'])}
+                    className="text-[11px] font-bold text-accent hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-muted text-[10px]">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleApprovedPlatforms([])}
+                    className="text-[11px] font-bold text-muted hover:text-text hover:underline"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'instagram', label: 'Instagram' },
+                  { id: 'facebook', label: 'Facebook' },
+                  { id: 'linkedin', label: 'LinkedIn' },
+                  { id: 'twitter', label: 'Twitter / X' },
+                  { id: 'tiktok', label: 'TikTok' },
+                ].map(p => {
+                  const checked = scheduleApprovedPlatforms.includes(p.id)
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                        checked ? 'bg-primary/15 border-primary text-text' : 'bg-surface-secondary border-border text-muted'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setScheduleApprovedPlatforms(prev =>
+                            prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id]
+                          )
+                        }
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span>{p.label}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted uppercase block">Publish Date &amp; Time</label>
+              <input
+                type="datetime-local"
+                value={scheduleApprovedAt}
+                onChange={(e) => setScheduleApprovedAt(e.target.value)}
+                className="w-full bg-surface-secondary border border-border rounded-xl px-3.5 py-2.5 text-xs text-text focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setShowScheduleApprovedModal(false)}
+                className="px-4 py-2 rounded-xl bg-surface-secondary text-muted hover:text-text text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submittingAction}
+                onClick={async () => {
+                  if (!scheduleApprovedAt) {
+                    toast.error('Please select a date and time.')
+                    return
+                  }
+                  if (scheduleApprovedPlatforms.length === 0) {
+                    toast.error('Please select at least one platform.')
+                    return
+                  }
+                  setSubmittingAction(true)
+                  try {
+                    const copiesMap: Record<string, any> = {}
+                    postDetail?.platform_copies?.forEach((c: any) => {
+                      copiesMap[c.platform] = { caption: c.caption, hashtags: c.hashtags || [] }
+                    })
+                    const defaultImg = postDetail?.image_variants?.find((img: any) => img.is_selected)?.image_url || postDetail?.platform_copies?.[0]?.image_url || null
+                    const defaultCaption = postDetail?.platform_copies?.[0]?.caption || ''
+                    const res = await api.post('/calendar/posts/batch', {
+                      platforms: scheduleApprovedPlatforms,
+                      caption: defaultCaption,
+                      media_url: defaultImg,
+                      scheduled_at: new Date(scheduleApprovedAt).toISOString(),
+                      status: 'Scheduled',
+                      post_id: selectedPostId,
+                      platform_copies: copiesMap
+                    })
+                    const count = res.data?.count || 0
+                    const discMsgs: string[] = res.data?.disconnected_messages || []
+                    if (count > 0) {
+                      toast.success(`Approved post scheduled across ${count} platform(s)!`)
+                    }
+                    if (discMsgs.length > 0) {
+                      discMsgs.forEach(m => toast.error(m, { duration: 6000 }))
+                    }
+                    setShowScheduleApprovedModal(false)
+                    await fetchInbox(activeTab, true)
+                  } catch (err: any) {
+                    toast.error(err.response?.data?.detail || 'Failed to schedule approved post.')
+                  } finally {
+                    setSubmittingAction(false)
+                  }
+                }}
+                className="px-5 py-2 rounded-xl bg-accent hover:bg-accent-hover text-black font-extrabold text-xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Check className="h-3.5 w-3.5" />
+                <span>{submittingAction ? 'Scheduling...' : 'Confirm Schedule'}</span>
+              </button>
             </div>
           </div>
         </div>

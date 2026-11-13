@@ -1880,19 +1880,21 @@ function AdminPortalContent() {
               <span>Add Administrator Account</span>
             </h3>
 
-            <form onSubmit={handleCreateAdmin} className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+            <form onSubmit={handleCreateAdmin} autoComplete="off" className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
               <input
                 type="email"
                 placeholder="Admin Email"
                 required
+                autoComplete="off"
                 value={newAdminEmail}
                 onChange={e => setNewAdminEmail(e.target.value)}
                 className="px-3.5 py-2.5 rounded-xl bg-surface-secondary border border-border text-text"
               />
               <input
                 type="password"
-                placeholder="Temporary Password"
+                placeholder="Password"
                 required
+                autoComplete="new-password"
                 value={newAdminPassword}
                 onChange={e => setNewAdminPassword(e.target.value)}
                 className="px-3.5 py-2.5 rounded-xl bg-surface-secondary border border-border text-text"

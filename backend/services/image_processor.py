@@ -70,11 +70,13 @@ def remove_background(image_bytes: bytes) -> Optional[bytes]:
        and makes matching background pixels transparent with smooth edge feathering.
     """
     try:
-        from rembg import remove
-        output = remove(image_bytes)
-        if output:
-            return output
-    except Exception as e:
+        import importlib.util
+        if importlib.util.find_spec("onnxruntime") is not None:
+            from rembg import remove
+            output = remove(image_bytes)
+            if output:
+                return output
+    except BaseException as e:
         logger.debug(f"rembg not available or failed: {e}; using PIL intelligent background removal")
 
     try:

@@ -126,32 +126,6 @@ def resolve_user_brand(
     # 5. Fallback to any owned brand
     return db.query(Brand).filter(Brand.user_id == user.id).first()
 
-        brand = db.query(Brand).filter(Brand.id == user.active_brand_id, Brand.user_id == user.id).first()
-        if brand:
-            return brand
-
-    # Fallback to owned brand
-    brand = db.query(Brand).filter(Brand.user_id == user.id).order_by(Brand.created_at.asc()).first()
-    if brand:
-        if not user.active_brand_id:
-            user.active_brand_id = brand.id
-            db.commit()
-        return brand
-
-    # Fallback to member brand (approvers who don't own any brand)
-    membership = db.query(BrandMember).filter(
-        BrandMember.user_id == user.id,
-        BrandMember.status == "active"
-    ).order_by(BrandMember.created_at.asc()).first()
-    if membership:
-        brand = db.query(Brand).filter(Brand.id == membership.brand_id).first()
-        if brand and not user.active_brand_id:
-            user.active_brand_id = brand.id
-            db.commit()
-        return brand
-
-    return None
-
 
 def build_brand_kit_dict(brand: Brand) -> Dict[str, Any]:
     """Assemble a complete brand kit dictionary from brand columns."""

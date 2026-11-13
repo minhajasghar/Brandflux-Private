@@ -3,18 +3,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Loader2, 
+import {
+  Loader2,
   Download,
-  Globe, 
-  Share2, 
-  Users, 
-  Layout, 
-  ArrowRight, 
-  RefreshCw, 
-  Zap, 
-  CheckCircle, 
-  Megaphone, 
+  Globe,
+  Share2,
+  Users,
+  Layout,
+  ArrowRight,
+  RefreshCw,
+  Zap,
+  CheckCircle,
+  Megaphone,
   ExternalLink,
   Image as ImageIcon,
   Upload,
@@ -30,19 +30,19 @@ import {
   ShieldCheck,
   AlertTriangle
 } from 'lucide-react'
-import api, { 
-  uploadReferenceImage, 
-  generateSessionVariants, 
-  selectSessionVariant, 
+import api, {
+  uploadReferenceImage,
+  generateSessionVariants,
+  selectSessionVariant,
   regenerateSingleVariant,
   getUserCredits,
   submitPostForApproval
 } from '@/lib/api'
-import { 
-  SessionResult, 
-  ReferenceImageItem, 
-  SessionVariantItem, 
-  MultiVariantSessionResult 
+import {
+  SessionResult,
+  ReferenceImageItem,
+  SessionVariantItem,
+  MultiVariantSessionResult
 } from '@/lib/types'
 import { toast } from 'react-hot-toast'
 import CopyButton from '@/components/ui/CopyButton'
@@ -50,12 +50,12 @@ import Skeleton from '@/components/ui/Skeleton'
 
 // Progress stages for generating variants
 const PROGRESS_STAGES = [
-  { pct: 0,   label: 'Initializing session...' },
-  { pct: 15,  label: 'Analyzing brand tone & references...' },
-  { pct: 30,  label: 'Drafting multi-channel copy...' },
-  { pct: 50,  label: 'Designing brand visual layouts...' },
-  { pct: 75,  label: 'Rendering crisp HTML/CSS typography variants...' },
-  { pct: 90,  label: 'Harmonizing brand logos and CTA overlays...' },
+  { pct: 0, label: 'Initializing session...' },
+  { pct: 15, label: 'Analyzing brand tone & references...' },
+  { pct: 30, label: 'Drafting multi-channel copy...' },
+  { pct: 50, label: 'Designing brand visual layouts...' },
+  { pct: 75, label: 'Rendering crisp HTML/CSS typography variants...' },
+  { pct: 90, label: 'Harmonizing brand logos and CTA overlays...' },
   { pct: 100, label: 'Your variants are ready! 🎉' },
 ]
 
@@ -64,7 +64,7 @@ export default function SessionPage() {
   const [phase, setPhase] = useState<1 | 2 | 3>(1) // 1: Form & Reference, 2: Generating, 3: Results
   const [businessName, setBusinessName] = useState('your business')
   const [sessionId, setSessionId] = useState<string>('')
-  
+
   // Selection states
   const [specialMode, setSpecialMode] = useState<'normal' | 'special'>('normal')
   const [specialDetails, setSpecialDetails] = useState('')
@@ -85,7 +85,7 @@ export default function SessionPage() {
   ])
 
   const togglePlatform = (p: string) => {
-    setSelectedPlatforms(prev => 
+    setSelectedPlatforms(prev =>
       prev.includes(p)
         ? prev.filter(x => x !== p)
         : [...prev, p]
@@ -139,11 +139,11 @@ export default function SessionPage() {
     }
     return url
   }
-  
+
   // Editable Copy for Selected Variant
   const [captionText, setCaptionText] = useState('')
   const [hashtagsList, setHashtagsList] = useState<string[]>([])
-  
+
   // Modal Full-Size Preview
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
 
@@ -207,9 +207,9 @@ export default function SessionPage() {
     progressTimersRef.current = []
 
     const schedule = [
-      { delay: 400,   pct: 12, label: 'Analyzing brand tone & references...' },
-      { delay: 2500,  pct: 28, label: 'Drafting multi-channel copy & hashtags...' },
-      { delay: 6000,  pct: 46, label: 'Formulating hero visual concepts...' },
+      { delay: 400, pct: 12, label: 'Analyzing brand tone & references...' },
+      { delay: 2500, pct: 28, label: 'Drafting multi-channel copy & hashtags...' },
+      { delay: 6000, pct: 46, label: 'Formulating hero visual concepts...' },
       { delay: 11000, pct: 68, label: 'Rendering crisp HTML/CSS typography layouts...' },
       { delay: 18000, pct: 84, label: 'Harmonizing brand logos and CTA overlays...' },
       { delay: 25000, pct: 92, label: 'Polishing high-retina visual variants...' },
@@ -276,7 +276,7 @@ export default function SessionPage() {
       // Upload in background to validate, strip EXIF, and store in private R2
       try {
         const uploadRes = await uploadReferenceImage(file, 'use_photo')
-        setReferenceImages(prev => 
+        setReferenceImages(prev =>
           prev.map(item => item.id === tempId ? {
             ...item,
             url: uploadRes.url,
@@ -594,7 +594,7 @@ export default function SessionPage() {
     toast.loading(moreLikeThis ? 'Creating variation inspired by this...' : 'Regenerating variant...', { id: 'regen' })
 
     try {
-      const styleDirection = moreLikeThis 
+      const styleDirection = moreLikeThis
         ? `${variant.style_direction}, refined variation with subtle compositional enhancements`
         : variant.style_direction
 
@@ -650,9 +650,9 @@ export default function SessionPage() {
         {/* PHASE 1: INPUT STEP (Check-in, Reference Area, Mode Picker)          */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {phase === 1 && (
-          <motion.div 
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
             className="space-y-8 py-6"
           >
             {/* Header Title & Credits Indicator */}
@@ -698,11 +698,10 @@ export default function SessionPage() {
                 <button
                   type="button"
                   onClick={() => setSpecialMode('normal')}
-                  className={`p-5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between h-36 ${
-                    specialMode === 'normal' 
-                      ? 'border-accent bg-surface-secondary text-text ring-1 ring-accent shadow-accent-glow/20' 
+                  className={`p-5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between h-36 ${specialMode === 'normal'
+                      ? 'border-accent bg-surface-secondary text-text ring-1 ring-accent shadow-accent-glow/20'
                       : 'bg-surface-secondary/40 border-border hover:border-border-light'
-                  }`}
+                    }`}
                 >
                   <div className="h-9 w-9 rounded-xl bg-surface border border-border flex items-center justify-center text-accent">
                     <Zap className="h-4.5 w-4.5" />
@@ -717,11 +716,10 @@ export default function SessionPage() {
                 <button
                   type="button"
                   onClick={() => setSpecialMode('special')}
-                  className={`p-5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between h-36 ${
-                    specialMode === 'special' 
-                      ? 'border-accent bg-surface-secondary text-text ring-1 ring-accent shadow-accent-glow/20' 
+                  className={`p-5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between h-36 ${specialMode === 'special'
+                      ? 'border-accent bg-surface-secondary text-text ring-1 ring-accent shadow-accent-glow/20'
                       : 'bg-surface-secondary/40 border-border hover:border-border-light'
-                  }`}
+                    }`}
                 >
                   <div className="h-9 w-9 rounded-xl bg-surface border border-border flex items-center justify-center text-accent">
                     <Megaphone className="h-4.5 w-4.5" />
@@ -735,7 +733,7 @@ export default function SessionPage() {
 
               {/* Special details input */}
               {specialMode === 'special' && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   className="space-y-2 pt-2"
@@ -781,14 +779,13 @@ export default function SessionPage() {
                   if (e.dataTransfer.files) handleFilesAdded(e.dataTransfer.files)
                 }}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all ${
-                  isDragging 
-                    ? 'border-accent bg-accent/10 scale-[1.01]' 
+                className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all ${isDragging
+                    ? 'border-accent bg-accent/10 scale-[1.01]'
                     : 'border-border hover:border-primary hover:bg-surface-secondary/50'
-                }`}
+                  }`}
               >
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   ref={fileInputRef}
                   onChange={(e) => { if (e.target.files) handleFilesAdded(e.target.files) }}
                   multiple
@@ -814,16 +811,16 @@ export default function SessionPage() {
                   <p className="text-xs font-bold uppercase tracking-wider text-muted">Configure Image Modes:</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                     {referenceImages.map((item, idx) => (
-                      <div 
-                        key={item.id} 
+                      <div
+                        key={item.id}
                         className="p-3.5 rounded-2xl bg-surface-secondary border border-border space-y-3 relative group"
                       >
                         {/* Thumbnail & Remove button */}
                         <div className="relative rounded-xl overflow-hidden aspect-video bg-black/40 border border-border flex items-center justify-center">
-                          <img 
-                            src={item.preview} 
-                            alt={item.filename || `Reference ${idx + 1}`} 
-                            className="w-full h-full object-cover" 
+                          <img
+                            src={item.preview}
+                            alt={item.filename || `Reference ${idx + 1}`}
+                            className="w-full h-full object-cover"
                           />
                           <button
                             type="button"
@@ -848,28 +845,26 @@ export default function SessionPage() {
                             <button
                               type="button"
                               onClick={() => handleModeChange(item.id, 'use_photo')}
-                              className={`py-1.5 px-2 rounded-lg border text-center transition ${
-                                item.mode === 'use_photo'
+                              className={`py-1.5 px-2 rounded-lg border text-center transition ${item.mode === 'use_photo'
                                   ? 'bg-primary text-white border-primary shadow-glow'
                                   : 'bg-surface text-muted border-border hover:text-text'
-                              }`}
+                                }`}
                             >
                               Use My Photo
                             </button>
                             <button
                               type="button"
                               onClick={() => handleModeChange(item.id, 'style_inspiration')}
-                              className={`py-1.5 px-2 rounded-lg border text-center transition ${
-                                item.mode === 'style_inspiration'
+                              className={`py-1.5 px-2 rounded-lg border text-center transition ${item.mode === 'style_inspiration'
                                   ? 'bg-accent text-black border-accent font-extrabold shadow-accent-glow'
                                   : 'bg-surface text-muted border-border hover:text-text'
-                              }`}
+                                }`}
                             >
                               Style Insp.
                             </button>
                           </div>
                           <p className="text-[10px] text-muted leading-tight pt-0.5">
-                            {item.mode === 'use_photo' 
+                            {item.mode === 'use_photo'
                               ? 'Preserves the actual product/subject in design.'
                               : 'Matches look & mood, without copying logos/faces.'}
                           </p>
@@ -981,17 +976,15 @@ export default function SessionPage() {
                       key={p.id}
                       type="button"
                       onClick={() => togglePlatform(p.id)}
-                      className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between gap-3 ${
-                        isChecked 
-                          ? 'bg-accent/10 border-accent text-text ring-1 ring-accent/30' 
+                      className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between gap-3 ${isChecked
+                          ? 'bg-accent/10 border-accent text-text ring-1 ring-accent/30'
                           : 'bg-surface-secondary border-border text-muted hover:border-border-hover'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center justify-center h-7 w-7">{p.icon}</div>
-                        <div className={`h-5 w-5 rounded-md flex items-center justify-center border text-xs font-bold transition ${
-                          isChecked ? 'bg-accent text-black border-accent' : 'border-muted/40'
-                        }`}>
+                        <div className={`h-5 w-5 rounded-md flex items-center justify-center border text-xs font-bold transition ${isChecked ? 'bg-accent text-black border-accent' : 'border-muted/40'
+                          }`}>
                           {isChecked && '✓'}
                         </div>
                       </div>
@@ -1090,9 +1083,8 @@ export default function SessionPage() {
               {PROGRESS_STAGES.map((s, i) => (
                 <div
                   key={i}
-                  className={`h-2 w-2 rounded-full transition-all duration-300 ${
-                    progress >= s.pct ? 'bg-accent scale-125' : 'bg-surface-secondary border border-border'
-                  }`}
+                  className={`h-2 w-2 rounded-full transition-all duration-300 ${progress >= s.pct ? 'bg-accent scale-125' : 'bg-surface-secondary border border-border'
+                    }`}
                 />
               ))}
             </div>
@@ -1116,9 +1108,9 @@ export default function SessionPage() {
         {/* PHASE 3: RESULTS UI (Variant Grid, Full Preview, Select, Regens)    */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {phase === 3 && variantSessionData && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             className="space-y-8 py-6"
           >
             {/* Header with Theme, Credits & Action Buttons */}
@@ -1196,11 +1188,10 @@ export default function SessionPage() {
                       key={v.id}
                       whileHover={{ scale: 1.01 }}
                       onClick={() => handleSelectVariant(v)}
-                      className={`relative rounded-3xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between border ${
-                        isSelected 
-                          ? 'border-accent bg-surface-secondary shadow-accent-glow ring-2 ring-accent' 
+                      className={`relative rounded-3xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between border ${isSelected
+                          ? 'border-accent bg-surface-secondary shadow-accent-glow ring-2 ring-accent'
                           : 'border-border bg-surface hover:border-border-light'
-                      }`}
+                        }`}
                     >
                       {/* Active Selection Badge */}
                       {isSelected && (
@@ -1220,13 +1211,13 @@ export default function SessionPage() {
                             </div>
                           ) : (
                             <>
-                              <img 
-                                src={resolveMediaUrl(v.image_url)} 
-                                alt={v.variant_label} 
-                                className="w-full h-full object-cover transition duration-300 group-hover:scale-105" 
+                              <img
+                                src={resolveMediaUrl(v.image_url)}
+                                alt={v.variant_label}
+                                className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
                               />
                               {v.source === 'fallback' && (
-                                <div 
+                                <div
                                   onClick={(e) => { e.stopPropagation(); handleRegenerateVariant(v, false) }}
                                   className="absolute bottom-2 left-2 right-2 z-10 p-2.5 rounded-xl bg-black/90 hover:bg-black/95 border border-amber-500/50 text-amber-300 font-bold text-[10px] shadow-xl transition cursor-pointer backdrop-blur-md space-y-1"
                                   title={v.error || "AI generation failed, tap to retry"}
@@ -1321,10 +1312,10 @@ export default function SessionPage() {
                 <div className="space-y-3">
                   <div className="relative rounded-2xl overflow-hidden aspect-square border-2 border-accent bg-surface-secondary">
                     {selectedVariantImage ? (
-                      <img 
-                        src={resolveMediaUrl(selectedVariantImage)} 
-                        alt="Selected Variant" 
-                        className="w-full h-full object-cover" 
+                      <img
+                        src={resolveMediaUrl(selectedVariantImage)}
+                        alt="Selected Variant"
+                        className="w-full h-full object-cover"
                       />
                     ) : (
                       <Skeleton width="100%" height="100%" rounded="2xl" />
@@ -1359,11 +1350,10 @@ export default function SessionPage() {
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('instagram_post')}
-                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
-                          activePlatformTab === 'instagram_post'
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${activePlatformTab === 'instagram_post'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'
-                        }`}
+                          }`}
                       >
                         <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
@@ -1376,11 +1366,10 @@ export default function SessionPage() {
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('linkedin_post')}
-                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
-                          activePlatformTab === 'linkedin_post'
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${activePlatformTab === 'linkedin_post'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'
-                        }`}
+                          }`}
                       >
                         <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
                           <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.779-1.75-1.75s.784-1.75 1.75-1.75 1.75.779 1.75 1.75-.784 1.75-1.75 1.75zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
@@ -1391,11 +1380,10 @@ export default function SessionPage() {
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('facebook_post')}
-                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
-                          activePlatformTab === 'facebook_post'
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${activePlatformTab === 'facebook_post'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'
-                        }`}
+                          }`}
                       >
                         <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
                           <path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z" />
@@ -1406,11 +1394,10 @@ export default function SessionPage() {
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('twitter_post')}
-                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
-                          activePlatformTab === 'twitter_post'
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${activePlatformTab === 'twitter_post'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'
-                        }`}
+                          }`}
                       >
                         <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
                           <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
@@ -1421,14 +1408,13 @@ export default function SessionPage() {
                       <button
                         type="button"
                         onClick={() => switchPlatformTab('tiktok')}
-                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${
-                          activePlatformTab === 'tiktok'
+                        className={`flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-2 sm:px-2.5 rounded-xl text-xs font-black transition-all min-h-[42px] ${activePlatformTab === 'tiktok'
                             ? 'bg-accent text-black shadow-md shadow-accent/20'
                             : 'text-muted hover:text-text hover:bg-surface/60'
-                        }`}
+                          }`}
                       >
                         <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
-                          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.29 0 .58.04.85.12V9.41a6.33 6.33 0 0 0-.85-.06 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 8.78 5.86 6.34 6.34 0 0 0 3.9-5.86V9.17a8.28 8.28 0 0 0 4.84 1.55v-3.48a4.85 4.85 0 0 1-1.07-.55z"/>
+                          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.29 0 .58.04.85.12V9.41a6.33 6.33 0 0 0-.85-.06 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 8.78 5.86 6.34 6.34 0 0 0 3.9-5.86V9.17a8.28 8.28 0 0 0 4.84 1.55v-3.48a4.85 4.85 0 0 1-1.07-.55z" />
                         </svg>
                         <span>TikTok</span>
                       </button>
@@ -1544,11 +1530,11 @@ export default function SessionPage() {
       {/* ─── FULL-SIZE MODAL PREVIEW ───────────────────────────────────────── */}
       <AnimatePresence>
         {previewImageUrl && (
-          <div 
+          <div
             onClick={() => setPreviewImageUrl(null)}
             className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 cursor-pointer"
           >
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
@@ -1557,7 +1543,7 @@ export default function SessionPage() {
             >
               <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
                 <span className="text-sm font-extrabold text-text">Full-Size High-Resolution Preview</span>
-                <button 
+                <button
                   type="button"
                   onClick={() => setPreviewImageUrl(null)}
                   className="p-1 rounded-lg bg-surface-secondary border border-border hover:bg-surface-hover text-muted hover:text-text transition"

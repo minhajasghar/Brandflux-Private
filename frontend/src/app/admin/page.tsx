@@ -1483,12 +1483,19 @@ function AdminPortalContent() {
                 const plan = plansConfig[planKey]
                 return (
                   <div key={planKey} className="p-4 rounded-2xl bg-surface-secondary border border-border space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-extrabold text-primary-light uppercase tracking-wider block">
-                        {plan.label || plan.name || planKey}
-                      </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        type="text"
+                        value={plan.label || plan.name || planKey}
+                        onChange={e => setPlansConfig({
+                          ...plansConfig,
+                          [planKey]: { ...plan, label: e.target.value, name: e.target.value }
+                        })}
+                        className="w-full bg-surface border border-border rounded-lg px-2 py-1 text-xs font-extrabold text-primary-light uppercase tracking-wider"
+                        title="Plan Display Name (shown on Welcome & Pricing pages)"
+                      />
                       {plan.x_allowed && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold uppercase">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold uppercase shrink-0">
                           X Enabled
                         </span>
                       )}
@@ -1606,32 +1613,77 @@ function AdminPortalContent() {
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-border flex items-center justify-between text-xs">
+                    <div className="pt-2 border-t border-border space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[9px] font-bold text-muted uppercase">Max Approvers</label>
+                        <input
+                          type="number"
+                          value={plan.max_approvers ?? 1}
+                          onChange={e => setPlansConfig({
+                            ...plansConfig,
+                            [planKey]: { ...plan, max_approvers: parseInt(e.target.value) || 1 }
+                          })}
+                          className="w-16 bg-surface border border-border rounded-lg px-2 py-1 text-[10px] font-bold text-text text-right"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(plan.x_allowed)}
+                            onChange={e => setPlansConfig({
+                              ...plansConfig,
+                              [planKey]: { ...plan, x_allowed: e.target.checked }
+                            })}
+                            className="h-3.5 w-3.5 rounded accent-accent"
+                          />
+                          <span className="text-[10px] font-bold text-text">Allow X (Twitter)</span>
+                        </label>
+                        {plan.x_allowed && (
+                          <input
+                            type="number"
+                            placeholder="Monthly X"
+                            value={plan.x_monthly_allowance ?? 50}
+                            onChange={e => setPlansConfig({
+                              ...plansConfig,
+                              [planKey]: { ...plan, x_monthly_allowance: parseInt(e.target.value) || 0 }
+                            })}
+                            className="w-16 bg-surface border border-border rounded-lg px-2 py-1 text-[10px] font-bold text-text text-right"
+                            title="Monthly X posts allowance"
+                          />
+                        )}
+                      </div>
+
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
-                          checked={Boolean(plan.x_allowed)}
+                          checked={plan.is_active !== false}
                           onChange={e => setPlansConfig({
                             ...plansConfig,
-                            [planKey]: { ...plan, x_allowed: e.target.checked }
+                            [planKey]: { ...plan, is_active: e.target.checked }
                           })}
                           className="h-3.5 w-3.5 rounded accent-accent"
                         />
-                        <span className="text-[10px] font-bold text-text">Allow X (Twitter)</span>
+                        <span className="text-[10px] font-bold text-text">Show on Welcome Page</span>
                       </label>
-                      {plan.x_allowed && (
-                        <input
-                          type="number"
-                          placeholder="Monthly X"
-                          value={plan.x_monthly_allowance ?? 50}
+
+                      <div className="space-y-1 pt-1">
+                        <label className="text-[9px] font-bold text-muted uppercase">Welcome Page Features (1 per line)</label>
+                        <textarea
+                          rows={4}
+                          value={(plan.features || []).join('\n')}
                           onChange={e => setPlansConfig({
                             ...plansConfig,
-                            [planKey]: { ...plan, x_monthly_allowance: parseInt(e.target.value) || 0 }
+                            [planKey]: {
+                              ...plan,
+                              features: e.target.value.split('\n').map((s: string) => s.trim()).filter(Boolean)
+                            }
                           })}
-                          className="w-16 bg-surface border border-border rounded-lg px-2 py-1 text-[10px] font-bold text-text text-right"
-                          title="Monthly X posts allowance"
+                          placeholder="30 Post Credits / month&#10;1 Brand Kit & Voice Profile"
+                          className="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-[11px] text-text leading-relaxed resize-y"
                         />
-                      )}
+                      </div>
                     </div>
                   </div>
                 )

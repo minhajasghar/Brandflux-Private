@@ -354,10 +354,13 @@ def get_plans_config(db: Session) -> Dict[str, Any]:
     
     result = {}
     for p in plans:
+        display_name = p.name
+        if display_name and "free trial" in display_name.lower():
+            display_name = "Basic Plan"
         result[p.id] = {
             "id": p.id,
-            "label": p.name,
-            "name": p.name,
+            "label": display_name,
+            "name": display_name,
             "price": p.price_usd,
             "price_usd": p.price_usd,
             "price_annual_usd": p.price_annual_usd,
@@ -371,7 +374,8 @@ def get_plans_config(db: Session) -> Dict[str, Any]:
             "x_allowed": p.x_allowed,
             "x_monthly_allowance": p.x_monthly_allowance,
             "max_approvers": getattr(p, "max_approvers", 1),
-            "features": p.features or []
+            "features": p.features or [],
+            "is_active": bool(getattr(p, "is_active", True))
         }
     return result
 
@@ -413,6 +417,8 @@ def update_plans_config(db: Session, plans: Dict[str, Any], admin: User) -> Dict
             p.max_approvers = int(plan_data["max_approvers"])
         if "features" in plan_data:
             p.features = plan_data["features"]
+        if "is_active" in plan_data:
+            p.is_active = bool(plan_data["is_active"])
 
     # Also keep system setting mirror in sync
     setting = db.query(SystemSetting).filter(SystemSetting.key == "plans_config").first()

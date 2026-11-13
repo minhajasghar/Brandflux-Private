@@ -26,17 +26,21 @@ export default function PricingPage() {
     try {
       setLoading(true)
       const res = await api.get('/billing/plans')
-      const activePaidPlans = (res.data || []).filter((p: any) => p.id !== 'trial' && p.price_usd > 0)
+      const allPlans = res.data || []
+      const activePaidPlans = allPlans.filter((p: any) => !(p.id === 'trial' && p.price_usd === 0 && allPlans.some((o: any) => o.id === 'starter')))
       if (activePaidPlans.length > 0) {
-        setPlans(activePaidPlans)
+        setPlans(activePaidPlans.map((p: any) => ({
+          ...p,
+          name: (p.id === 'starter' && p.name?.toLowerCase() === 'starter plan') ? 'Basic Plan' : p.name
+        })))
       } else {
-        // Fallback default plans (Starter, Growth, Pro only)
+        // Fallback default plans (Basic, Growth, Pro)
         setPlans([
           {
             id: 'starter',
-            name: 'Starter Plan',
+            name: 'Basic Plan',
             price_usd: 19,
-            price_annual_usd: 190,
+            price_annual_usd: 182,
             credits: 30,
             brands: 1,
             platforms: 3,
@@ -47,10 +51,10 @@ export default function PricingPage() {
               '30 Post Credits / month (60 visuals)',
               '1 Brand Kit & Voice Profile',
               '3 Connected Social Platforms',
-              '15 Free Image Re-rolls / month',
-              'Standard 1K High-Def Visuals',
-              'Max 2 posts / day schedule',
-              'Verified Social Publishing Flow'
+              '15 Image Re-rolls / month',
+              'Auto Logo Background Removal',
+              '1-Click Post Now & Calendar Scheduler',
+              '1 Team Approver Seat'
             ]
           },
           {

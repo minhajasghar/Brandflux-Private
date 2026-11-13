@@ -12,8 +12,31 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Brandflux — AI Brand Content Tool",
-  description: "Smart brand content tool for small business owners.",
+  title: "Brandflux — AI Social Media Content Generator, Brand Kit & Auto-Scheduler",
+  description:
+    "Automate your brand's social media strategy with Brandflux. Scan your website to extract your brand voice and colors, generate 2 branded visual variants with hashtag-ready captions, collaborate with team approvers, and schedule or post live across Instagram, LinkedIn, Facebook, X & TikTok.",
+  keywords: [
+    "AI social media content generator",
+    "brand intelligence platform",
+    "social media auto scheduler",
+    "AI brand kit extractor",
+    "team content approval workflow",
+    "multi-platform social publishing",
+    "Instagram LinkedIn Facebook X TikTok scheduler",
+  ],
+  openGraph: {
+    title: "Brandflux — AI Social Media Content Generator & Auto-Scheduler",
+    description:
+      "Scan your website, generate 2 branded visual variants and hashtag-ready captions for 5 platforms, approve as a team, and post or schedule in 1 click.",
+    type: "website",
+    siteName: "Brandflux",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Brandflux — AI Social Media Content Generator & Auto-Scheduler",
+    description:
+      "Turn your website URL into daily, brand-aligned social posts, visuals, and scheduled campaigns across Instagram, LinkedIn, Facebook, X & TikTok.",
+  },
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },

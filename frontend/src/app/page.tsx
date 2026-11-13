@@ -30,9 +30,11 @@ export default function Home() {
     const fetchPlans = async () => {
       try {
         const res = await api.get('/billing/plans')
-        const active = (res.data || []).filter((p: any) => p.id !== 'trial' && p.price_usd > 0)
-        if (active.length > 0) {
-          setDbPlans(active)
+        const allPlans = res.data || []
+        // Exclude legacy $0 'trial' row if 'starter' or paid plans exist, unless admin priced/customized it
+        const filtered = allPlans.filter((p: any) => !(p.id === 'trial' && p.price_usd === 0 && allPlans.some((o: any) => o.id === 'starter')))
+        if (filtered.length > 0) {
+          setDbPlans(filtered)
         }
       } catch (err) {
         // Fallback handled below
@@ -44,20 +46,20 @@ export default function Home() {
   const defaultPricingTiers = [
     {
       id: "starter",
-      name: "Starter",
+      name: "Basic",
       price_monthly: 19,
       price_annual: 15,
-      description: "Essential AI content generation & multi-platform tools for growing brands.",
+      description: "Essential AI content generation, brand kit extraction & 1-click social publishing.",
       features: [
         "30 Post Credits / month (60 visuals)",
         "1 Brand Kit & Voice Profile",
         "3 Connected Social Platforms",
-        "15 Free Image Re-rolls / month",
-        "Standard 1K High-Def Visuals",
-        "Max 2 posts / day schedule",
-        "Verified Social Publishing Flow"
+        "15 Image Re-rolls / month",
+        "Auto Logo Background Removal",
+        "1-Click Post Now & Calendar Scheduler",
+        "1 Team Approver Seat"
       ],
-      buttonText: "Get Started",
+      buttonText: "Choose Basic",
       href: "/signup",
       popular: false
     },
@@ -66,15 +68,15 @@ export default function Home() {
       name: "Growth",
       price_monthly: 39,
       price_annual: 31,
-      description: "Designed for small businesses & creators scaling their social footprint.",
+      description: "Designed for small businesses & creators scaling across 5 social platforms.",
       features: [
         "100 Post Credits / month (200 visuals)",
         "3 Distinct Brand Kits",
         "5 Connected Platforms",
-        "60 Free Image Re-rolls / month",
+        "60 Image Re-rolls / month",
         "2K Ultra-HD Visual Generations",
-        "Performance Analytics Suite",
-        "Autopilot Weekly Planner"
+        "Performance Analytics & Weekly Guidance",
+        "3 Team Approver Seats"
       ],
       buttonText: "Choose Growth",
       href: "/signup",
@@ -85,15 +87,15 @@ export default function Home() {
       name: "Pro",
       price_monthly: 88,
       price_annual: 70,
-      description: "For agencies and high-velocity teams seeking unlimited publishing & seats.",
+      description: "For agencies and high-velocity teams seeking unlimited publishing & team seats.",
       features: [
         "200 Post Credits / month (400 visuals)",
         "10 Brand Kits & Multi-Brand Switcher",
         "All Platforms + X (Twitter) Publishing",
-        "100 Free Image Re-rolls / month",
+        "100 Image Re-rolls / month",
         "2K Ultra-HD Visual Generations",
         "Unlimited Daily Publishing",
-        "Priority Rendering Queue & Team Seats"
+        "10 Team Approver Seats & Priority Queue"
       ],
       buttonText: "Choose Pro",
       href: "/signup",
@@ -103,26 +105,30 @@ export default function Home() {
 
   const pricingTiers = dbPlans.length > 0
     ? dbPlans.map((p) => {
-        const monthly = p.price_usd || 19
+        const monthly = p.price_usd ?? 19
         const annual = p.price_annual_usd ? Math.round(p.price_annual_usd / 12) : Math.round(monthly * 0.8)
         const isGrowth = p.id === 'growth'
-        const isPro = p.id === 'pro'
+        const rawName = (p.name || p.id || 'Basic').replace(/ Plan$/i, '')
+        const cleanName = (p.id === 'starter' && rawName.toLowerCase() === 'starter') || (p.id === 'trial' && rawName.toLowerCase().includes('trial'))
+          ? 'Basic'
+          : rawName
         return {
           id: p.id,
-          name: p.name.replace(/ Plan$/i, ''),
+          name: cleanName,
           price: billingPeriod === 'monthly' ? String(monthly) : String(annual),
-          description: p.id === 'starter' 
-            ? "Essential AI content generation & multi-platform tools for growing brands."
+          description: (p.id === 'starter' || p.id === 'trial')
+            ? "Essential AI content generation, brand kit extraction & 1-click social publishing."
             : p.id === 'growth'
-            ? "Designed for small businesses & creators scaling their social footprint."
+            ? "Designed for small businesses & creators scaling across 5 social platforms."
             : "For agencies and high-velocity teams seeking maximum automation.",
           features: (p.features && p.features.length > 0) ? p.features : [
             `${p.credits} Post Credits / month`,
             `${p.brands} Brand Kit(s)`,
             `${p.platforms} Connected Platforms`,
-            "Verified Social Publishing Flow"
+            `${p.reroll_pool ?? 15} Image Re-rolls / month`,
+            "1-Click Post Now & Auto-Scheduler"
           ],
-          buttonText: p.id === 'starter' ? "Get Started" : `Choose ${p.name.replace(/ Plan$/i, '')}`,
+          buttonText: `Choose ${cleanName}`,
           href: "/signup",
           popular: isGrowth
         }
@@ -187,18 +193,18 @@ export default function Home() {
           {/* Badge with primary-light dot */}
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-secondary border border-border text-xs font-semibold mb-8">
             <span className="h-1.5 w-1.5 rounded-full bg-primary-light animate-pulse" />
-            <span className="text-text font-medium tracking-wide">AI BRAND INTELLIGENCE PLATFORM</span>
+            <span className="text-text font-medium tracking-wide">AI BRAND INTELLIGENCE &amp; SOCIAL AUTOMATION</span>
           </div>
           
           <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.1] mb-6">
             Automate Your Brand&apos;s <br />
             <span className="text-accent">
-              Content Strategy
+              Social Media Strategy
             </span>
           </h1>
           
           <p className="text-lg md:text-xl text-muted max-w-2xl mx-auto leading-relaxed mb-10">
-            Brandflux automatically syncs with your website, understands your brand voice, and generates platform-optimized social media content daily.
+            Scan your website to extract your brand voice, palette, and logo. Generate 2 branded visual variants with hashtag-ready captions for Instagram, LinkedIn, Facebook, X &amp; TikTok — then approve, schedule, or post live in 1 click.
           </p>
           
           {/* Action buttons: Lime CTA + Secondary cobalt bordered button */}
@@ -207,7 +213,7 @@ export default function Home() {
               href="/signup" 
               className="px-8 py-3.5 bg-accent text-black font-extrabold text-base rounded-xl hover:bg-accent-hover transition-all flex items-center justify-center gap-2 active:scale-95 shadow-accent-glow"
             >
-              Start Free Trial
+              Get Started
               <ArrowRight className="h-4 w-4 text-black" />
             </Link>
             <a 
@@ -286,12 +292,14 @@ export default function Home() {
               <div className="lg:col-span-7 flex flex-col justify-between space-y-3 p-4 rounded-xl bg-surface-secondary/70 border border-border">
                 {/* Platform tabs */}
                 <div className="flex items-center justify-between border-b border-border pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <button className="px-3 py-1 rounded-lg text-xs font-bold bg-primary text-white">Instagram</button>
-                    <button className="px-3 py-1 rounded-lg text-xs font-semibold text-muted hover:text-text">LinkedIn</button>
-                    <button className="px-3 py-1 rounded-lg text-xs font-semibold text-muted hover:text-text">Facebook</button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button className="px-2.5 py-1 rounded-lg text-xs font-bold bg-primary text-white">Instagram</button>
+                    <button className="px-2.5 py-1 rounded-lg text-xs font-semibold text-muted hover:text-text">LinkedIn</button>
+                    <button className="px-2.5 py-1 rounded-lg text-xs font-semibold text-muted hover:text-text">Facebook</button>
+                    <button className="px-2.5 py-1 rounded-lg text-xs font-semibold text-muted hover:text-text">X</button>
+                    <button className="px-2.5 py-1 rounded-lg text-xs font-semibold text-muted hover:text-text">TikTok</button>
                   </div>
-                  <span className="text-[11px] text-muted hidden sm:inline">Auto-resized 1080×1080</span>
+                  <span className="text-[11px] text-muted hidden sm:inline">2 Visual Variants</span>
                 </div>
 
                 {/* Content generation preview */}
@@ -315,9 +323,9 @@ export default function Home() {
                 <div className="flex items-center justify-between pt-1 text-xs">
                   <div className="flex items-center gap-2 text-muted text-[11px]">
                     <CheckCircle2 className="h-3.5 w-3.5 text-primary-light" />
-                    <span>Watermark & Typography Synced</span>
+                    <span>Transparent Logo &amp; Hashtags Synced</span>
                   </div>
-                  <span className="text-[11px] text-primary-light font-bold">1-Click Publish Ready</span>
+                  <span className="text-[11px] text-primary-light font-bold">⚡ 1-Click Post Now Ready</span>
                 </div>
               </div>
             </div>
@@ -372,7 +380,7 @@ export default function Home() {
             {/* Floating Card 3: Metrics / Status Pill */}
             <div className="absolute -bottom-3 right-6 sm:right-12 bg-surface border border-primary/50 text-xs px-3.5 py-1.5 rounded-full flex items-center gap-2 shadow-glow text-text">
               <span className="h-2 w-2 rounded-full bg-accent animate-ping" />
-              <span className="font-semibold text-xs">3 Platforms Synced & Scheduled</span>
+              <span className="font-semibold text-xs">5 Platforms Connected &amp; Auto-Scheduled</span>
             </div>
           </div>
         </div>
@@ -383,42 +391,42 @@ export default function Home() {
         {/* Feature Grid */}
         <section id="features" className="scroll-mt-24 w-full max-w-6xl">
           <div className="text-center mb-14">
-            <p className="text-primary-light text-xs font-bold tracking-widest uppercase mb-2">Capabilities</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">Core Automation Features</h2>
-            <p className="text-muted max-w-xl mx-auto text-sm md:text-base">Everything you need to run your social media strategy on autopilot.</p>
+            <p className="text-primary-light text-xs font-bold tracking-widest uppercase mb-2">Platform Capabilities</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">Built for End-to-End Social Automation</h2>
+            <p className="text-muted max-w-2xl mx-auto text-sm md:text-base">From website brand extraction and AI visual generation to team approvals and live auto-publishing.</p>
           </div>
           
           <div className="grid md:grid-cols-3 gap-6">
             {[
               { 
-                icon: Zap, 
-                title: "Live Brand Sync", 
-                desc: "Every time you open your dashboard, we scan your website for fresh updates and product changes automatically." 
-              },
-              { 
-                icon: BarChart3, 
-                title: "Smart Guidance", 
-                desc: "Get weekly tailored posting schedules and ideal content mix suggestions generated specifically for your target audience." 
-              },
-              { 
-                icon: ShieldCheck, 
-                title: "AI Precision", 
-                desc: "Brandflux guarantees highly professional and brand-aligned captions, hashtags, and text overlays." 
-              },
-              { 
                 icon: Globe, 
-                title: "Multi-Platform Reach", 
-                desc: "Simultaneously tailor captions and formats for Instagram Posts, Stories, LinkedIn, and Facebook with one single check-in." 
+                title: "Website Brand DNA Extraction", 
+                desc: "Enter your website URL to automatically extract your business identity, brand tone, products, and layered color palette into your Brand Kit." 
+              },
+              { 
+                icon: Sparkles, 
+                title: "Auto Logo Background Removal", 
+                desc: "Upload your brand logo and Brandflux automatically removes solid backgrounds into crisp transparent PNGs for clean, studio-grade post visuals." 
               },
               { 
                 icon: Layers, 
-                title: "Parallel Image Gen", 
-                desc: "Concurrently generate high-quality branded visual backdrops in seconds using fast image synthesis." 
+                title: "2-Variant AI Visual & Copy Studio", 
+                desc: "Generate 2 distinct AI-designed visual layouts per check-in alongside platform-tailored captions with hashtags embedded automatically." 
+              },
+              { 
+                icon: Zap, 
+                title: "1-Click Post Now & 5-Platform Reach", 
+                desc: "Publish immediately across Instagram, LinkedIn, Facebook, X (Twitter), and TikTok directly from Studio with zero extra forms." 
               },
               { 
                 icon: Workflow, 
-                title: "Dynamic Watermarking", 
-                desc: "Automatically apply your brand colors, tagline, business name, and logo over post backdrops via Pillow canvas." 
+                title: "Batch Calendar & Auto-Publish Agent", 
+                desc: "Select multiple platforms at once to batch-schedule posts on your Content Calendar. Our background agent publishes them live on time." 
+              },
+              { 
+                icon: Users, 
+                title: "Team Approvals & Growth Analytics", 
+                desc: "Create dedicated Approver accounts under your brand to review, edit, or approve posts before publishing, plus track weekly guidance & analytics." 
               }
             ].map((feature, i) => (
               <div 
@@ -443,30 +451,30 @@ export default function Home() {
           <div className="text-center mb-16">
             <p className="text-primary-light text-xs font-bold tracking-widest uppercase mb-2">Workflow</p>
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">How Brandflux Works</h2>
-            <p className="text-muted max-w-xl mx-auto text-sm md:text-base">Get ready-to-post, highly engaging social content in four simple steps.</p>
+            <p className="text-muted max-w-xl mx-auto text-sm md:text-base">Go from your website URL to approved, scheduled, or live social posts in four steps.</p>
           </div>
 
           <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-6">
             {[
               {
                 step: "01",
-                title: "Scan Website",
-                desc: "Provide your brand URL. Our scrapers extract your brand tone, core keywords, and color assets."
+                title: "Scan Website & Brand Kit",
+                desc: "Enter your website URL and upload your logo. Brandflux extracts your brand colors, voice, and offerings while removing logo backgrounds automatically."
               },
               {
                 step: "02",
-                title: "Daily Check-in",
-                desc: "Answer 3 quick daily context questions to capture what's happening today in your business."
+                title: "Daily Check-In or AI Ideas",
+                desc: "Answer 3 quick daily context questions—or pick from AI content ideas—and select your target social platforms."
               },
               {
                 step: "03",
-                title: "AI Generation",
-                desc: "Brandflux AI formulates the optimal copy and generates concurrent branded graphic templates."
+                title: "Generate 2 Branded Variants",
+                desc: "Receive 2 custom AI visual designs and hashtag-ready captions tailored for Instagram, LinkedIn, Facebook, X & TikTok."
               },
               {
                 step: "04",
-                title: "Publish & Track",
-                desc: "Review pre-formatted captions and branded graphics, then schedule or copy them directly."
+                title: "Approve, Schedule, or Post Now",
+                desc: "Send to your team approver for review, batch-schedule to your Content Calendar, or click Post Now to publish live immediately."
               }
             ].map((item, idx) => (
               <div key={idx} className="flex flex-col items-center md:items-start text-center md:text-left p-6 bg-surface border border-border hover:border-border-light rounded-2xl transition">

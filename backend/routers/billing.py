@@ -88,7 +88,7 @@ def list_available_plans(db: Session = Depends(get_db)):
     return [
         {
             "id": p.id,
-            "name": p.name,
+            "name": "Basic Plan" if (p.name and "free trial" in p.name.lower()) else p.name,
             "price_usd": p.price_usd,
             "price_annual_usd": p.price_annual_usd,
             "price_local": p.price_local,

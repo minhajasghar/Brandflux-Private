@@ -14,24 +14,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
     "trial": {
         "id": "trial",
-        "name": "14-Day Free Trial",
-        "price_usd": 0,
-        "price_annual_usd": 0,
-        "credits": 15,
-        "brands": 1,
-        "platforms": 5,
-        "max_posts_per_day": 5,
-        "daily_generation_cap": 5,
-        "reroll_pool": 3,
-        "x_allowed": True,
-        "x_monthly_allowance": 25,
-        "max_approvers": 2
-    },
-    "starter": {
-        "id": "starter",
-        "name": "Starter Plan",
+        "name": "Basic Plan",
         "price_usd": 19,
-        "price_annual_usd": 190,
+        "price_annual_usd": 182,
         "credits": 30,
         "brands": 1,
         "platforms": 3,
@@ -40,13 +25,46 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "reroll_pool": 15,
         "x_allowed": False,
         "x_monthly_allowance": 0,
-        "max_approvers": 1
+        "max_approvers": 1,
+        "features": [
+            "30 Post Credits / month (60 visuals)",
+            "1 Brand Kit & Voice Profile",
+            "3 Connected Social Platforms",
+            "15 Image Re-rolls / month",
+            "Auto Logo Background Removal",
+            "1-Click Post Now & Calendar Scheduler",
+            "1 Team Approver Seat"
+        ]
+    },
+    "starter": {
+        "id": "starter",
+        "name": "Basic Plan",
+        "price_usd": 19,
+        "price_annual_usd": 182,
+        "credits": 30,
+        "brands": 1,
+        "platforms": 3,
+        "max_posts_per_day": 2,
+        "daily_generation_cap": 10,
+        "reroll_pool": 15,
+        "x_allowed": False,
+        "x_monthly_allowance": 0,
+        "max_approvers": 1,
+        "features": [
+            "30 Post Credits / month (60 visuals)",
+            "1 Brand Kit & Voice Profile",
+            "3 Connected Social Platforms",
+            "15 Image Re-rolls / month",
+            "Auto Logo Background Removal",
+            "1-Click Post Now & Calendar Scheduler",
+            "1 Team Approver Seat"
+        ]
     },
     "growth": {
         "id": "growth",
         "name": "Growth Plan",
         "price_usd": 39,
-        "price_annual_usd": 390,
+        "price_annual_usd": 374,
         "credits": 100,
         "brands": 3,
         "platforms": 5,
@@ -55,13 +73,22 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "reroll_pool": 60,
         "x_allowed": False,
         "x_monthly_allowance": 0,
-        "max_approvers": 3
+        "max_approvers": 3,
+        "features": [
+            "100 Post Credits / month (200 visuals)",
+            "3 Distinct Brand Kits",
+            "5 Connected Social Platforms",
+            "60 Image Re-rolls / month",
+            "2K Ultra-HD Visual Generations",
+            "Performance Analytics & Weekly Guidance",
+            "3 Team Approver Seats"
+        ]
     },
     "pro": {
         "id": "pro",
         "name": "Pro Plan",
-        "price_usd": 89,
-        "price_annual_usd": 890,
+        "price_usd": 88,
+        "price_annual_usd": 845,
         "credits": 200,
         "brands": 10,
         "platforms": 6,
@@ -70,7 +97,16 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "reroll_pool": 100,
         "x_allowed": True,
         "x_monthly_allowance": 50,
-        "max_approvers": 10
+        "max_approvers": 10,
+        "features": [
+            "200 Post Credits / month (400 visuals)",
+            "10 Brand Kits & Multi-Brand Switcher",
+            "All Platforms + X (Twitter) Publishing",
+            "100 Image Re-rolls / month",
+            "2K Ultra-HD Visual Generations",
+            "Unlimited Daily Publishing",
+            "10 Team Approver Seats & Priority Queue"
+        ]
     }
 }
 

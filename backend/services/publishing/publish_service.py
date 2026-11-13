@@ -76,8 +76,10 @@ def validate_social_account_connection(db: Session, brand_id: str, platform: str
         return None, f"Your {label} account is not connected. Please connect your {label} account before publishing."
 
     if target_account.token_expires_at and target_account.token_expires_at < datetime.utcnow():
-        logger.warning(f"[SharedPublish] Account '{target_account.account_name}' token expired on {target_account.token_expires_at}")
-        return None, f"Your {label} account connection has expired. Please reconnect your {label} account before publishing."
+        has_refresh = bool(getattr(target_account, "refresh_token_encrypted", None) or (target_account.metadata_json or {}).get("refresh_token_encrypted"))
+        if not has_refresh:
+            logger.warning(f"[SharedPublish] Account '{target_account.account_name}' token expired on {target_account.token_expires_at}")
+            return None, f"Your {label} account connection has expired. Please reconnect your {label} account before publishing."
 
     if not getattr(target_account, "access_token_encrypted", None) and not (target_account.metadata_json or {}).get("ayrshare_profile_key"):
         return None, f"Your {label} account credentials are incomplete. Please reconnect your {label} account before publishing."

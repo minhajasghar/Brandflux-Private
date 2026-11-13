@@ -804,12 +804,11 @@ export default function IdeasPage() {
                   {/* Drawer Navigation Tabs */}
                   <div className="flex gap-2 mt-6 border-b border-border overflow-x-auto scrollbar-hide pb-2">
                     {[
-                      { id: 'linkedin_post', plat: 'linkedin', label: '💼 LinkedIn', data: sessionDetail.linkedin_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'linkedin') },
                       { id: 'facebook_post', plat: 'facebook', label: '📘 Facebook', data: sessionDetail.facebook_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'facebook') },
                       { id: 'instagram_post', plat: 'instagram', label: '📸 Instagram', data: sessionDetail.instagram_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'instagram') },
-                      { id: 'twitter_post', plat: 'twitter', label: '🐦 Twitter / X', data: sessionDetail.twitter_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'twitter' || c.platform.toLowerCase() === 'x') },
-                      { id: 'tiktok', plat: 'tiktok', label: '🎵 TikTok', data: sessionDetail.tiktok || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'tiktok') },
-                      { id: 'instagram_story', plat: 'story', label: '📱 Story', data: sessionDetail.instagram_story || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'story') }
+                      { id: 'linkedin_post', plat: 'linkedin', label: '💼 LinkedIn', data: sessionDetail.linkedin_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'linkedin') },
+                      { id: 'twitter_post', plat: 'twitter', label: '✖️ X / Twitter', data: sessionDetail.twitter_post || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'twitter' || c.platform.toLowerCase() === 'x') },
+                      { id: 'tiktok', plat: 'tiktok', label: '🎵 TikTok', data: sessionDetail.tiktok || sessionDetail.copies?.find((c: any) => c.platform.toLowerCase() === 'tiktok') }
                     ].map(tab => {
                       if (!tab.data) return null
                       const isActive = activeDetailTab === tab.id || activeDetailTab === tab.plat
@@ -1087,10 +1086,8 @@ export default function IdeasPage() {
                             onClick={() => {
                               const selectableIds = sessionDetail.copies
                                 .filter((c: any) => {
-                                  const p = (c.platform || '').toLowerCase();
                                   const s = (c.status || 'draft').toLowerCase();
-                                  const isUnproven = p === 'tiktok' || p === 'twitter' || p === 'x';
-                                  return !isUnproven && s !== 'published' && s !== 'publishing' && s !== 'needs_reconnect' && s !== 'scheduled';
+                                  return s !== 'published' && s !== 'publishing' && s !== 'needs_reconnect' && s !== 'scheduled';
                                 })
                                 .map((c: any) => c.id || c.copy_id)
                                 .filter(Boolean);
@@ -1124,21 +1121,32 @@ export default function IdeasPage() {
                               : plat.charAt(0).toUpperCase() + plat.slice(1);
                               
                             const icon = plat.includes('linkedin') ? '💼' : plat.includes('facebook') ? '📘' : plat.includes('instagram') ? '📸' : plat.includes('twitter') || plat.includes('x') ? '✖️' : '🎵';
-                            const isUnproven = plat === 'tiktok' || plat === 'twitter' || plat === 'x';
                             const isPublished = statusLower === 'published';
                             const isScheduled = statusLower === 'scheduled';
                             const isNeedsReconnect = statusLower === 'needs_reconnect';
                             const isFailed = statusLower === 'failed';
-                            const isSelectable = !isUnproven && !isPublished && !isNeedsReconnect && !isScheduled;
+                            const isSelectable = !isPublished && !isNeedsReconnect && !isScheduled;
 
                             return (
                               <label
                                 key={cId}
+                                onClick={() => {
+                                  const tabMap: Record<string, string> = {
+                                    facebook: 'facebook_post',
+                                    linkedin: 'linkedin_post',
+                                    instagram: 'instagram_post',
+                                    twitter: 'twitter_post',
+                                    x: 'twitter_post',
+                                    tiktok: 'tiktok'
+                                  };
+                                  const targetTab = tabMap[plat] || 'facebook_post';
+                                  if (sessionDetail[targetTab]) {
+                                    setActiveDetailTab(targetTab);
+                                  }
+                                }}
                                 className={`flex items-center justify-between p-3 rounded-xl border transition ${
                                   isPublished
                                     ? 'bg-emerald-500/5 border-emerald-500/20 text-text opacity-90 cursor-default'
-                                    : isUnproven
-                                    ? 'bg-surface/30 border-border/50 text-muted cursor-not-allowed opacity-60'
                                     : isChecked
                                     ? 'bg-surface border-accent/60 text-text ring-1 ring-accent/20 cursor-pointer'
                                     : 'bg-surface/50 border-border text-muted hover:border-border-hover cursor-pointer'
@@ -1235,10 +1243,6 @@ export default function IdeasPage() {
                                         Retry
                                       </button>
                                     </div>
-                                  ) : isUnproven ? (
-                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded border bg-surface border-border text-muted">
-                                      Coming soon
-                                    </span>
                                   ) : (
                                     <span className="text-[10px] font-bold px-2.5 py-0.5 rounded border bg-surface border-border text-muted">
                                       Not posted yet
@@ -1352,6 +1356,33 @@ export default function IdeasPage() {
 
                       return (
                         <div className="bg-surface-secondary border border-border p-4 rounded-2xl space-y-3">
+                          <div className="flex flex-wrap gap-1.5 pb-2 border-b border-border/60">
+                            {[
+                              { id: 'facebook_post', plat: 'facebook', label: 'Facebook' },
+                              { id: 'instagram_post', plat: 'instagram', label: 'Instagram' },
+                              { id: 'linkedin_post', plat: 'linkedin', label: 'LinkedIn' },
+                              { id: 'twitter_post', plat: 'twitter', label: 'X' },
+                              { id: 'tiktok', plat: 'tiktok', label: 'TikTok' },
+                            ].map(t => {
+                              const hasCopy = sessionDetail[t.id] || sessionDetail.copies?.some((c: any) => (c.platform || '').toLowerCase() === t.plat || (t.plat === 'twitter' && (c.platform || '').toLowerCase() === 'x'));
+                              if (!hasCopy) return null;
+                              const isCurrent = activeDetailTab === t.id || activeDetailTab === t.plat;
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => setActiveDetailTab(t.id)}
+                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition border ${
+                                    isCurrent
+                                      ? 'bg-accent text-black border-accent'
+                                      : 'bg-surface border-border text-muted hover:text-text'
+                                  }`}
+                                >
+                                  {t.label}
+                                </button>
+                              );
+                            })}
+                          </div>
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
                               Active Inspector: <strong className="text-text">{platName}</strong>

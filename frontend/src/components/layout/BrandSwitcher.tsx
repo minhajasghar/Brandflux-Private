@@ -173,7 +173,7 @@ export default function BrandSwitcher() {
       {/* ─── Top Bar Trigger Button ─── */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-surface border border-border hover:border-primary/50 hover:bg-surface-secondary/70 transition duration-200 text-left group"
+        className="flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-surface border border-border hover:border-primary/50 hover:bg-surface-secondary/70 transition duration-200 text-left group min-w-0 max-w-[160px] xs:max-w-[200px] sm:max-w-none"
         aria-label="Switch Brand"
       >
         {/* Brand Logo / Avatar Swatch */}
@@ -202,7 +202,7 @@ export default function BrandSwitcher() {
         {/* Brand Name & Quota */}
         <div className="flex flex-col min-w-0 pr-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-text truncate max-w-[120px] sm:max-w-[160px]">
+            <span className="text-xs font-bold text-text truncate max-w-[75px] xs:max-w-[110px] sm:max-w-[160px]">
               {activeBrand?.name || activeBrand?.business_name || 'My Brand'}
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-primary/15 text-primary-light border border-primary/20">
@@ -222,7 +222,7 @@ export default function BrandSwitcher() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.15 }}
-            className="absolute left-0 mt-2 w-72 sm:w-80 rounded-2xl bg-surface border border-border shadow-2xl p-2 z-50 backdrop-blur-xl"
+            className="absolute left-0 mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 rounded-2xl bg-surface border border-border shadow-2xl p-2 z-50 backdrop-blur-xl"
           >
             {/* Header: Plan Limit Status */}
             <div className="px-3 py-2.5 rounded-xl bg-surface-secondary/70 border border-border mb-2">

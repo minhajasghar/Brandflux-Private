@@ -35,9 +35,9 @@ export default function BottomNav() {
                   ? 'text-accent bg-accent/15 scale-105' 
                   : 'text-muted group-hover:text-text'
               }`}>
-                <Icon className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+                <Icon className="h-4 w-4 xs:h-4.5 xs:w-4.5 sm:h-5 sm:w-5 shrink-0" />
               </div>
-              <span className={`text-[10px] tracking-tight mt-0.5 leading-none transition-colors ${
+              <span className={`text-[9px] xs:text-[10px] tracking-tight mt-0.5 leading-none transition-colors truncate px-0.5 ${
                 isActive ? 'text-accent font-extrabold' : 'text-muted font-medium'
               }`}>
                 {item.name}

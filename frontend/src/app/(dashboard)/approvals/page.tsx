@@ -341,7 +341,7 @@ function ApprovalsContent() {
   const currentCopy = postDetail?.platform_copies?.find((c: any) => c.platform === selectedPlatform) || postDetail?.platform_copies?.[0]
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-5 sm:space-y-6 max-w-6xl mx-auto w-full min-w-0">
       {/* ─── Page Header ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6 rounded-2xl bg-surface border border-border">
         <div>

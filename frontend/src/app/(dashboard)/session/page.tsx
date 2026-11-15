@@ -760,8 +760,8 @@ export default function SessionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg text-text pb-24">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+    <div className="w-full max-w-6xl mx-auto space-y-6 min-w-0">
+      <div className="w-full min-w-0">
 
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* PHASE 1: INPUT STEP (Check-in, Reference Area, Mode Picker)          */}
@@ -779,10 +779,10 @@ export default function SessionPage() {
                   <Sparkles className="h-3.5 w-3.5" />
                   Enhanced Session Studio
                 </span>
-                <h1 className="text-3xl md:text-4xl font-black tracking-tight mt-2 text-text">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight mt-2 text-text break-words">
                   Create Content for <span className="text-accent">{businessName}</span>
                 </h1>
-                <p className="text-muted text-sm mt-1">
+                <p className="text-muted text-xs sm:text-sm mt-1 break-words">
                   Combine free-text direction with photo references and AI styling.
                 </p>
               </div>
@@ -802,7 +802,7 @@ export default function SessionPage() {
             </div>
 
             {/* Smart Check-in Selection Card */}
-            <div className="bg-surface border border-border rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 w-full min-w-0">
               <div className="space-y-1">
                 <h2 className="text-xl font-extrabold text-text flex items-center gap-2">
                   <span>1. Today&apos;s Focus &amp; Highlights</span>
@@ -815,7 +815,7 @@ export default function SessionPage() {
                 <button
                   type="button"
                   onClick={() => setSpecialMode('normal')}
-                  className={`p-5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between h-36 ${specialMode === 'normal'
+                  className={`p-4 sm:p-5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between min-h-[120px] sm:h-36 ${specialMode === 'normal'
                       ? 'border-accent bg-surface-secondary text-text ring-1 ring-accent shadow-accent-glow/20'
                       : 'bg-surface-secondary/40 border-border hover:border-border-light'
                     }`}
@@ -833,7 +833,7 @@ export default function SessionPage() {
                 <button
                   type="button"
                   onClick={() => setSpecialMode('special')}
-                  className={`p-5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between h-36 ${specialMode === 'special'
+                  className={`p-4 sm:p-5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between min-h-[120px] sm:h-36 ${specialMode === 'special'
                       ? 'border-accent bg-surface-secondary text-text ring-1 ring-accent shadow-accent-glow/20'
                       : 'bg-surface-secondary/40 border-border hover:border-border-light'
                     }`}
@@ -870,7 +870,7 @@ export default function SessionPage() {
             </div>
 
             {/* ─── REFERENCE AREA (Drag-Drop Images + Context Box) ───────────── */}
-            <div className="bg-surface border border-border rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 w-full min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h2 className="text-xl font-extrabold text-text flex items-center gap-2">
@@ -1008,7 +1008,7 @@ export default function SessionPage() {
             </div>
 
             {/* 3. Target Social Platforms Selection */}
-            <div className="bg-surface border border-border rounded-3xl p-6 sm:p-8 space-y-4">
+            <div className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 space-y-4 w-full min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-4">
                 <div>
                   <h2 className="text-xl font-extrabold text-text flex items-center gap-2">

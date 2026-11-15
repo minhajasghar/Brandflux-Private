@@ -562,7 +562,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+    <div className="space-y-6 max-w-7xl mx-auto pb-16 w-full min-w-0">
       {/* ═════════════════════════════════════════════════════════════ */}
       {/* CALENDAR HEADER BAR                                           */}
       {/* ═════════════════════════════════════════════════════════════ */}

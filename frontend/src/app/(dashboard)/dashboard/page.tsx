@@ -334,7 +334,7 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 max-w-6xl mx-auto">
+      <div className="space-y-5 sm:space-y-6 max-w-6xl mx-auto w-full min-w-0">
         {/* Brand Profile Skeleton */}
         <div className="bg-surface border border-border rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-6 flex-1">
@@ -387,7 +387,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-5 sm:space-y-6 max-w-6xl mx-auto w-full min-w-0">
       
       {/* ─── DYNAMIC BANNER: WEBSITE CHANGES DETECTED ─── */}
       <AnimatePresence>
@@ -459,7 +459,7 @@ export default function DashboardPage() {
       )}
 
       {/* ─── SECTION 1: BRAND STATUS BAR ─── */}
-      <section className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
+      <section className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 w-full min-w-0">
         <div className="flex flex-wrap items-center gap-4 sm:gap-5">
           {/* Logo or Globe */}
           <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-surface-secondary border border-border flex items-center justify-center flex-shrink-0">
@@ -479,7 +479,7 @@ export default function DashboardPage() {
           
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
-              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-text truncate max-w-[200px] sm:max-w-none">{brand?.business_name || 'My Brand'}</h2>
+              <h2 className="text-lg sm:text-2xl font-extrabold tracking-tight text-text truncate max-w-[160px] xs:max-w-[220px] sm:max-w-none">{brand?.business_name || 'My Brand'}</h2>
               <span className="px-2 sm:px-2.5 py-0.5 rounded-md bg-surface-secondary border border-border text-[9px] sm:text-[10px] font-bold text-muted uppercase tracking-wider">
                 {brand?.business_type || 'Business'}
               </span>
@@ -490,7 +490,7 @@ export default function DashboardPage() {
                 href={brand?.website_url || '#'} 
                 target="_blank" 
                 rel="noreferrer" 
-                className="hover:underline flex items-center gap-1.5 text-accent truncate max-w-[180px] sm:max-w-none"
+                className="hover:underline flex items-center gap-1.5 text-accent truncate max-w-[140px] xs:max-w-[200px] sm:max-w-none"
               >
                 <Globe className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{brand?.website_url || 'No URL scanned'}</span>
@@ -599,10 +599,10 @@ export default function DashboardPage() {
             
             <button
               onClick={() => router.push('/session')}
-              className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl bg-accent hover:bg-accent-hover text-black font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2 shadow-accent-glow active:scale-[0.98] whitespace-nowrap min-h-[48px]"
+              className="w-full sm:w-auto px-5 sm:px-8 py-3.5 sm:py-4 rounded-xl bg-accent hover:bg-accent-hover !text-[#05060A] font-black text-sm sm:text-base transition-all flex items-center justify-center gap-2 shadow-accent-glow active:scale-[0.98] shrink-0 min-h-[48px]"
             >
-              Start Today&apos;s Session
-              <ArrowRight className="h-4 w-4" />
+              <span className="!text-[#05060A] font-black">Start Today&apos;s Session</span>
+              <ArrowRight className="h-4 w-4 !text-[#05060A] stroke-[2.5]" />
             </button>
           </div>
         )}

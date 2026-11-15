@@ -165,7 +165,7 @@ export default function DashboardLayout({
   if (isOnboarding) return <>{children}</>
 
   return (
-    <div className="flex min-h-screen bg-bg text-text overflow-x-hidden">
+    <div className="flex min-h-screen bg-bg text-text overflow-x-hidden w-full max-w-[100vw]">
       {/* ─── SIDEBAR ─── */}
       <aside className={`w-64 border-r border-border flex flex-col fixed inset-y-0 z-50 bg-surface transition-transform duration-300 md:translate-x-0 ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
@@ -248,10 +248,10 @@ export default function DashboardLayout({
       )}
 
       {/* ─── MAIN CONTENT ─── */}
-      <div className="flex-1 md:ml-64 min-h-screen flex flex-col">
+      <div className="flex-1 md:ml-64 min-h-screen flex flex-col min-w-0 w-full max-w-full overflow-x-hidden">
         {/* Sticky Header */}
-        <header className="h-16 border-b border-border flex items-center justify-between px-3.5 sm:px-6 md:px-8 sticky top-0 bg-bg/85 backdrop-blur-md z-30">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        <header className="h-16 border-b border-border flex items-center justify-between px-3 sm:px-6 md:px-8 sticky top-0 bg-bg/85 backdrop-blur-md z-30 w-full min-w-0">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="md:hidden p-2 rounded-xl bg-surface border border-border hover:bg-surface-secondary transition shrink-0"
@@ -274,7 +274,7 @@ export default function DashboardLayout({
             {!isApprover && (
               <Link
                 href="/settings?tab=billing"
-                className={`px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition ${
+                className={`px-2 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition shrink-0 ${
                   creditBalance !== null && creditBalance <= 0
                     ? 'bg-danger/10 border-danger/30 text-danger hover:bg-danger/20'
                     : isLowBalance
@@ -283,15 +283,16 @@ export default function DashboardLayout({
                 }`}
                 title="Your remaining post credits"
               >
-                <Zap className={`h-3 w-3 ${creditBalance !== null && creditBalance <= 0 ? 'text-danger' : isLowBalance ? 'text-amber-400' : 'text-accent'}`} />
-                <span>{creditBalance !== null ? `${creditBalance} post credits` : '...'}</span>
+                <Zap className={`h-3 w-3 shrink-0 ${creditBalance !== null && creditBalance <= 0 ? 'text-danger' : isLowBalance ? 'text-amber-400' : 'text-accent'}`} />
+                <span className="sm:hidden font-extrabold">{creditBalance !== null ? creditBalance : '...'}</span>
+                <span className="hidden sm:inline">{creditBalance !== null ? `${creditBalance} post credits` : '...'}</span>
               </Link>
             )}
 
             {/* In-App Notification Center Bell */}
             <NotificationBell />
 
-            <div className={`px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 ${
+            <div className={`hidden sm:flex px-2.5 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold items-center gap-1.5 sm:gap-2 shrink-0 ${
               isApprover
                 ? 'bg-blue-500/15 border-blue-500/30 text-blue-400'
                 : 'bg-surface-secondary border-border text-text'
@@ -303,7 +304,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Main Slot page */}
-        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pb-24 md:pb-8 max-w-[1600px] w-full mx-auto">
+        <main className="flex-1 p-3 sm:p-5 lg:p-8 pb-24 md:pb-8 max-w-[1600px] w-full mx-auto min-w-0">
           {children}
         </main>
       </div>

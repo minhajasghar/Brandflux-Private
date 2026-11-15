@@ -740,7 +740,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-16">
+    <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto pb-16 w-full min-w-0">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
         <div>

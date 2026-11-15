@@ -410,7 +410,7 @@ export default function IdeasPage() {
   const filteredHistory = getFilteredItems()
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-16 relative">
+    <div className="space-y-5 sm:space-y-6 max-w-6xl mx-auto pb-16 relative w-full min-w-0">
       
       {/* ─── PAGE HEADER ─── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -449,7 +449,7 @@ export default function IdeasPage() {
       {activeTab === 'history' ? (
         <>
           {/* ─── STATUS FILTER TABS (All / Not posted yet / Scheduled / Published) ─── */}
-          <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 border-b border-border pb-3 w-full min-w-0">
             {[
               { id: 'all', label: 'All Posts' },
               { id: 'not_posted', label: 'Not posted yet' },
@@ -480,7 +480,7 @@ export default function IdeasPage() {
           </div>
 
           {/* ─── FILTER BAR ─── */}
-          <div className="flex flex-col md:flex-row gap-4 justify-between bg-surface border border-border p-4 rounded-2xl">
+          <div className="flex flex-col md:flex-row gap-3 sm:gap-4 justify-between bg-surface border border-border p-3 sm:p-4 rounded-2xl w-full min-w-0">
             
             {/* Platform Filters */}
             <div className="flex flex-wrap gap-2">
@@ -534,7 +534,7 @@ export default function IdeasPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="bg-surface border border-border p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-4">
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <Skeleton width="30%" height="20px" rounded="md" />
                     <Skeleton width="20%" height="20px" rounded="md" />
                   </div>
@@ -564,7 +564,7 @@ export default function IdeasPage() {
                 >
                   <div className="space-y-4">
                     {/* Card Top: Date & Platform Badges */}
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-muted">
                         <Clock className="h-3.5 w-3.5" />
                         <span>{formatDateLabel(item.session_date || item.created_at)}</span>
@@ -698,7 +698,7 @@ export default function IdeasPage() {
                 >
                   <div className="space-y-4">
                     {/* Header: Platform + Date */}
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-surface-secondary border border-border text-[10px] font-bold uppercase text-text">
                         {getPlatformIcon(tpl.platform)}
                         <span>{getPlatformLabel(tpl.platform)}</span>
@@ -1027,7 +1027,7 @@ export default function IdeasPage() {
                     {/* Render Instagram Post */}
                     {activeDetailTab === 'instagram_post' && sessionDetail.instagram_post && (
                       <div className="space-y-5">
-                        <div className="flex justify-between items-center">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-muted">Instagram Caption</h4>
                           <CopyButton text={sessionDetail.instagram_post.caption} label="Caption" />
                         </div>
@@ -1059,7 +1059,7 @@ export default function IdeasPage() {
                     {/* Render LinkedIn Post */}
                     {activeDetailTab === 'linkedin_post' && sessionDetail.linkedin_post && (
                       <div className="space-y-5">
-                        <div className="flex justify-between items-center">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-muted">LinkedIn Content</h4>
                           <CopyButton text={sessionDetail.linkedin_post.caption} label="Post" />
                         </div>
@@ -1081,7 +1081,7 @@ export default function IdeasPage() {
                     {/* Render Facebook Post */}
                     {activeDetailTab === 'facebook_post' && sessionDetail.facebook_post && (
                       <div className="space-y-5">
-                        <div className="flex justify-between items-center">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-muted">Facebook Caption</h4>
                           <CopyButton text={sessionDetail.facebook_post.caption} label="Caption" />
                         </div>
@@ -1094,7 +1094,7 @@ export default function IdeasPage() {
                     {/* Render Twitter Post */}
                     {activeDetailTab === 'twitter_post' && sessionDetail.twitter_post && (
                       <div className="space-y-5">
-                        <div className="flex justify-between items-center">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-muted">Twitter / X Post</h4>
                           <CopyButton text={sessionDetail.twitter_post.caption} label="Tweet" />
                         </div>
@@ -1116,7 +1116,7 @@ export default function IdeasPage() {
                     {/* Render TikTok Post */}
                     {activeDetailTab === 'tiktok' && sessionDetail.tiktok && (
                       <div className="space-y-5">
-                        <div className="flex justify-between items-center">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-muted">TikTok Hook &amp; Caption</h4>
                           <CopyButton text={sessionDetail.tiktok.caption} label="Caption" />
                         </div>
@@ -1797,7 +1797,7 @@ export default function IdeasPage() {
               className="fixed inset-0 m-auto max-h-[280px] w-[90%] max-w-md bg-surface border border-border rounded-3xl z-50 flex flex-col justify-between shadow-2xl p-6"
             >
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-base font-bold text-text tracking-tight">Save as Template</h3>
                   <button
                     onClick={() => setSavingPost(null)}

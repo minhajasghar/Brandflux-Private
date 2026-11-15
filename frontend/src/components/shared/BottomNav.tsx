@@ -2,19 +2,28 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Sparkles, Calendar, Lightbulb, BarChart3, Settings } from 'lucide-react'
+import { Home, Sparkles, Calendar, Lightbulb, BarChart3, Settings, CheckCircle2, LogOut } from 'lucide-react'
 
-export default function BottomNav() {
+interface BottomNavProps {
+  isApprover?: boolean
+  onLogout?: () => void
+}
+
+export default function BottomNav({ isApprover = false, onLogout }: BottomNavProps) {
   const pathname = usePathname()
 
-  const navItems = [
-    { name: 'Home', path: '/dashboard', icon: Home },
-    { name: 'Create', path: '/session', icon: Sparkles },
-    { name: 'Calendar', path: '/calendar', icon: Calendar },
-    { name: 'History', path: '/ideas', icon: Lightbulb },
-    { name: 'Analytics', path: '/analytics', icon: BarChart3 },
-    { name: 'Settings', path: '/settings', icon: Settings },
-  ]
+  const navItems = isApprover
+    ? [
+        { name: 'Approvals', path: '/approvals', icon: CheckCircle2 },
+      ]
+    : [
+        { name: 'Home', path: '/dashboard', icon: Home },
+        { name: 'Create', path: '/session', icon: Sparkles },
+        { name: 'Calendar', path: '/calendar', icon: Calendar },
+        { name: 'History', path: '/ideas', icon: Lightbulb },
+        { name: 'Analytics', path: '/analytics', icon: BarChart3 },
+        { name: 'Settings', path: '/settings', icon: Settings },
+      ]
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface/95 border-t border-border backdrop-blur-lg md:hidden shadow-2xl safe-area-bottom">
@@ -27,6 +36,7 @@ export default function BottomNav() {
             <Link 
               key={item.path} 
               href={item.path}
+              prefetch={false}
               className="flex flex-col items-center justify-center flex-1 h-full py-1 relative group touch-manipulation"
               aria-label={item.name}
             >
@@ -49,6 +59,21 @@ export default function BottomNav() {
             </Link>
           )
         })}
+
+        {isApprover && onLogout && (
+          <button
+            onClick={onLogout}
+            className="flex flex-col items-center justify-center flex-1 h-full py-1 relative group touch-manipulation text-muted hover:text-danger"
+            aria-label="Logout"
+          >
+            <div className="p-1 sm:p-1.5 rounded-xl transition-all duration-150 flex items-center justify-center">
+              <LogOut className="h-4 w-4 xs:h-4.5 xs:w-4.5 sm:h-5 sm:w-5 shrink-0" />
+            </div>
+            <span className="text-[9px] xs:text-[10px] tracking-tight mt-0.5 leading-none transition-colors truncate px-0.5">
+              Logout
+            </span>
+          </button>
+        )}
       </div>
     </div>
   )

@@ -28,7 +28,7 @@ export default function LoginPage() {
       const isApproverUser = Boolean(data.is_approver || data.brand_role === 'approver')
 
       if (!data.is_approved && data.role !== 'admin' && !isApproverUser) {
-        window.location.href = '/payment'
+        window.location.replace('/payment')
         return
       }
 
@@ -39,7 +39,7 @@ export default function LoginPage() {
         : data.onboarding_complete 
         ? '/dashboard' 
         : '/onboarding'
-      window.location.href = target
+      window.location.replace(target)
     } catch (err: any) {
       const msg = err.code === 'ECONNABORTED'
         ? 'Connection timed out. Please check that the server is reachable.'

@@ -274,6 +274,7 @@ export default function DashboardLayout({
             {!isApprover && (
               <Link
                 href="/settings?tab=billing"
+                prefetch={false}
                 className={`px-2 sm:px-3 py-1 rounded-full border text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition shrink-0 ${
                   creditBalance !== null && creditBalance <= 0
                     ? 'bg-danger/10 border-danger/30 text-danger hover:bg-danger/20'
@@ -310,7 +311,7 @@ export default function DashboardLayout({
       </div>
       
       {/* Mobile Bottom Navigation */}
-      <BottomNav />
+      <BottomNav isApprover={isApprover} onLogout={handleLogout} />
     </div>
   )
 }

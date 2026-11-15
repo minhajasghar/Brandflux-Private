@@ -36,11 +36,17 @@ export function middleware(request: NextRequest) {
   // 3. Strict Portal Boundary Enforcement:
   // - Admin users CANNOT open user portal routes (redirect back to /admin)
   if (isAdminRole && !isAdminRoute) {
+    if (request.nextUrl.searchParams.has('_rsc')) {
+      return new NextResponse(null, { status: 204 })
+    }
     return NextResponse.redirect(new URL('/admin', request.url))
   }
 
   // - Non-admin users CANNOT open admin portal routes (redirect to /dashboard)
   if (!isAdminRole && isAdminRoute) {
+    if (request.nextUrl.searchParams.has('_rsc')) {
+      return new NextResponse(null, { status: 204 })
+    }
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
@@ -50,6 +56,9 @@ export function middleware(request: NextRequest) {
   // 3b. Approver Boundary: Approvers land on /approvals and are locked to Approvals portal
   if (isApprover) {
     if (pathname !== '/approvals' && !pathname.startsWith('/approvals/')) {
+      if (request.nextUrl.searchParams.has('_rsc')) {
+        return new NextResponse(null, { status: 204 })
+      }
       return NextResponse.redirect(new URL('/approvals', request.url))
     }
   }
@@ -80,6 +89,7 @@ export const config = {
     '/calendar/:path*',
     '/ideas/:path*',
     '/analytics/:path*',
+    '/approvals/:path*',
     '/admin/:path*'
   ],
 }

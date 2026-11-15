@@ -26,8 +26,9 @@ api.interceptors.request.use((config) => {
     if (host && host !== 'localhost' && host !== '127.0.0.1') {
       config.baseURL = '/api/py'
     }
+    const isAuthEndpoint = config.url?.includes('/auth/login') || config.url?.includes('/auth/signup')
     const token = localStorage.getItem('brandflux_token') || sessionStorage.getItem('brandflux_token')
-    if (token) {
+    if (token && !isAuthEndpoint) {
       config.headers.Authorization = `Bearer ${token}`
     }
   }
@@ -114,22 +115,13 @@ export async function login(data: any, rememberMe: boolean = false) {
   const isAppr = Boolean(is_approver || brand_role === 'approver')
   const isComplete = isAppr || Boolean(onboarding_complete)
   if (typeof window !== 'undefined') {
-    if (rememberMe) {
-      localStorage.setItem('brandflux_token', token)
-      sessionStorage.removeItem('brandflux_token')
-      document.cookie = `brandflux_token=${token}; path=/; max-age=604800;`
-      document.cookie = `brandflux_onboarding_complete=${isComplete ? 'true' : 'false'}; path=/; max-age=604800;`
-      document.cookie = `brandflux_user_role=${userRole}; path=/; max-age=604800;`
-      document.cookie = `brandflux_brand_role=${brand_role || (isAppr ? 'approver' : 'creator')}; path=/; max-age=604800;`
-    } else {
-      sessionStorage.setItem('brandflux_token', token)
-      localStorage.removeItem('brandflux_token')
-      // Session-only cookie (no max-age/expires)
-      document.cookie = `brandflux_token=${token}; path=/;`
-      document.cookie = `brandflux_onboarding_complete=${isComplete ? 'true' : 'false'}; path=/;`
-      document.cookie = `brandflux_user_role=${userRole}; path=/;`
-      document.cookie = `brandflux_brand_role=${brand_role || (isAppr ? 'approver' : 'creator')}; path=/;`
-    }
+    const maxAge = rememberMe ? 604800 : 86400 // 7 days or 24 hours
+    localStorage.setItem('brandflux_token', token)
+    sessionStorage.setItem('brandflux_token', token)
+    document.cookie = `brandflux_token=${token}; path=/; max-age=${maxAge}; SameSite=Lax;`
+    document.cookie = `brandflux_onboarding_complete=${isComplete ? 'true' : 'false'}; path=/; max-age=${maxAge}; SameSite=Lax;`
+    document.cookie = `brandflux_user_role=${userRole}; path=/; max-age=${maxAge}; SameSite=Lax;`
+    document.cookie = `brandflux_brand_role=${brand_role || (isAppr ? 'approver' : 'creator')}; path=/; max-age=${maxAge}; SameSite=Lax;`
   }
   return response.data
 }

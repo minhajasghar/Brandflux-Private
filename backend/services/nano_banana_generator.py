@@ -6,6 +6,8 @@ import base64
 import asyncio
 import traceback
 import logging
+import random
+import urllib.parse
 from typing import Dict, Any, Optional, Tuple, List
 import httpx
 from sqlalchemy.orm import Session
@@ -257,6 +259,32 @@ class NanoBananaGenerator:
             else:
                 raise Exception(f"{clean_model} returned HTTP {res.status_code}: {res.text}")
 
+    async def _call_free_pollinations_api(self, prompt: str, aspect_ratio: str) -> Optional[bytes]:
+        """
+        Free AI Image Generation using Pollinations.ai (Flux model).
+        Requires zero API keys and produces high-resolution background visuals.
+        """
+        try:
+            norm_ratio, (w, h) = self.normalize_aspect_ratio(aspect_ratio)
+            # Create a concise, clean prompt suitable for URL query
+            clean_prompt = prompt.replace("\n", " ").strip()
+            # Focus on aesthetic visual keywords
+            encoded_prompt = urllib.parse.quote(clean_prompt[:700])
+            seed = random.randint(1000, 999999)
+            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={w}&height={h}&nologo=true&seed={seed}&model=flux"
+            logger.info(f"🌸 [Free AI Image API] Requesting visual from Pollinations.ai Flux ({w}x{h})...")
+
+            async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
+                res = await client.get(url)
+                if res.status_code == 200 and len(res.content) > 1000:
+                    logger.info(f"✓ [Free AI Image API] Successfully received {len(res.content)} bytes from Pollinations.ai")
+                    return res.content
+                else:
+                    logger.warning(f"Pollinations.ai returned status {res.status_code}: {res.text[:200]}")
+        except Exception as e:
+            logger.error(f"Pollinations.ai free image generation error: {e}")
+        return None
+
     async def generate_background_with_retry(
         self,
         prompt: str,
@@ -322,7 +350,7 @@ class NanoBananaGenerator:
                 prompt=prompt,
                 aspect_ratio=aspect_ratio,
                 media_url=media_url,
-                cost=self.COST_PER_IMAGE_USD if status == "success" else 0.0,
+                cost=self.COST_PER_IMAGE_USD if (status == "success" and "pollinations" not in model.lower()) else 0.0,
                 credits_used=1 if status == "success" else 0,
                 status=status,
                 error_message=error_message,
@@ -357,16 +385,10 @@ class NanoBananaGenerator:
         High-level orchestrator:
         1. Formulates prompt from brand kit, daily check-in, reference images & modes, and variant composition style.
         2. Normalizes aspect ratio to 1:1, 4:5, or 9:16.
-        3. Calls Nano Banana 2.1 via Gemini API with retries and timeout.
-        4. Uploads generated visual to Cloudflare R2 and gets public CDN URL.
-        5. Logs per-generation usage/cost to the database `usage` table.
-        6. On failure or missing billing: logs failure and returns None (triggering CSS gradient fallback).
+        3. Calls image generation: tries Gemini Nano Banana 2.1 or free Pollinations Flux fallback.
+        4. Composites brand kit authentic logo if available.
+        5. Saves output and logs usage to DB.
         """
-        is_paid_allowed = os.getenv("ALLOW_PAID_GENERATION", "true").strip().lower() in ("true", "1", "yes")
-        if not is_paid_allowed:
-            logger.warning("Cost safety: Paid image generation is disabled (ALLOW_PAID_GENERATION=false).")
-            raise RuntimeError("Generation is disabled in this environment")
-
         norm_ratio, (w, h) = self.normalize_aspect_ratio(aspect_ratio)
         prompt = self.build_background_prompt(
             brand_profile=brand_profile,
@@ -379,15 +401,60 @@ class NanoBananaGenerator:
         model_name = self.get_active_model()
         start_time = time.time()
 
-        try:
-            # Generate background visual
-            image_bytes = await self.generate_background_with_retry(prompt, norm_ratio)
+        image_bytes = None
+        used_model = model_name
 
-            # Composite the user's authentic Brand Kit logo onto the post image
+        has_gemini_key = bool(self.get_api_key() and self.get_api_key() not in ("your_gemini_api_key_here", "dummy_key", "test_key", ""))
+        prefer_free = os.getenv("USE_FREE_IMAGE_GEN", "false").strip().lower() in ("true", "1", "yes")
+
+        # 1. If prefer_free is enabled or no Gemini API key is configured, use free Pollinations Flux directly
+        if prefer_free or not has_gemini_key:
+            logger.info("🌸 Using free AI image generation API (Pollinations Flux)...")
+            image_bytes = await self._call_free_pollinations_api(prompt, norm_ratio)
+            if image_bytes:
+                used_model = "pollinations-flux (Free API)"
+
+        # 2. Otherwise, attempt Gemini API with retry
+        if not image_bytes and has_gemini_key and not prefer_free:
+            try:
+                image_bytes = await self.generate_background_with_retry(prompt, norm_ratio)
+                used_model = model_name
+            except GeminiBillingError as bill_err:
+                logger.warning(f"⚠️ Gemini API billing error ({bill_err}). Falling back to free Pollinations API...")
+                image_bytes = await self._call_free_pollinations_api(prompt, norm_ratio)
+                if image_bytes:
+                    used_model = "pollinations-flux (Free Fallback)"
+            except Exception as gemini_err:
+                logger.warning(f"⚠️ Gemini API failed ({gemini_err}). Falling back to free Pollinations API...")
+                image_bytes = await self._call_free_pollinations_api(prompt, norm_ratio)
+                if image_bytes:
+                    used_model = "pollinations-flux (Free Fallback)"
+
+        # 3. If all image generators failed, fall back to CSS template gradient
+        if not image_bytes:
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            logger.warning("Falling back to CSS ambient/solid background.")
+            self.last_error_message = "Content styled with brand color palette."
+            self._log_usage(
+                user_id=user_id,
+                brand_id=brand_id,
+                model=model_name,
+                prompt=prompt,
+                aspect_ratio=norm_ratio,
+                media_url=None,
+                status="fallback",
+                error_message="Image generation failed across providers",
+                duration_ms=elapsed_ms,
+                db=db
+            )
+            return None
+
+        try:
+            # Composite authentic Brand Kit logo onto the post image
             image_bytes = await self._composite_brand_logo(image_bytes, brand_profile, brand_id=brand_id)
 
-            # Upload to Cloudflare R2
-            filename = f"bg_banana_{uuid.uuid4().hex[:10]}.png"
+            # Upload to Cloudflare R2 or local storage
+            filename = f"bg_{uuid.uuid4().hex[:10]}.png"
             public_url = storage_service.upload_image(image_bytes, filename)
 
             elapsed_ms = int((time.time() - start_time) * 1000)
@@ -396,7 +463,7 @@ class NanoBananaGenerator:
             self._log_usage(
                 user_id=user_id,
                 brand_id=brand_id,
-                model=model_name,
+                model=used_model,
                 prompt=prompt,
                 aspect_ratio=norm_ratio,
                 media_url=public_url,
@@ -407,46 +474,8 @@ class NanoBananaGenerator:
             )
 
             return public_url
-
-        except GeminiBillingError as bill_err:
-            elapsed_ms = int((time.time() - start_time) * 1000)
-            logger.error(f"⚠️ Falling back to CSS ambient/solid background: {bill_err}")
-            self.last_error_message = "Content styled with brand color palette."
-            self._log_usage(
-                user_id=user_id,
-                brand_id=brand_id,
-                model=model_name,
-                prompt=prompt,
-                aspect_ratio=norm_ratio,
-                media_url=None,
-                status="fallback",
-                error_message=str(bill_err),
-                duration_ms=elapsed_ms,
-                db=db
-            )
-            # Return None to trigger HTML/CSS gradient/solid background fallback
-            return None
-
-        except Exception as gen_err:
-            elapsed_ms = int((time.time() - start_time) * 1000)
-            err_str = str(gen_err)
-            self.last_error_message = "Branded visual asset styled with your brand's color palette."
-
-            logger.error(
-                f"❌ Nano Banana generation failed ({gen_err}) after {elapsed_ms}ms:\n{traceback.format_exc()}\nFalling back to template gradient/solid background."
-            )
-            self._log_usage(
-                user_id=user_id,
-                brand_id=brand_id,
-                model=model_name,
-                prompt=prompt,
-                aspect_ratio=norm_ratio,
-                media_url=None,
-                status="fallback",
-                error_message=str(gen_err),
-                duration_ms=elapsed_ms,
-                db=db
-            )
+        except Exception as proc_err:
+            logger.error(f"Post processing/storage error: {proc_err}")
             return None
 
     async def _composite_brand_logo(self, image_bytes: bytes, brand_profile: Dict[str, Any], brand_id: Optional[str] = None) -> bytes:
